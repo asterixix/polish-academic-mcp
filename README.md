@@ -134,7 +134,7 @@ Dodaj do pliku konfiguracyjnego Claude Desktop (`claude_desktop_config.json`):
       "command": "npx",
       "args": [
         "mcp-remote",
-        "https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp"
+        "https://polish-academic-mcp.kolpol25.workers.dev/mcp"
       ]
     }
   }
@@ -148,7 +148,7 @@ Lokalizacja pliku konfiguracyjnego:
 ### Claude.ai (Connector)
 
 1. Przejdź do **Ustawienia → Connectors → Dodaj własny connector**
-2. Wpisz URL serwera: `https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp`
+2. Wpisz URL serwera: `https://polish-academic-mcp.kolpol25.workers.dev/mcp`
 3. Kliknij **Zapisz**
 
 ## Podłączenie z OpenAI / ChatGPT
@@ -162,7 +162,7 @@ ChatGPT obsługuje zdalne serwery MCP przez protokół Streamable HTTP.
 3. Kliknij **Dodaj narzędzia (Add tools) → Serwer MCP (MCP server)**
 4. Wpisz URL serwera:
    ```
-   https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp
+   https://polish-academic-mcp.kolpol25.workers.dev/mcp
    ```
 5. Nadaj nazwę (np. `Polish Academic`) i zapisz
 
@@ -185,7 +185,7 @@ from agents.mcp import MCPServerSse
 
 async def main():
     async with MCPServerSse(
-        url="https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp"
+        url="https://polish-academic-mcp.kolpol25.workers.dev/mcp"
     ) as mcp_server:
         agent = Agent(
             name="Asystent Naukowy",
@@ -212,7 +212,7 @@ response = client.responses.create(
     model="gpt-4o",
     tools=[{
         "type": "mcp",
-        "server_url": "https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp",
+        "server_url": "https://polish-academic-mcp.kolpol25.workers.dev/mcp",
         "server_label": "polish-academic",
         "require_approval": "never",
     }],
@@ -235,7 +235,7 @@ Edytuj plik `~/.gemini/settings.json` (utwórz jeśli nie istnieje):
 {
   "mcpServers": {
     "polish-academic": {
-      "httpUrl": "https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp"
+      "httpUrl": "https://polish-academic-mcp.kolpol25.workers.dev/mcp"
     }
   }
 }
@@ -253,7 +253,7 @@ W [Google AI Studio](https://aistudio.google.com):
 
 1. Otwórz projekt lub stwórz nowy
 2. Przejdź do zakładki **Tools → Add MCP server**
-3. Wpisz URL: `https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp`
+3. Wpisz URL: `https://polish-academic-mcp.kolpol25.workers.dev/mcp`
 4. Zapisz i przetestuj w Playground
 
 Dla Vertex AI Agent Builder konfiguracja jest analogiczna w zakładce **Tools → Extensions → MCP**.
@@ -270,7 +270,7 @@ from google.adk.tools.mcp_tool import MCPToolset, SseServerParams
 
 academic_tools = MCPToolset(
     connection_params=SseServerParams(
-        url="https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp"
+        url="https://polish-academic-mcp.kolpol25.workers.dev/mcp"
     )
 )
 
@@ -339,7 +339,7 @@ Jeśli używasz lokalnego klienta zgodnego z OpenAI tools, możesz uruchomić `m
 npm install -g mcp-remote
 
 # Uruchom proxy (przekazuje wywołania MCP ↔ HTTP)
-npx mcp-remote https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp
+npx mcp-remote https://polish-academic-mcp.kolpol25.workers.dev/mcp
 ```
 
 Proxy nawiązuje lokalne połączenie stdio, z którego możesz korzystać w dowolnym narzędziu obsługującym MCP stdio.
