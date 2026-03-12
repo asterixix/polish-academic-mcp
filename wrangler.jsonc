@@ -11,12 +11,12 @@
   "kv_namespaces": [
     {
       "binding": "CACHE_KV",
-      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "id": "3a65887199da444388b42a88ee993376",
       "preview_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
     {
       "binding": "RATE_LIMIT_KV",
-      "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "id": "c24afe24902a4d549dee309557d42cd1",
       "preview_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     }
   ]
