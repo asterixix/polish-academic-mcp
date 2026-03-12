@@ -151,12 +151,6 @@ Lokalizacja pliku konfiguracyjnego:
 2. Wpisz URL serwera: `https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp`
 3. Kliknij **Zapisz**
 
-### Inne klienty MCP
-
-Wyślij żądanie HTTP POST do `/mcp` z nagłówkiem `Accept: application/json, text/event-stream` i treścią JSON-RPC 2.0.
-
----
-
 ## Podłączenie z OpenAI / ChatGPT
 
 ### ChatGPT.com (plan Plus / Pro / Team / Enterprise)
@@ -349,6 +343,10 @@ npx mcp-remote https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp
 ```
 
 Proxy nawiązuje lokalne połączenie stdio, z którego możesz korzystać w dowolnym narzędziu obsługującym MCP stdio.
+
+### Inne klienty MCP
+
+Wyślij żądanie HTTP POST do `/mcp` z nagłówkiem `Accept: application/json, text/event-stream` i treścią JSON-RPC 2.0.
 
 ---
 
