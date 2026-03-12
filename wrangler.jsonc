@@ -17,12 +17,10 @@
     }
   ],
   "observability": {
-    "enabled": false,
-    "head_sampling_rate": 1,
     "logs": {
       "enabled": true,
       "destinations": [
-        "huneycomb-logs"
+        "honeycomb-logs"
       ],
       "head_sampling_rate": 1,
       "persist": true,
@@ -31,7 +29,7 @@
     "traces": {
       "enabled": true,
       "destinations": [
-        "honeycomb-treaces"
+        "honeycomb-traces"
       ],
       "persist": true,
       "head_sampling_rate": 1
