@@ -1,0 +1,83 @@
+name: "🐛 Zgłoszenie błędu"
+description: "Zgłoś nieprawidłowe działanie narzędzia."
+title: "[Błąd] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Dziękujemy za poświęcony czas na zgłoszenie błędu.
+        Proszę wypełnić poniższy formularz możliwie szczegółowo — pomoże nam to szybciej odtworzyć i naprawić problem.
+
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Narzędzie, którego dotyczy błąd
+      description: Które narzędzie MCP zwróciło nieoczekiwany wynik?
+      options:
+        - bn_search_articles
+        - bn_get_article
+        - ruj_search
+        - ruj_get_item
+        - rodbuk_search
+        - repod_search
+        - repod_get_dataset
+        - dane_search
+        - dane_get_dataset
+        - Inne / nieznane
+    validations:
+      required: true
+
+  - type: textarea
+    id: params
+    attributes:
+      label: Użyte parametry
+      description: "Dokładne parametry przekazane do narzędzia (JSON lub opis)."
+      placeholder: |
+        query: "uczenie maszynowe"
+        page: 1
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Oczekiwane zachowanie
+      description: Co powinno się stać?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Rzeczywiste zachowanie
+      description: Co się wydarzyło? Podaj pełny komunikat błędu lub nieoczekiwany wynik.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Środowisko
+      options:
+        - Lokalny dev (npm run dev)
+        - Wdrożony Cloudflare Worker
+        - Oba
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: Klient MCP
+      description: "np. Claude Desktop 0.9.1, Claude.ai, własny klient"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Dodatkowy kontekst
+      description: Logi, zrzuty ekranu, wynik curl — cokolwiek co może pomóc.
+    validations:
+      required: false

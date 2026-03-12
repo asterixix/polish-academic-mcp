@@ -1,0 +1,40 @@
+name: "💬 Inne"
+description: "Pytania, sugestie lub cokolwiek, co nie pasuje do innych szablonów."
+title: "[Inne] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Skorzystaj z tego szablonu w przypadku ogólnych pytań, pomysłów na funkcje niezwiązane
+        z nową bazą danych, ulepszeń dokumentacji lub czegokolwiek innego nieujętego w pozostałych
+        typach zgłoszeń.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Typ zgłoszenia
+      options:
+        - Pytanie o użycie / konfigurację
+        - Ulepszenie dokumentacji
+        - Propozycja funkcji (nie baza danych)
+        - Pomysł na optymalizację wydajności
+        - Inne
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Opis
+      description: Opisz szczegółowo swoje pytanie, pomysł lub sugestię.
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Dodatkowy kontekst
+      description: Linki, fragmenty kodu, zrzuty ekranu lub inne istotne informacje.
+    validations:
+      required: false

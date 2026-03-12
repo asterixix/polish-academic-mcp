@@ -1,0 +1,39 @@
+name: "💬 Other"
+description: "Questions, suggestions, or anything that doesn't fit another template."
+title: "[Other] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for general questions, feature ideas that don't involve a new database,
+        documentation improvements, or anything else not covered by the other issue types.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Question about usage / configuration
+        - Documentation improvement
+        - Feature suggestion (non-database)
+        - Performance / optimisation idea
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Please describe your question, idea, or suggestion in detail.
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Links, code snippets, screenshots, or anything else relevant.
+    validations:
+      required: false

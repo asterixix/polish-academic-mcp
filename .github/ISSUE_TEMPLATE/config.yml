@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Security vulnerability (private)
+    url: https://github.com/asterixix/polish-academic-mcp/security/advisories/new
+    about: "Report a security issue privately using GitHub's security advisory system."
+  - name: Dyskusje / Discussions
+    url: https://github.com/asterixix/polish-academic-mcp/discussions
+    about: "General questions and community discussion."

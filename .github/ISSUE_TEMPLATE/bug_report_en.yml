@@ -1,0 +1,83 @@
+name: "🐛 Bug Report"
+description: "Report a broken or misbehaving tool."
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to file a bug report.
+        Please fill in as much detail as possible so we can reproduce and fix the issue quickly.
+
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Affected tool
+      description: Which MCP tool produced the unexpected result?
+      options:
+        - bn_search_articles
+        - bn_get_article
+        - ruj_search
+        - ruj_get_item
+        - rodbuk_search
+        - repod_search
+        - repod_get_dataset
+        - dane_search
+        - dane_get_dataset
+        - Other / unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: params
+    attributes:
+      label: Parameters used
+      description: "Exact parameters you passed to the tool (JSON or natural language)."
+      placeholder: |
+        query: "machine learning"
+        page: 1
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What actually happened? Include the full error message or unexpected output.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Local dev (npm run dev)
+        - Deployed Cloudflare Worker
+        - Both
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      description: "e.g. Claude Desktop 0.9.1, Claude.ai, custom client"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Logs, screenshots, curl output — anything else that might help.
+    validations:
+      required: false

@@ -1,0 +1,84 @@
+name: "⚖️ Kwestia etyczna"
+description: "Zgłoś wątpliwość etyczną dotyczącą dostępu do danych, prywatności lub użycia treści akademicznych przez AI."
+title: "[Etyka] "
+labels: ["ethics"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ten formularz służy do zgłaszania kwestii etycznych związanych z projektem.
+        Przykłady: pytania dotyczące praw autorskich/licencji, implikacje prywatności,
+        potencjalne nadużycia zagregowanych danych akademickich, stronniczość wyników
+        wyszukiwania lub kwestie zgodności z regulaminami zintegrowanych baz danych.
+
+        Jeśli Twój problem dotyczy luki w zabezpieczeniach, skorzystaj z prywatnego
+        kanału zgłoszeń opisanego w [Polityce Bezpieczeństwa](../SECURITY.md).
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Kategoria
+      options:
+        - Prawa autorskie / własność intelektualna
+        - Prywatność / dane osobowe
+        - Potencjalne nadużycia / integralność akademicka
+        - Zgodność z regulaminem usługi
+        - Kwestia specyficzna dla AI (prompt injection, halucynacje, błędna atrybucja)
+        - Stronniczość / reprezentacja w wynikach wyszukiwania
+        - Inne
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected_db
+    attributes:
+      label: Dotyczy bazy / baz danych
+      multiple: true
+      options:
+        - Biblioteka Nauki
+        - RUJ
+        - RODBuK
+        - RePOD
+        - dane.gov.pl
+        - Wszystkie bazy
+        - Nie dotyczy konkretnej bazy
+    validations:
+      required: false
+
+  - type: textarea
+    id: concern
+    attributes:
+      label: Opis wątpliwości
+      description: |
+        Opisz szczegółowo kwestię etyczną.
+        Jakie jest potencjalne zagrożenie? Kogo może dotyczyć?
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Dowody lub odniesienia
+      description: |
+        Odpowiedni tekst licencji, fragment regulaminu usługi, artykuł naukowy,
+        opinia prawna lub inne materiały pomocnicze.
+    validations:
+      required: false
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Proponowane rozwiązanie
+      description: |
+        Czy masz propozycję poprawki, środka zaradczego lub zmiany zachowania projektu,
+        która rozwiązałaby ten problem?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Potwierdzenie
+      options:
+        - label: Rozumiem, że to publiczny system śledzenia zgłoszeń. Nie umieściłem(-am) w tym raporcie żadnych danych osobowych ani informacji prywatnych.
+          required: true

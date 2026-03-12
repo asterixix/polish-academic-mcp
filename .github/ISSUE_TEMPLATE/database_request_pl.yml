@@ -1,0 +1,103 @@
+name: "🗄️ Nowa baza danych"
+description: "Zaproponuj integrację nowej polskiej bazy akademickiej lub otwartych danych."
+title: "[Nowa baza] "
+labels: ["enhancement", "new-database"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Przed zgłoszeniem sprawdź [istniejące zgłoszenia](../../issues?q=label%3Anew-database), aby uniknąć duplikatów.
+
+        Integracja nowej bazy danych jest możliwa tylko wtedy, gdy wypełnione są wszystkie **wymagane** pola.
+        Zgłoszenia bez dokumentacji API lub informacji o dostępie otrzymają etykietę `needs-info`
+        i mogą zostać zamknięte po 30 dniach braku aktywności.
+
+  - type: input
+    id: name
+    attributes:
+      label: Nazwa bazy danych
+      description: Pełna oficjalna nazwa bazy danych.
+      placeholder: "Polska Bibliografia Naukowa (PBN)"
+    validations:
+      required: true
+
+  - type: input
+    id: url
+    attributes:
+      label: Adres URL bazy danych
+      description: Strona główna bazy danych.
+      placeholder: "https://pbn.nauka.gov.pl"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Opis
+      description: |
+        Jakie treści zawiera ta baza?
+        Kto ją prowadzi? Ile rekordów posiada?
+    validations:
+      required: true
+
+  - type: input
+    id: api_docs
+    attributes:
+      label: URL dokumentacji API
+      description: |
+        Link do **oficjalnej** dokumentacji API.
+        Jeśli dokumentacja wymaga logowania, wklej najważniejsze fragmenty w polu „Informacje o dostępie".
+    validations:
+      required: true
+
+  - type: textarea
+    id: access
+    attributes:
+      label: Informacje o dostępie
+      description: |
+        Czy API jest publicznie dostępne bez uwierzytelnienia?
+        Jeśli wymagany jest klucz API lub token:
+          - Jak go uzyskać? (link do rejestracji, wymóg instytucjonalny, opłata itp.)
+          - Czy jest bezpłatny?
+          - Czy istnieją ograniczenia użytkowania?
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: Przykładowe żądanie i odpowiedź
+      description: |
+        Podaj co najmniej jedno działające polecenie `curl` pokazujące operację wyszukiwania
+        oraz skrócony przykład odpowiedzi JSON/XML. Usuń dane osobowe.
+      placeholder: |
+        curl "https://api.example.com/search?q=klimat&per_page=2"
+
+        {
+          "data": [
+            { "id": 1, "title": "..." }
+          ]
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: tools
+    attributes:
+      label: Proponowane narzędzia
+      description: |
+        Jakie narzędzia MCP powinna udostępniać ta baza?
+        Podaj nazwy narzędzi i jednowierszowy opis każdego z nich.
+      placeholder: |
+        - pbn_search_publications — wyszukiwanie pełnotekstowe publikacji w PBN
+        - pbn_get_publication — pobranie pojedynczej publikacji po ID
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Dodatkowy kontekst
+      description: Wszelkie inne informacje, linki lub uwagi.
+    validations:
+      required: false

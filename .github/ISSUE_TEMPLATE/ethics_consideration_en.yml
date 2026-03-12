@@ -1,0 +1,84 @@
+name: "⚖️ Ethics Consideration"
+description: "Raise an ethical concern about data access, privacy, or AI use of academic content."
+title: "[Ethics] "
+labels: ["ethics"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template is for raising ethical concerns related to the project.
+        Examples: copyright/licensing questions, privacy implications, potential misuse
+        of aggregated academic data, bias in search results, or terms-of-service concerns
+        with an integrated database.
+
+        If your concern involves a security vulnerability, use the
+        [Security Policy](../SECURITY.md) private reporting channel instead.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Copyright / Intellectual Property
+        - Privacy / Personal Data
+        - Potential Misuse / Academic Integrity
+        - Terms of Service compliance
+        - AI-specific concern (prompt injection, hallucination, misattribution)
+        - Bias / Representation in search results
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected_db
+    attributes:
+      label: Affected database(s)
+      multiple: true
+      options:
+        - Biblioteka Nauki
+        - RUJ
+        - RODBuK
+        - RePOD
+        - dane.gov.pl
+        - All databases
+        - Not database-specific
+    validations:
+      required: false
+
+  - type: textarea
+    id: concern
+    attributes:
+      label: Description of the concern
+      description: |
+        Please describe the ethical issue in detail.
+        What is the potential harm? Who might be affected?
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or references
+      description: |
+        Relevant license text, terms of service excerpt, research paper,
+        legal opinion, or other supporting materials.
+    validations:
+      required: false
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested resolution
+      description: |
+        Do you have a proposed fix, mitigation, or change in project behaviour
+        that would address this concern?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Acknowledgement
+      options:
+        - label: I understand this is a public issue tracker. I have not included any personal data or private information in this report.
+          required: true

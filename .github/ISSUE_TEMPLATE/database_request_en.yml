@@ -1,0 +1,103 @@
+name: "🗄️ Database Request"
+description: "Request integration of a new Polish academic or open-data database."
+title: "[Database Request] "
+labels: ["enhancement", "new-database"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, please check [existing issues](../../issues?q=label%3Anew-database) to avoid duplicates.
+
+        A new database can only be integrated if all **mandatory** fields below are provided.
+        Requests missing API documentation or access information will be labelled `needs-info`
+        and may be closed after 30 days without activity.
+
+  - type: input
+    id: name
+    attributes:
+      label: Database name
+      description: Full official name of the database.
+      placeholder: "Polska Bibliografia Naukowa (PBN)"
+    validations:
+      required: true
+
+  - type: input
+    id: url
+    attributes:
+      label: Database URL
+      description: Homepage URL of the database.
+      placeholder: "https://pbn.nauka.gov.pl"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: |
+        What kind of content does this database contain?
+        Who operates it? How many records does it hold?
+    validations:
+      required: true
+
+  - type: input
+    id: api_docs
+    attributes:
+      label: API documentation URL
+      description: |
+        Link to the **official** API documentation.
+        If docs require login, paste the most relevant excerpts in the "Access information" field below.
+    validations:
+      required: true
+
+  - type: textarea
+    id: access
+    attributes:
+      label: Access information
+      description: |
+        Is the API publicly accessible without authentication?
+        If an API key or token is required:
+          - How is it obtained? (registration link, institutional requirement, fee, etc.)
+          - Is it free?
+          - Are there any usage restrictions?
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sample request & response
+      description: |
+        Provide at least one working `curl` example showing a search operation,
+        and a trimmed sample JSON/XML response. Redact any personal data.
+      placeholder: |
+        curl "https://api.example.com/search?q=climate&per_page=2"
+
+        {
+          "data": [
+            { "id": 1, "title": "..." }
+          ]
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: tools
+    attributes:
+      label: Proposed tools
+      description: |
+        What MCP tools would this database expose?
+        List tool names and a one-line description of each.
+      placeholder: |
+        - pbn_search_publications — full-text search across PBN publications
+        - pbn_get_publication — get a single publication by ID
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Any other information, links, or considerations.
+    validations:
+      required: false
