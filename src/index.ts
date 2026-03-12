@@ -17,10 +17,11 @@ import { createMcpHandler } from "agents/mcp";
 import type { Env } from "./types.js";
 import { createServer } from "./server.js";
 import { checkRateLimit, getClientId } from "./ratelimit.js";
+import { wrapWithOtel } from "./instrumentation.js";
 
 const RATE_LIMIT = 10; // tool calls per hour per IP
 
-export default {
+const handler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // ── Rate limiting (only tool/call requests) ─────────────────
     if (request.method === "POST") {
@@ -68,3 +69,8 @@ export default {
     return createMcpHandler(server)(request, env, ctx);
   },
 } satisfies ExportedHandler<Env>;
+
+// Wrap with OTel auto-instrumentation (Approach B).
+// Every incoming request becomes a root span; tool spans nest beneath it.
+// HONEYCOMB_API_KEY is read from env at runtime — never hardcoded.
+export default wrapWithOtel(handler);

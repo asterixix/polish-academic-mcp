@@ -15,11 +15,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
+import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const API_BASE = "https://api.dane.gov.pl/1.4";
 const JSON_HEADERS = { Accept: "application/json" };
 const SEARCH_TTL = 3_600;  // 1 h — portal updates more frequently than academic repos
 const DETAIL_TTL = 3_600;
+
+const API_FIELDS = ["title", "subject", "date", "publisher"];
 
 export function registerDaneTools(server: McpServer, env: Env): void {
   // ── dane_search ───────────────────────────────────────────────────────────
@@ -58,42 +61,55 @@ export function registerDaneTools(server: McpServer, env: Env): void {
         .describe("Sort order (-date = newest first)"),
     },
     async ({ query, category, per_page, page, sort }) => {
-      try {
-        const params = new URLSearchParams({
-          q: query,
-          per_page: String(per_page),
-          page: String(page),
-          sort,
-        });
-        if (category) params.set("category[id]", category);
+      return withToolExecutionSpan(
+        {
+          toolName: "dane_search",
+          params: { query, category, per_page, page, sort } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: estimateTokens(query),
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "dane-gov");
+          try {
+            const searchParams = new URLSearchParams({
+              q: query,
+              per_page: String(per_page),
+              page: String(page),
+              sort,
+            });
+            if (category) searchParams.set("category[id]", category);
 
-        const url = `${API_BASE}/datasets?${params}`;
-        const cacheKey = makeCacheKey("dane_search", {
-          query,
-          category,
-          per_page,
-          page,
-          sort,
-        });
-        const data = await cachedFetch(
-          env.CACHE_KV,
-          cacheKey,
-          url,
-          { headers: JSON_HEADERS },
-          SEARCH_TTL,
-        );
-        return { content: [{ type: "text", text: data }] };
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error searching dane.gov.pl: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+            const url = `${API_BASE}/datasets?${searchParams}`;
+            const cacheKey = makeCacheKey("dane_search", {
+              query,
+              category,
+              per_page,
+              page,
+              sort,
+            });
+            const data = await cachedFetch(
+              env.CACHE_KV,
+              cacheKey,
+              url,
+              { headers: JSON_HEADERS },
+              SEARCH_TTL,
+            );
+            return { content: [{ type: "text", text: data }] };
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error searching dane.gov.pl: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 
@@ -112,55 +128,68 @@ export function registerDaneTools(server: McpServer, env: Env): void {
         .describe("Numeric dataset ID from dane_search results"),
     },
     async ({ dataset_id }) => {
-      try {
-        const datasetUrl = `${API_BASE}/datasets/${dataset_id}`;
-        const datasetKey = makeCacheKey("dane_dataset", { dataset_id });
-        const datasetRaw = await cachedFetch(
-          env.CACHE_KV,
-          datasetKey,
-          datasetUrl,
-          { headers: JSON_HEADERS },
-          DETAIL_TTL,
-        );
+      return withToolExecutionSpan(
+        {
+          toolName: "dane_get_dataset",
+          params: { dataset_id } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: estimateTokens(String(dataset_id)),
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "dane-gov");
+          try {
+            const datasetUrl = `${API_BASE}/datasets/${dataset_id}`;
+            const datasetKey = makeCacheKey("dane_dataset", { dataset_id });
+            const datasetRaw = await cachedFetch(
+              env.CACHE_KV,
+              datasetKey,
+              datasetUrl,
+              { headers: JSON_HEADERS },
+              DETAIL_TTL,
+            );
 
-        const resourcesUrl = `${API_BASE}/datasets/${dataset_id}/resources`;
-        const resourcesKey = makeCacheKey("dane_resources", { dataset_id });
-        const resourcesRaw = await cachedFetch(
-          env.CACHE_KV,
-          resourcesKey,
-          resourcesUrl,
-          { headers: JSON_HEADERS },
-          DETAIL_TTL,
-        );
+            const resourcesUrl = `${API_BASE}/datasets/${dataset_id}/resources`;
+            const resourcesKey = makeCacheKey("dane_resources", { dataset_id });
+            const resourcesRaw = await cachedFetch(
+              env.CACHE_KV,
+              resourcesKey,
+              resourcesUrl,
+              { headers: JSON_HEADERS },
+              DETAIL_TTL,
+            );
 
-        // Merge dataset + resources into a single JSON object for the LLM.
-        let combined: string;
-        try {
-          combined = JSON.stringify(
-            {
-              dataset: JSON.parse(datasetRaw) as unknown,
-              resources: JSON.parse(resourcesRaw) as unknown,
-            },
-            null,
-            2,
-          );
-        } catch {
-          // If either body is not valid JSON, return both as plain text.
-          combined = `=== Dataset ===\n${datasetRaw}\n\n=== Resources ===\n${resourcesRaw}`;
-        }
+            // Merge dataset + resources into a single JSON object for the LLM.
+            let combined: string;
+            try {
+              combined = JSON.stringify(
+                {
+                  dataset: JSON.parse(datasetRaw) as unknown,
+                  resources: JSON.parse(resourcesRaw) as unknown,
+                },
+                null,
+                2,
+              );
+            } catch {
+              // If either body is not valid JSON, return both as plain text.
+              combined = `=== Dataset ===\n${datasetRaw}\n\n=== Resources ===\n${resourcesRaw}`;
+            }
 
-        return { content: [{ type: "text", text: combined }] };
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error fetching dane.gov.pl dataset ${dataset_id}: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+            return { content: [{ type: "text", text: combined }] };
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error fetching dane.gov.pl dataset ${dataset_id}: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 }

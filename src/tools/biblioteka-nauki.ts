@@ -14,9 +14,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
+import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const OAI_BASE = "https://bibliotekanauki.pl/api/oai/articles";
 const CACHE_TTL = 86_400; // 24 h — academic records rarely change
+
+const API_FIELDS = ["title", "author", "subject", "abstract", "date", "language", "doi", "publisher"];
 
 export function registerBibliotekaTools(server: McpServer, env: Env): void {
   // ── bn_search_articles ────────────────────────────────────────────────────
@@ -55,37 +58,50 @@ export function registerBibliotekaTools(server: McpServer, env: Env): void {
         .describe("Token returned in a previous response for fetching the next page."),
     },
     async ({ from_date, until_date, set, metadata_format, resumption_token }) => {
-      try {
-        let url: string;
+      return withToolExecutionSpan(
+        {
+          toolName: "bn_search_articles",
+          params: { from_date, until_date, set, metadata_format, resumption_token } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: estimateTokens(String(set ?? from_date ?? "")),
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "biblioteka-nauki");
+          try {
+            let url: string;
 
-        if (resumption_token) {
-          // When a resumption token is present, no other params are allowed.
-          url = `${OAI_BASE}?verb=ListRecords&resumptionToken=${encodeURIComponent(resumption_token)}`;
-        } else {
-          const params = new URLSearchParams({
-            verb: "ListRecords",
-            metadataPrefix: metadata_format,
-          });
-          if (from_date) params.set("from", from_date);
-          if (until_date) params.set("until", until_date);
-          if (set) params.set("set", set);
-          url = `${OAI_BASE}?${params}`;
-        }
+            if (resumption_token) {
+              // When a resumption token is present, no other params are allowed.
+              url = `${OAI_BASE}?verb=ListRecords&resumptionToken=${encodeURIComponent(resumption_token)}`;
+            } else {
+              const params = new URLSearchParams({
+                verb: "ListRecords",
+                metadataPrefix: metadata_format,
+              });
+              if (from_date) params.set("from", from_date);
+              if (until_date) params.set("until", until_date);
+              if (set) params.set("set", set);
+              url = `${OAI_BASE}?${params}`;
+            }
 
-        const cacheKey = makeCacheKey("bn_search", { url });
-        const xml = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-        return { content: [{ type: "text", text: xml }] };
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error fetching Biblioteka Nauki: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+            const cacheKey = makeCacheKey("bn_search", { url });
+            const xml = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
+            return { content: [{ type: "text", text: xml }] };
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error fetching Biblioteka Nauki: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 
@@ -106,28 +122,41 @@ export function registerBibliotekaTools(server: McpServer, env: Env): void {
         .describe("jats — full structured metadata (recommended); oai_dc — Dublin Core."),
     },
     async ({ article_id, metadata_format }) => {
-      try {
-        const identifier = `oai:bibliotekanauki.pl:${article_id}`;
-        const params = new URLSearchParams({
-          verb: "GetRecord",
-          metadataPrefix: metadata_format,
-          identifier,
-        });
-        const url = `${OAI_BASE}?${params}`;
-        const cacheKey = makeCacheKey("bn_article", { article_id, metadata_format });
-        const xml = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-        return { content: [{ type: "text", text: xml }] };
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error fetching article ${article_id}: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+      return withToolExecutionSpan(
+        {
+          toolName: "bn_get_article",
+          params: { article_id, metadata_format } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: estimateTokens(article_id),
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "biblioteka-nauki");
+          try {
+            const identifier = `oai:bibliotekanauki.pl:${article_id}`;
+            const params = new URLSearchParams({
+              verb: "GetRecord",
+              metadataPrefix: metadata_format,
+              identifier,
+            });
+            const url = `${OAI_BASE}?${params}`;
+            const cacheKey = makeCacheKey("bn_article", { article_id, metadata_format });
+            const xml = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
+            return { content: [{ type: "text", text: xml }] };
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error fetching article ${article_id}: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 }

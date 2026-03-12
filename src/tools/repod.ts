@@ -16,9 +16,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
+import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const API_BASE = "https://repod.icm.edu.pl/api";
 const CACHE_TTL = 86_400; // 24 h
+
+const API_FIELDS = ["title", "author", "subject", "abstract", "date", "doi", "keywords", "publisher"];
 
 export function registerRepodTools(server: McpServer, env: Env): void {
   // ── repod_search ──────────────────────────────────────────────────────────
@@ -50,34 +53,47 @@ export function registerRepodTools(server: McpServer, env: Env): void {
         .describe("Zero-based offset for pagination"),
     },
     async ({ query, type, per_page, start }) => {
-      try {
-        const params = new URLSearchParams({
-          q: query,
-          per_page: String(per_page),
-          start: String(start),
-        });
-        if (type) params.set("type", type);
+      return withToolExecutionSpan(
+        {
+          toolName: "repod_search",
+          params: { query, type, per_page, start } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: estimateTokens(query),
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "repod");
+          try {
+            const searchParams = new URLSearchParams({
+              q: query,
+              per_page: String(per_page),
+              start: String(start),
+            });
+            if (type) searchParams.set("type", type);
 
-        const url = `${API_BASE}/search?${params}`;
-        const cacheKey = makeCacheKey("repod_search", {
-          query,
-          type,
-          per_page,
-          start,
-        });
-        const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-        return { content: [{ type: "text", text: data }] };
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error searching RePOD: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+            const url = `${API_BASE}/search?${searchParams}`;
+            const cacheKey = makeCacheKey("repod_search", {
+              query,
+              type,
+              per_page,
+              start,
+            });
+            const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
+            return { content: [{ type: "text", text: data }] };
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error searching RePOD: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 
@@ -99,22 +115,35 @@ export function registerRepodTools(server: McpServer, env: Env): void {
         .describe("Metadata export format"),
     },
     async ({ doi, format }) => {
-      try {
-        const url = `${API_BASE}/datasets/export?exporter=${encodeURIComponent(format)}&persistentId=doi:${encodeURIComponent(doi)}`;
-        const cacheKey = makeCacheKey("repod_dataset", { doi, format });
-        const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-        return { content: [{ type: "text", text: data }] };
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error fetching RePOD dataset ${doi}: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+      return withToolExecutionSpan(
+        {
+          toolName: "repod_get_dataset",
+          params: { doi, format } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: estimateTokens(doi),
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "repod");
+          try {
+            const url = `${API_BASE}/datasets/export?exporter=${encodeURIComponent(format)}&persistentId=doi:${encodeURIComponent(doi)}`;
+            const cacheKey = makeCacheKey("repod_dataset", { doi, format });
+            const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
+            return { content: [{ type: "text", text: data }] };
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error fetching RePOD dataset ${doi}: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 }

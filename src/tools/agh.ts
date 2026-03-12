@@ -17,11 +17,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
+import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const API_BASE = "https://repo.agh.edu.pl/server/api";
 const HANDLE_BASE = "https://repo.agh.edu.pl/handle";
 const JSON_HEADERS = { Accept: "application/json" };
 const CACHE_TTL = 86_400; // 24 h
+
+const API_FIELDS = ["title", "author", "subject", "abstract", "date", "language", "doi", "keywords"];
 
 /**
  * Append a DSpace discovery filter parameter.
@@ -237,49 +240,62 @@ export function registerAghTools(server: McpServer, env: Env): void {
       author, subject, language, itemtype,
       date_issued, date_accessioned, has_full_text,
     }) => {
-      try {
-        const params = new URLSearchParams({
-          query,
-          page: String(page),
-          size: String(size),
-          sort,
-        });
+      return withToolExecutionSpan(
+        {
+          toolName: "agh_search",
+          params: { query, page, size, sort, author, subject, language, itemtype, date_issued, date_accessioned, has_full_text } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: estimateTokens(query),
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "agh");
+          try {
+            const searchParams = new URLSearchParams({
+              query,
+              page: String(page),
+              size: String(size),
+              sort,
+            });
 
-        if (author)           addFilter(params, "author",       author,           "contains");
-        if (subject)          addFilter(params, "subject",      subject,          "equals");
-        if (language)         addFilter(params, "language",     language,         "equals");
-        if (itemtype)         addFilter(params, "itemtype",     itemtype,         "equals");
-        if (date_issued)      addFilter(params, "dateIssued",   date_issued,      "equals");
-        if (date_accessioned) addFilter(params, "dateAccessioned", date_accessioned, "equals");
-        if (has_full_text !== undefined) {
-          params.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
-        }
+            if (author)           addFilter(searchParams, "author",       author,           "contains");
+            if (subject)          addFilter(searchParams, "subject",      subject,          "equals");
+            if (language)         addFilter(searchParams, "language",     language,         "equals");
+            if (itemtype)         addFilter(searchParams, "itemtype",     itemtype,         "equals");
+            if (date_issued)      addFilter(searchParams, "dateIssued",   date_issued,      "equals");
+            if (date_accessioned) addFilter(searchParams, "dateAccessioned", date_accessioned, "equals");
+            if (has_full_text !== undefined) {
+              searchParams.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
+            }
 
-        const url = `${API_BASE}/discover/search/objects?${params}`;
-        const cacheKey = makeCacheKey("agh_search", {
-          query, page, size, sort,
-          author, subject, language, itemtype,
-          date_issued, date_accessioned, has_full_text,
-        });
-        const data = await cachedFetch(
-          env.CACHE_KV,
-          cacheKey,
-          url,
-          { headers: JSON_HEADERS },
-          CACHE_TTL,
-        );
-        return { content: [{ type: "text", text: summarizeSearch(data) }] };
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error searching AGH repository: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+            const url = `${API_BASE}/discover/search/objects?${searchParams}`;
+            const cacheKey = makeCacheKey("agh_search", {
+              query, page, size, sort,
+              author, subject, language, itemtype,
+              date_issued, date_accessioned, has_full_text,
+            });
+            const data = await cachedFetch(
+              env.CACHE_KV,
+              cacheKey,
+              url,
+              { headers: JSON_HEADERS },
+              CACHE_TTL,
+            );
+            return { content: [{ type: "text", text: summarizeSearch(data) }] };
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error searching AGH repository: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 
@@ -297,28 +313,41 @@ export function registerAghTools(server: McpServer, env: Env): void {
         .describe("Item UUID from agh_search results, e.g. 3fa85f64-5717-4562-b3fc-2c963f66afa6"),
     },
     async ({ uuid }) => {
-      try {
-        const url = `${API_BASE}/core/items/${uuid}`;
-        const cacheKey = makeCacheKey("agh_item", { uuid });
-        const data = await cachedFetch(
-          env.CACHE_KV,
-          cacheKey,
-          url,
-          { headers: JSON_HEADERS },
-          CACHE_TTL,
-        );
-        return { content: [{ type: "text", text: summarizeItem(data) }] };
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error fetching AGH item ${uuid}: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+      return withToolExecutionSpan(
+        {
+          toolName: "agh_get_item",
+          params: { uuid } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: estimateTokens(uuid),
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "agh");
+          try {
+            const url = `${API_BASE}/core/items/${uuid}`;
+            const cacheKey = makeCacheKey("agh_item", { uuid });
+            const data = await cachedFetch(
+              env.CACHE_KV,
+              cacheKey,
+              url,
+              { headers: JSON_HEADERS },
+              CACHE_TTL,
+            );
+            return { content: [{ type: "text", text: summarizeItem(data) }] };
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error fetching AGH item ${uuid}: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 }

@@ -17,9 +17,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
+import { withToolExecutionSpan } from "../tracing.js";
 
 const API_BASE = "https://danepubliczne.imgw.pl/api/data";
 const CACHE_TTL = 3_600; // 1 h — frequently updated government data
+
+const API_FIELDS = ["date", "language"];
 
 export function registerImgwTools(server: McpServer, env: Env): void {
   // ── imgw_synop ────────────────────────────────────────────────────────────
@@ -46,25 +49,38 @@ export function registerImgwTools(server: McpServer, env: Env): void {
         .describe("Station name without Polish diacritics, e.g. 'jeleniagora', 'warszawa', 'krakow'."),
     },
     async ({ station_id, station_name }) => {
-      try {
-        let path: string;
-        if (station_id) {
-          path = `/synop/id/${encodeURIComponent(station_id)}`;
-        } else if (station_name) {
-          path = `/synop/station/${encodeURIComponent(station_name)}`;
-        } else {
-          path = "/synop";
-        }
-        const url = `${API_BASE}${path}`;
-        const cacheKey = makeCacheKey("imgw_synop", { station_id, station_name });
-        const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-        return { content: [{ type: "text", text: data }] };
-      } catch (e) {
-        return {
-          content: [{ type: "text", text: `Error fetching IMGW synoptic data: ${e instanceof Error ? e.message : String(e)}` }],
-          isError: true,
-        };
-      }
+      return withToolExecutionSpan(
+        {
+          toolName: "imgw_synop",
+          params: { station_id, station_name } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: 0,
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "imgw");
+          try {
+            let path: string;
+            if (station_id) {
+              path = `/synop/id/${encodeURIComponent(station_id)}`;
+            } else if (station_name) {
+              path = `/synop/station/${encodeURIComponent(station_name)}`;
+            } else {
+              path = "/synop";
+            }
+            const url = `${API_BASE}${path}`;
+            const cacheKey = makeCacheKey("imgw_synop", { station_id, station_name });
+            const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
+            return { content: [{ type: "text", text: data }] };
+          } catch (e) {
+            return {
+              content: [{ type: "text", text: `Error fetching IMGW synoptic data: ${e instanceof Error ? e.message : String(e)}` }],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 
@@ -79,17 +95,30 @@ export function registerImgwTools(server: McpServer, env: Env): void {
     ].join(" "),
     {},
     async () => {
-      try {
-        const url = `${API_BASE}/hydro/`;
-        const cacheKey = makeCacheKey("imgw_hydro", {});
-        const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-        return { content: [{ type: "text", text: data }] };
-      } catch (e) {
-        return {
-          content: [{ type: "text", text: `Error fetching IMGW hydrological data: ${e instanceof Error ? e.message : String(e)}` }],
-          isError: true,
-        };
-      }
+      return withToolExecutionSpan(
+        {
+          toolName: "imgw_hydro",
+          params: {} as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: 0,
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "imgw");
+          try {
+            const url = `${API_BASE}/hydro/`;
+            const cacheKey = makeCacheKey("imgw_hydro", {});
+            const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
+            return { content: [{ type: "text", text: data }] };
+          } catch (e) {
+            return {
+              content: [{ type: "text", text: `Error fetching IMGW hydrological data: ${e instanceof Error ? e.message : String(e)}` }],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 
@@ -104,17 +133,30 @@ export function registerImgwTools(server: McpServer, env: Env): void {
     ].join(" "),
     {},
     async () => {
-      try {
-        const url = `${API_BASE}/meteo/`;
-        const cacheKey = makeCacheKey("imgw_meteo", {});
-        const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-        return { content: [{ type: "text", text: data }] };
-      } catch (e) {
-        return {
-          content: [{ type: "text", text: `Error fetching IMGW meteorological data: ${e instanceof Error ? e.message : String(e)}` }],
-          isError: true,
-        };
-      }
+      return withToolExecutionSpan(
+        {
+          toolName: "imgw_meteo",
+          params: {} as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: 0,
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "imgw");
+          try {
+            const url = `${API_BASE}/meteo/`;
+            const cacheKey = makeCacheKey("imgw_meteo", {});
+            const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
+            return { content: [{ type: "text", text: data }] };
+          } catch (e) {
+            return {
+              content: [{ type: "text", text: `Error fetching IMGW meteorological data: ${e instanceof Error ? e.message : String(e)}` }],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 
@@ -134,31 +176,44 @@ export function registerImgwTools(server: McpServer, env: Env): void {
         .describe("Warning type: 'meteo' (weather), 'hydro' (hydrological), or 'all' for both."),
     },
     async ({ type }) => {
-      try {
-        const results: string[] = [];
+      return withToolExecutionSpan(
+        {
+          toolName: "imgw_warnings",
+          params: { type } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: 0,
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "imgw");
+          try {
+            const results: string[] = [];
 
-        if (type === "meteo" || type === "all") {
-          const url = `${API_BASE}/warningsmeteo`;
-          const cacheKey = makeCacheKey("imgw_warnings_meteo", {});
-          const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-          results.push(type === "all" ? `{"type":"meteo","warnings":${data}}` : data);
-        }
+            if (type === "meteo" || type === "all") {
+              const url = `${API_BASE}/warningsmeteo`;
+              const cacheKey = makeCacheKey("imgw_warnings_meteo", {});
+              const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
+              results.push(type === "all" ? `{"type":"meteo","warnings":${data}}` : data);
+            }
 
-        if (type === "hydro" || type === "all") {
-          const url = `${API_BASE}/warningshydro`;
-          const cacheKey = makeCacheKey("imgw_warnings_hydro", {});
-          const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-          results.push(type === "all" ? `{"type":"hydro","warnings":${data}}` : data);
-        }
+            if (type === "hydro" || type === "all") {
+              const url = `${API_BASE}/warningshydro`;
+              const cacheKey = makeCacheKey("imgw_warnings_hydro", {});
+              const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
+              results.push(type === "all" ? `{"type":"hydro","warnings":${data}}` : data);
+            }
 
-        const text = type === "all" ? `[${results.join(",")}]` : results[0];
-        return { content: [{ type: "text", text: text ?? "" }] };
-      } catch (e) {
-        return {
-          content: [{ type: "text", text: `Error fetching IMGW warnings: ${e instanceof Error ? e.message : String(e)}` }],
-          isError: true,
-        };
-      }
+            const text = type === "all" ? `[${results.join(",")}]` : results[0];
+            return { content: [{ type: "text", text: text ?? "" }] };
+          } catch (e) {
+            return {
+              content: [{ type: "text", text: `Error fetching IMGW warnings: ${e instanceof Error ? e.message : String(e)}` }],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 }

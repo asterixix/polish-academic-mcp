@@ -19,5 +19,17 @@
       "id": "c24afe24902a4d549dee309557d42cd1",
       "preview_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     }
-  ]
+  ],
+
+  // Cloudflare native OTLP export (Approach A — zero-code automatic tracing).
+  // Destinations (honeycomb-traces, honeycomb-logs) are linked in the CF Dashboard.
+  // See: https://developers.cloudflare.com/workers/observability/exporting-opentelemetry-data/
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true
+    }
+  },
+  "send_metrics": true
 }

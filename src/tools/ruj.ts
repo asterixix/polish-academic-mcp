@@ -18,10 +18,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
+import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const API_BASE = "https://ruj.uj.edu.pl/server/api";
 const JSON_HEADERS = { Accept: "application/json" };
 const CACHE_TTL = 86_400; // 24 h
+
+const API_FIELDS = ["title", "author", "subject", "abstract", "date", "language", "doi", "keywords"];
 
 /**
  * Append a DSpace discovery filter parameter.
@@ -288,58 +291,71 @@ export function registerRujTools(server: McpServer, env: Env): void {
       subtype, entity_type, pbn_discipline, has_full_text,
       date_issued, date_accessioned, date_submitted,
     }) => {
-      try {
-        const params = new URLSearchParams({
-          query,
-          page: String(page),
-          size: String(size),
-          sort,
-        });
+      return withToolExecutionSpan(
+        {
+          toolName: "ruj_search",
+          params: { query, page, size, sort, language, author, subject } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: estimateTokens(query),
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "ruj");
+          try {
+            const searchParams = new URLSearchParams({
+              query,
+              page: String(page),
+              size: String(size),
+              sort,
+            });
 
-        if (itemtype)        addFilter(params, "itemtype",                         itemtype,        "equals");
-        if (author)          addFilter(params, "author",                           author,          "contains");
-        if (subject)         addFilter(params, "subject",                          subject,         "equals");
-        if (language)        addFilter(params, "language",                         language,        "equals");
-        if (affiliation)     addFilter(params, "affiliation",                      affiliation,     "contains");
-        if (affiliation_em)  addFilter(params, "affiliationEm",                    affiliation_em,  "contains");
-        if (journal_title)   addFilter(params, "journalTitle",                     journal_title,   "contains");
-        if (subtype)         addFilter(params, "subtype",                          subtype,         "equals");
-        if (entity_type)     addFilter(params, "entityType",                       entity_type,     "equals");
-        if (pbn_discipline)  addFilter(params, "pbndiscipline",                    pbn_discipline,  "equals");
-        if (date_issued)     addFilter(params, "dateIssued",                       date_issued,     "equals");
-        if (date_accessioned) addFilter(params, "dateAccessioned",                 date_accessioned, "equals");
-        if (date_submitted)  addFilter(params, "dateSubmitted",                    date_submitted,  "equals");
-        if (has_full_text !== undefined) {
-          params.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
-        }
+            if (itemtype)        addFilter(searchParams, "itemtype",                         itemtype,        "equals");
+            if (author)          addFilter(searchParams, "author",                           author,          "contains");
+            if (subject)         addFilter(searchParams, "subject",                          subject,         "equals");
+            if (language)        addFilter(searchParams, "language",                         language,        "equals");
+            if (affiliation)     addFilter(searchParams, "affiliation",                      affiliation,     "contains");
+            if (affiliation_em)  addFilter(searchParams, "affiliationEm",                    affiliation_em,  "contains");
+            if (journal_title)   addFilter(searchParams, "journalTitle",                     journal_title,   "contains");
+            if (subtype)         addFilter(searchParams, "subtype",                          subtype,         "equals");
+            if (entity_type)     addFilter(searchParams, "entityType",                       entity_type,     "equals");
+            if (pbn_discipline)  addFilter(searchParams, "pbndiscipline",                    pbn_discipline,  "equals");
+            if (date_issued)     addFilter(searchParams, "dateIssued",                       date_issued,     "equals");
+            if (date_accessioned) addFilter(searchParams, "dateAccessioned",                 date_accessioned, "equals");
+            if (date_submitted)  addFilter(searchParams, "dateSubmitted",                    date_submitted,  "equals");
+            if (has_full_text !== undefined) {
+              searchParams.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
+            }
 
-        const url = `${API_BASE}/discover/search/objects?${params}`;
-        const cacheKey = makeCacheKey("ruj_search", {
-          query, page, size, sort,
-          itemtype, author, subject, language,
-          affiliation, affiliation_em, journal_title,
-          subtype, entity_type, pbn_discipline, has_full_text,
-          date_issued, date_accessioned, date_submitted,
-        });
-        const data = await cachedFetch(
-          env.CACHE_KV,
-          cacheKey,
-          url,
-          { headers: JSON_HEADERS },
-          CACHE_TTL,
-        );
-        return { content: [{ type: "text", text: summarizeSearch(data) }] };
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error searching RUJ: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+            const url = `${API_BASE}/discover/search/objects?${searchParams}`;
+            const cacheKey = makeCacheKey("ruj_search", {
+              query, page, size, sort,
+              itemtype, author, subject, language,
+              affiliation, affiliation_em, journal_title,
+              subtype, entity_type, pbn_discipline, has_full_text,
+              date_issued, date_accessioned, date_submitted,
+            });
+            const data = await cachedFetch(
+              env.CACHE_KV,
+              cacheKey,
+              url,
+              { headers: JSON_HEADERS },
+              CACHE_TTL,
+            );
+            return { content: [{ type: "text", text: summarizeSearch(data) }] };
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error searching RUJ: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 
@@ -356,28 +372,41 @@ export function registerRujTools(server: McpServer, env: Env): void {
         .describe("Item UUID from ruj_search results, e.g. 3fa85f64-5717-4562-b3fc-2c963f66afa6"),
     },
     async ({ uuid }) => {
-      try {
-        const url = `${API_BASE}/core/items/${uuid}`;
-        const cacheKey = makeCacheKey("ruj_item", { uuid });
-        const data = await cachedFetch(
-          env.CACHE_KV,
-          cacheKey,
-          url,
-          { headers: JSON_HEADERS },
-          CACHE_TTL,
-        );
-        return { content: [{ type: "text", text: summarizeItem(data) }] };
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error fetching RUJ item ${uuid}: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+      return withToolExecutionSpan(
+        {
+          toolName: "ruj_get_item",
+          params: { uuid } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: estimateTokens(uuid),
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "ruj");
+          try {
+            const url = `${API_BASE}/core/items/${uuid}`;
+            const cacheKey = makeCacheKey("ruj_item", { uuid });
+            const data = await cachedFetch(
+              env.CACHE_KV,
+              cacheKey,
+              url,
+              { headers: JSON_HEADERS },
+              CACHE_TTL,
+            );
+            return { content: [{ type: "text", text: summarizeItem(data) }] };
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error fetching RUJ item ${uuid}: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 }
