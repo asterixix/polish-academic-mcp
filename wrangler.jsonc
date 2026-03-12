@@ -4,10 +4,6 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-03-10",
   "compatibility_flags": ["nodejs_compat"],
-
-  // KV namespaces — replace the placeholder IDs before deploying.
-  // Create them with: npx wrangler kv namespace create "CACHE_KV"
-  //                   npx wrangler kv namespace create "RATE_LIMIT_KV"
   "kv_namespaces": [
     {
       "binding": "CACHE_KV",
@@ -20,22 +16,6 @@
       "preview_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     }
   ],
-
-  // CF Workers native OTLP export — zero-code observability via platform-managed pipeline.
-  //
-  // PREREQUISITE: Create two destinations in the CF Dashboard (one-time setup):
-  //   https://dash.cloudflare.com/ → Workers & Pages → Observability → Pipelines → Add destination
-  //
-  //   Name: "honeycomb-traces"   Type: Traces
-  //   Endpoint: https://api.eu1.honeycomb.io/v1/traces
-  //   Header:   x-honeycomb-team = <HONEYCOMB_API_KEY>
-  //
-  //   Name: "honeycomb-logs"     Type: Logs
-  //   Endpoint: https://api.eu1.honeycomb.io/v1/logs
-  //   Header:   x-honeycomb-team = <HONEYCOMB_API_KEY>
-  //
-  // The destination names here must match exactly what you set in the Dashboard.
-  // See: https://developers.cloudflare.com/workers/observability/exporting-opentelemetry-data/honeycomb/
   "observability": {
     "enabled": false,
     "head_sampling_rate": 1,
