@@ -1,6 +1,6 @@
 # Polish Academic MCP
 
-Zdalny serwer MCP działający na Cloudflare Workers, który udostępnia pięć polskich akademickich baz danych jako narzędzia wywoływane przez AI.
+Zdalny serwer MCP działający na Cloudflare Workers, który udostępnia dziesięć polskich baz danych jako narzędzia wywoływane przez AI.
 
 > **MCP** (Model Context Protocol) to otwarty standard pozwalający modelom językowym (Claude, GPT, Bielik.AI itp.) na wywoływanie zewnętrznych narzędzi i API w ustandaryzowany sposób.
 
@@ -14,11 +14,23 @@ Zdalny serwer MCP działający na Cloudflare Workers, który udostępnia pięć 
 | `bn_get_article` | Biblioteka Nauki | Pobranie szczegółów artykułu po ID |
 | `ruj_search` | [RUJ — Repozytorium UJ](https://ruj.uj.edu.pl) | Wyszukiwanie publikacji z Repozytorium Jagiellońskiego |
 | `ruj_get_item` | RUJ | Pobranie metadanych pozycji po UUID |
+| `agh_search` | [AGH — Repozytorium AGH](https://repo.agh.edu.pl) | Wyszukiwanie prac i publikacji AGH w Krakowie |
+| `agh_get_item` | AGH | Pobranie metadanych pozycji po UUID |
+| `amu_search` | [AMU — Repozytorium UAM](https://repozytorium.amu.edu.pl) | Wyszukiwanie publikacji Uniwersytetu Adama Mickiewicza |
+| `amu_get_item` | AMU | Pobranie metadanych pozycji po UUID |
+| `uafm_search` | [UAFM — Repozytorium UAFM](https://repozytorium.uafm.edu.pl) | Wyszukiwanie publikacji Akademii Nauk Stosowanych w Nowym Sączu |
+| `uafm_get_item` | UAFM | Pobranie metadanych pozycji po UUID |
+| `icm_search` | [ICM — Otwarte Dane Badawcze UW](https://open.icm.edu.pl) | Wyszukiwanie danych badawczych ICM UW |
+| `icm_get_item` | ICM | Pobranie metadanych pozycji po UUID |
 | `rodbuk_search` | [RODBuK](https://rodbuk.pl) | Wyszukiwanie zbiorów danych badawczych uczelni krakowskich |
 | `repod_search` | [RePOD](https://repod.icm.edu.pl) | Wyszukiwanie polskich otwartych danych badawczych |
 | `repod_get_dataset` | RePOD | Pobranie metadanych zbioru danych po DOI |
 | `dane_search` | [dane.gov.pl](https://dane.gov.pl) | Wyszukiwanie danych otwartych z portalu rządowego |
 | `dane_get_dataset` | dane.gov.pl | Pobranie szczegółów zbioru danych po ID |
+| `imgw_synop` | [IMGW-PIB](https://danepubliczne.imgw.pl) | Aktualne odczyty ze stacji synoptycznych (pogodowych) |
+| `imgw_hydro` | IMGW-PIB | Aktualne odczyty z wodowskazów i stacji hydrologicznych |
+| `imgw_meteo` | IMGW-PIB | Aktualne odczyty ze stacji meteorologicznych |
+| `imgw_warnings` | IMGW-PIB | Aktywne ostrzeżenia meteorologiczne i hydrologiczne |
 
 Wszystkie bazy oferują **otwarty, nieuwierzytelniony dostęp do odczytu** — żadne klucze API nie są wymagane.
 
@@ -364,8 +376,8 @@ Odpowiedzi z zewnętrznych API są buforowane w Cloudflare KV:
 
 | Baza danych | TTL cache |
 |---|---|
-| Biblioteka Nauki, RUJ, RODBuK, RePOD | 24 godziny |
-| dane.gov.pl | 1 godzina |
+| Biblioteka Nauki, RUJ, AGH, AMU, UAFM, ICM, RODBuK, RePOD | 24 godziny |
+| dane.gov.pl, IMGW-PIB | 1 godzina |
 
 ### Limity ogólne
 
@@ -391,15 +403,21 @@ Cloudflare Worker (index.ts)
            └── tools/
                ├── biblioteka-nauki.ts → https://bibliotekanauki.pl/api/oai/
                ├── ruj.ts             → https://ruj.uj.edu.pl/server/api/
+               ├── agh.ts             → https://repo.agh.edu.pl/server/api/
+               ├── amu.ts             → https://repozytorium.amu.edu.pl/server/api/
+               ├── uafm.ts            → https://repozytorium.uafm.edu.pl/server/api/
+               ├── icm.ts             → https://open.icm.edu.pl/server/api/
                ├── rodbuk.ts          → https://rodbuk.pl/api/
                ├── repod.ts           → https://repod.icm.edu.pl/api/
-               └── dane.ts            → https://api.dane.gov.pl/1.4/
+               ├── dane.ts            → https://api.dane.gov.pl/1.4/
+               └── imgw.ts            → https://danepubliczne.imgw.pl/api/data/
 ```
 
 Kluczowe decyzje projektowe:
 - **Bezstanowy** — nowa instancja `McpServer` na każde żądanie (wymagane od SDK 1.26.0)
 - **Brak Durable Objects** — całość działa na darmowym planie
-- **Surowe odpowiedzi XML/JSON** zwracane do LLM bez parsowania — oszczędza czas CPU
+- **Kompaktowe podsumowania JSON** dla repozytoriów DSpace 7 (RUJ, AGH, AMU, UAFM, ICM) zamiast surowego HAL+JSON — zmniejsza zużycie tokenów
+- **Surowe odpowiedzi XML/JSON** dla pozostałych API (Biblioteka Nauki, RODBuK, RePOD, dane.gov.pl, IMGW) — oszczędza czas CPU
 - **Fire-and-forget zapisy do KV** — nie blokują odpowiedzi
 
 ---

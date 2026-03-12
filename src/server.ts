@@ -12,6 +12,11 @@ import { registerRujTools } from "./tools/ruj.js";
 import { registerRodbukTools } from "./tools/rodbuk.js";
 import { registerRepodTools } from "./tools/repod.js";
 import { registerDaneTools } from "./tools/dane.js";
+import { registerAmuTools } from "./tools/amu.js";
+import { registerUafmTools } from "./tools/uafm.js";
+import { registerIcmTools } from "./tools/icm.js";
+import { registerImgwTools } from "./tools/imgw.js";
+import { registerAghTools } from "./tools/agh.js";
 
 export function createServer(env: Env): McpServer {
   const server = new McpServer({
@@ -24,6 +29,11 @@ export function createServer(env: Env): McpServer {
   registerRodbukTools(server, env);
   registerRepodTools(server, env);
   registerDaneTools(server, env);
+  registerAmuTools(server, env);
+  registerUafmTools(server, env);
+  registerIcmTools(server, env);
+  registerImgwTools(server, env);
+  registerAghTools(server, env);
 
   return server;
 }
