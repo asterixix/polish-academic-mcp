@@ -46,6 +46,107 @@ function addFilter(
   );
 }
 
+// ── Compact HAL+JSON parsers ─────────────────────────────────────────────
+// JSON.parse returns `any`; we accept that explicitly here for brevity.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function dcFirst(meta: any, key: string): string {
+  const arr = meta?.[key];
+  return Array.isArray(arr) && arr.length > 0 ? String(arr[0]?.value ?? "") : "";
+}
+function dcAll(meta: any, key: string): string[] {
+  const arr = meta?.[key];
+  if (!Array.isArray(arr)) return [];
+  return (arr as any[]).map(v => String(v?.value ?? "")).filter(Boolean);
+}
+function trunc(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+/**
+ * Collapse ruj_search HAL+JSON into a compact summary.
+ * Returns the raw string unchanged if parsing fails.
+ */
+function summarizeSearch(raw: string): string {
+  try {
+    const json = JSON.parse(raw);
+    const sr = json?._embedded?.searchResult;
+    const objects: any[] = sr?._embedded?.objects ?? [];
+    const p = sr?.page ?? {};
+    const items = objects.map((obj: any) => {
+      const it  = obj?._embedded?.indexableObject ?? {};
+      const m   = it.metadata ?? {};
+      const abs = dcFirst(m, "dc.abstract.en") || dcFirst(m, "dc.abstract.pl");
+      const h: string = it.handle ?? "";
+      return {
+        uuid:          it.uuid as string | undefined,
+        handle:        h || undefined,
+        url:           h ? `https://ruj.uj.edu.pl/xmlui/handle/${h}` : undefined,
+        title:         dcFirst(m, "dc.title") || undefined,
+        titleAlt:      dcFirst(m, "dc.title.alternative") || undefined,
+        authors:       dcAll(m, "dc.contributor.author"),
+        type:          dcFirst(m, "dc.type") || undefined,
+        language:      dcFirst(m, "dc.language") || undefined,
+        dateIssued:    dcFirst(m, "dc.date.issued") || undefined,
+        dateSubmitted: dcFirst(m, "dc.date.submitted") || undefined,
+        affiliation:   dcFirst(m, "dc.affiliation") || undefined,
+        subject:       dcFirst(m, "dc.subject.en") || dcFirst(m, "dc.subject.pl") || undefined,
+        abstract:      abs ? trunc(abs, 500) : undefined,
+      };
+    });
+    return JSON.stringify(
+      { totalElements: p.totalElements, page: { number: p.number, size: p.size, totalPages: p.totalPages }, items },
+      null, 2,
+    );
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Collapse ruj_get_item HAL+JSON into a compact summary.
+ * Returns the raw string unchanged if parsing fails.
+ */
+function summarizeItem(raw: string): string {
+  try {
+    const it = JSON.parse(raw);
+    const m  = it?.metadata ?? {};
+    const h: string = it.handle ?? "";
+    return JSON.stringify(
+      {
+        uuid:             it.uuid as string | undefined,
+        handle:           h || undefined,
+        url:              h ? `https://ruj.uj.edu.pl/xmlui/handle/${h}` : undefined,
+        title:            dcFirst(m, "dc.title") || undefined,
+        titleAlt:         dcFirst(m, "dc.title.alternative") || undefined,
+        authors:          dcAll(m, "dc.contributor.author"),
+        advisors:         dcAll(m, "dc.contributor.advisor"),
+        reviewers:        dcAll(m, "dc.contributor.reviewer"),
+        type:             dcFirst(m, "dc.type") || undefined,
+        language:         dcFirst(m, "dc.language") || undefined,
+        dateIssued:       dcFirst(m, "dc.date.issued") || undefined,
+        dateSubmitted:    dcFirst(m, "dc.date.submitted") || undefined,
+        dateAccessioned:  dcFirst(m, "dc.date.accessioned") || undefined,
+        affiliation:      dcFirst(m, "dc.affiliation") || undefined,
+        fieldOfStudy:     dcFirst(m, "dc.fieldofstudy") || undefined,
+        area:             dcFirst(m, "dc.area") || undefined,
+        subjectEN:        dcFirst(m, "dc.subject.en") || undefined,
+        subjectPL:        dcFirst(m, "dc.subject.pl") || undefined,
+        doi:              dcFirst(m, "dc.identifier.doi") || undefined,
+        identifierURI:    dcFirst(m, "dc.identifier.uri") || undefined,
+        entityType:       (it.entityType as string | undefined) || undefined,
+        inArchive:        it.inArchive as boolean | undefined,
+        lastModified:     (it.lastModified as string | undefined) || undefined,
+        abstractEN:       dcFirst(m, "dc.abstract.en") || undefined,
+        abstractPL:       dcFirst(m, "dc.abstract.pl") || undefined,
+      },
+      null, 2,
+    );
+  } catch {
+    return raw;
+  }
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export function registerRujTools(server: McpServer, env: Env): void {
   // ── ruj_search ────────────────────────────────────────────────────────────
   server.tool(
@@ -227,7 +328,7 @@ export function registerRujTools(server: McpServer, env: Env): void {
           { headers: JSON_HEADERS },
           CACHE_TTL,
         );
-        return { content: [{ type: "text", text: data }] };
+        return { content: [{ type: "text", text: summarizeSearch(data) }] };
       } catch (e) {
         return {
           content: [
@@ -265,7 +366,7 @@ export function registerRujTools(server: McpServer, env: Env): void {
           { headers: JSON_HEADERS },
           CACHE_TTL,
         );
-        return { content: [{ type: "text", text: data }] };
+        return { content: [{ type: "text", text: summarizeItem(data) }] };
       } catch (e) {
         return {
           content: [
