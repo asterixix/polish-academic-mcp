@@ -1,8 +1,8 @@
 # Polish Academic MCP
 
-Zdalny serwer MCP działający na Cloudflare Workers (darmowy plan), który udostępnia pięć polskich akademickich baz danych jako narzędzia wywoływane przez AI.
+Zdalny serwer MCP działający na Cloudflare Workers, który udostępnia pięć polskich akademickich baz danych jako narzędzia wywoływane przez AI.
 
-> **MCP** (Model Context Protocol) to otwarty standard pozwalający modelom językowym (Claude, GPT-4 itp.) na wywoływanie zewnętrznych narzędzi i API w ustandaryzowany sposób.
+> **MCP** (Model Context Protocol) to otwarty standard pozwalający modelom językowym (Claude, GPT, Bielik.AI itp.) na wywoływanie zewnętrznych narzędzi i API w ustandaryzowany sposób.
 
 ---
 
@@ -24,7 +24,7 @@ Wszystkie bazy oferują **otwarty, nieuwierzytelniony dostęp do odczytu** — �
 
 ---
 
-## Wymagania
+## Wymagania dla developmnetu
 
 - [Node.js](https://nodejs.org/) 18 lub nowszy
 - [Konto Cloudflare](https://dash.cloudflare.com/sign-up) (darmowe)
@@ -157,6 +157,201 @@ Wyślij żądanie HTTP POST do `/mcp` z nagłówkiem `Accept: application/json, 
 
 ---
 
+## Podłączenie z OpenAI / ChatGPT
+
+### ChatGPT.com (plan Plus / Pro / Team / Enterprise)
+
+ChatGPT obsługuje zdalne serwery MCP przez protokół Streamable HTTP.
+
+1. Otwórz [ChatGPT.com](https://chatgpt.com) i zaloguj się
+2. Przejdź do **Ustawienia (Settings) → Połączone aplikacje (Connected apps)**
+3. Kliknij **Dodaj narzędzia (Add tools) → Serwer MCP (MCP server)**
+4. Wpisz URL serwera:
+   ```
+   https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp
+   ```
+5. Nadaj nazwę (np. `Polish Academic`) i zapisz
+
+Narzędzia będą dostępne podczas każdej rozmowy.
+
+> **Uwaga:** Funkcja dostępna dla subskrybentów ChatGPT Plus i wyższych planów. Opcja może znajdować się w innym miejscu menu w zależności od wersji interfejsu.
+
+### OpenAI Responses API (Python — programistycznie)
+
+Biblioteka `openai-agents` (Python) obsługuje zdalne serwery MCP natywnie:
+
+```bash
+pip install openai-agents
+```
+
+```python
+import asyncio
+from agents import Agent, Runner
+from agents.mcp import MCPServerSse
+
+async def main():
+    async with MCPServerSse(
+        url="https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp"
+    ) as mcp_server:
+        agent = Agent(
+            name="Asystent Naukowy",
+            model="gpt-4o",
+            mcp_servers=[mcp_server],
+        )
+        result = await Runner.run(
+            agent,
+            "Wyszukaj artykuły o fotosytezie z Biblioteki Nauki",
+        )
+        print(result.final_output)
+
+asyncio.run(main())
+```
+
+Możesz również użyć serwera MCP bezpośrednio przez [Responses API](https://platform.openai.com/docs/guides/tools-mcp):
+
+```python
+from openai import OpenAI
+
+client = OpenAI()  # OPENAI_API_KEY z env
+
+response = client.responses.create(
+    model="gpt-4o",
+    tools=[{
+        "type": "mcp",
+        "server_url": "https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp",
+        "server_label": "polish-academic",
+        "require_approval": "never",
+    }],
+    input="Znajdź polskie publikacje o uczeniu maszynowym",
+)
+print(response.output_text)
+```
+
+---
+
+## Podłączenie z Google Gemini
+
+### Gemini CLI
+
+[Gemini CLI](https://github.com/google-gemini/gemini-cli) obsługuje serwery MCP przez plik konfiguracyjny.
+
+Edytuj plik `~/.gemini/settings.json` (utwórz jeśli nie istnieje):
+
+```json
+{
+  "mcpServers": {
+    "polish-academic": {
+      "httpUrl": "https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp"
+    }
+  }
+}
+```
+
+Po zapisaniu pliku uruchom Gemini CLI normalnie — narzędzia będą dostępne automatycznie:
+
+```bash
+gemini "Wyszukaj publikacje o astrofizyce w repozytorium Jagiellońskim"
+```
+
+### Google AI Studio / Vertex AI Agent Builder
+
+W [Google AI Studio](https://aistudio.google.com):
+
+1. Otwórz projekt lub stwórz nowy
+2. Przejdź do zakładki **Tools → Add MCP server**
+3. Wpisz URL: `https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp`
+4. Zapisz i przetestuj w Playground
+
+Dla Vertex AI Agent Builder konfiguracja jest analogiczna w zakładce **Tools → Extensions → MCP**.
+
+### Google ADK (Agent Development Kit — Python)
+
+```bash
+pip install google-adk
+```
+
+```python
+from google.adk.agents import Agent
+from google.adk.tools.mcp_tool import MCPToolset, SseServerParams
+
+academic_tools = MCPToolset(
+    connection_params=SseServerParams(
+        url="https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp"
+    )
+)
+
+agent = Agent(
+    name="asystent_naukowy",
+    model="gemini-2.0-flash",
+    tools=[academic_tools],
+    instruction="Pomagasz w wyszukiwaniu polskiej literatury naukowej.",
+)
+```
+
+---
+
+## Podłączenie z Perplexity
+
+Perplexity nie obsługuje natywnie protokołu MCP w interfejsie webowym.  
+Możliwe podejścia:
+
+### Przez OpenAI-compatible SDK (Sonar API + narzędzia)
+
+Perplexity Sonar API jest zgodne z formatem OpenAI. Możesz opisać narzędzia MCP ręcznie jako schematy funkcji:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="<twój-klucz-perplexity>",
+    base_url="https://api.perplexity.ai",
+)
+
+# Przykładowe wywołanie z function calling
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "ruj_search",
+            "description": "Szuka publikacji w Repozytorium UJ",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Zapytanie"},
+                    "page": {"type": "integer", "default": 0},
+                    "size": {"type": "integer", "default": 10},
+                },
+                "required": ["query"],
+            },
+        },
+    }
+]
+
+response = client.chat.completions.create(
+    model="sonar-pro",
+    messages=[{"role": "user", "content": "Znajdź artykuły o kwantach"}],
+    tools=tools,
+)
+```
+
+Wywołania narzędzi musisz następnie obsłużyć ręcznie, przekazując je do serwera MCP przez HTTP.
+
+### Przez mcp-remote (lokalny proxy)
+
+Jeśli używasz lokalnego klienta zgodnego z OpenAI tools, możesz uruchomić `mcp-remote` jako most:
+
+```bash
+# Zainstaluj mcp-remote
+npm install -g mcp-remote
+
+# Uruchom proxy (przekazuje wywołania MCP ↔ HTTP)
+npx mcp-remote https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp
+```
+
+Proxy nawiązuje lokalne połączenie stdio, z którego możesz korzystać w dowolnym narzędziu obsługującym MCP stdio.
+
+---
+
 ## Limity i buforowanie
 
 ### Ograniczenie liczby żądań (Rate Limiting)
@@ -174,7 +369,7 @@ Odpowiedzi z zewnętrznych API są buforowane w Cloudflare KV:
 | Biblioteka Nauki, RUJ, RODBuK, RePOD | 24 godziny |
 | dane.gov.pl | 1 godzina |
 
-### Limity darmowego planu Cloudflare
+### Limity ogólne
 
 | Zasób | Limit |
 |---|---|
@@ -222,4 +417,4 @@ Dla agentów AI kodujących w tym projekcie: przeczytaj [AGENTS.md](AGENTS.md).
 
 ## Licencja
 
-[MIT](LICENSE) © 2026 Artur / asterixix
+[MIT](LICENSE) © 2026 Artur Sendyka vel. asterixix na poczet Polskiej Nauki z wykorzystaniem AI
