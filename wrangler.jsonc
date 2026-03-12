@@ -21,30 +21,29 @@
     }
   ],
 
-  // Cloudflare native OTLP export — Approach A (zero-code automatic tracing).
+  // CF Workers Logs — zero-code observability via platform-managed OTLP pipeline.
   //
-  // PREREQUISITE: Create two destinations in the CF Dashboard BEFORE deploying:
-  //   Dashboard → Workers Observability → Add Destination
+  // PREREQUISITE: Create two Log Destinations in the CF Dashboard:
+  //   Dashboard → Workers & Pages → Observability → Log Destinations → Add
   //
-  //   Name: "honeycomb-traces"   Type: Traces
+  //   Name: "honeycomb-traces"   Type: OTLP Traces
   //   Endpoint: https://api.honeycomb.io/v1/traces
-  //   Header:   x-honeycomb-team = <HONEYCOMB_API_KEY>
+  //   Header:   x-honeycomb-team = <your Honeycomb ingest API key>
   //
-  //   Name: "honeycomb-logs"     Type: Logs
+  //   Name: "honeycomb-logs"     Type: OTLP Logs
   //   Endpoint: https://api.honeycomb.io/v1/logs
-  //   Header:   x-honeycomb-team = <HONEYCOMB_API_KEY>
+  //   Header:   x-honeycomb-team = <your Honeycomb ingest API key>
   //
-  // See: https://developers.cloudflare.com/workers/observability/exporting-opentelemetry-data/
+  // See: https://developers.cloudflare.com/workers/observability/logs/workers-logs/
   "observability": {
-    "traces": {
-      "enabled": true,
-      "destinations": ["honeycomb-traces"],
-      "head_sampling_rate": 1
-    },
     "logs": {
       "enabled": true,
       "destinations": ["honeycomb-logs"],
-      "head_sampling_rate": 1
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": true,
+      "destinations": ["honeycomb-traces"]
     }
   }
 }

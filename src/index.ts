@@ -17,7 +17,6 @@ import { createMcpHandler } from "agents/mcp";
 import type { Env } from "./types.js";
 import { createServer } from "./server.js";
 import { checkRateLimit, getClientId } from "./ratelimit.js";
-import { wrapWithOtel } from "./instrumentation.js";
 
 const RATE_LIMIT = 10; // tool calls per hour per IP
 
@@ -70,7 +69,6 @@ const handler = {
   },
 } satisfies ExportedHandler<Env>;
 
-// Wrap with OTel auto-instrumentation (Approach B).
-// Every incoming request becomes a root span; tool spans nest beneath it.
-// HONEYCOMB_API_KEY is read from env at runtime — never hardcoded.
-export default wrapWithOtel(handler);
+// CF native Workers Logs + Traces (configured in wrangler.jsonc) handle
+// observability automatically — no code-level wrapper needed.
+export default handler;
