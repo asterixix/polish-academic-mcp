@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "polish-academic-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-10",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // KV namespaces — replace the placeholder IDs before deploying.
+  // Create them with: npx wrangler kv namespace create "CACHE_KV"
+  //                   npx wrangler kv namespace create "RATE_LIMIT_KV"
+  "kv_namespaces": [
+    {
+      "binding": "CACHE_KV",
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "preview_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "binding": "RATE_LIMIT_KV",
+      "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "preview_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ]
+}
