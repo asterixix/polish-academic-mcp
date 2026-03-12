@@ -21,29 +21,40 @@
     }
   ],
 
-  // CF Workers Logs — zero-code observability via platform-managed OTLP pipeline.
+  // CF Workers native OTLP export — zero-code observability via platform-managed pipeline.
   //
-  // PREREQUISITE: Create two Log Destinations in the CF Dashboard:
-  //   Dashboard → Workers & Pages → Observability → Log Destinations → Add
+  // PREREQUISITE: Create two destinations in the CF Dashboard (one-time setup):
+  //   https://dash.cloudflare.com/ → Workers & Pages → Observability → Pipelines → Add destination
   //
-  //   Name: "honeycomb-traces"   Type: OTLP Traces
-  //   Endpoint: https://api.honeycomb.io/v1/traces
-  //   Header:   x-honeycomb-team = <your Honeycomb ingest API key>
+  //   Name: "honeycomb-traces"   Type: Traces
+  //   Endpoint: https://api.eu1.honeycomb.io/v1/traces
+  //   Header:   x-honeycomb-team = <HONEYCOMB_API_KEY>
   //
-  //   Name: "honeycomb-logs"     Type: OTLP Logs
-  //   Endpoint: https://api.honeycomb.io/v1/logs
-  //   Header:   x-honeycomb-team = <your Honeycomb ingest API key>
+  //   Name: "honeycomb-logs"     Type: Logs
+  //   Endpoint: https://api.eu1.honeycomb.io/v1/logs
+  //   Header:   x-honeycomb-team = <HONEYCOMB_API_KEY>
   //
-  // See: https://developers.cloudflare.com/workers/observability/logs/workers-logs/
+  // The destination names here must match exactly what you set in the Dashboard.
+  // See: https://developers.cloudflare.com/workers/observability/exporting-opentelemetry-data/honeycomb/
   "observability": {
+    "enabled": false,
+    "head_sampling_rate": 1,
     "logs": {
       "enabled": true,
-      "destinations": ["honeycomb-logs"],
+      "destinations": [
+        "huneycomb-logs"
+      ],
+      "head_sampling_rate": 1,
+      "persist": true,
       "invocation_logs": true
     },
     "traces": {
       "enabled": true,
-      "destinations": ["honeycomb-traces"]
+      "destinations": [
+        "honeycomb-treaces"
+      ],
+      "persist": true,
+      "head_sampling_rate": 1
     }
   }
 }
