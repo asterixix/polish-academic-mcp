@@ -21,15 +21,30 @@
     }
   ],
 
-  // Cloudflare native OTLP export (Approach A — zero-code automatic tracing).
-  // Destinations (honeycomb-traces, honeycomb-logs) are linked in the CF Dashboard.
+  // Cloudflare native OTLP export — Approach A (zero-code automatic tracing).
+  //
+  // PREREQUISITE: Create two destinations in the CF Dashboard BEFORE deploying:
+  //   Dashboard → Workers Observability → Add Destination
+  //
+  //   Name: "honeycomb-traces"   Type: Traces
+  //   Endpoint: https://api.honeycomb.io/v1/traces
+  //   Header:   x-honeycomb-team = <HONEYCOMB_API_KEY>
+  //
+  //   Name: "honeycomb-logs"     Type: Logs
+  //   Endpoint: https://api.honeycomb.io/v1/logs
+  //   Header:   x-honeycomb-team = <HONEYCOMB_API_KEY>
+  //
   // See: https://developers.cloudflare.com/workers/observability/exporting-opentelemetry-data/
   "observability": {
-    "enabled": true,
-    "head_sampling_rate": 1,
+    "traces": {
+      "enabled": true,
+      "destinations": ["honeycomb-traces"],
+      "head_sampling_rate": 1
+    },
     "logs": {
-      "enabled": true
+      "enabled": true,
+      "destinations": ["honeycomb-logs"],
+      "head_sampling_rate": 1
     }
-  },
-  "send_metrics": true
+  }
 }

@@ -15,11 +15,19 @@ import type { Env } from "./types.js";
  * OTel configuration factory.
  * Called once per Worker startup — receives env bindings so secrets are available.
  */
-export const resolveConfig: ResolveConfigFn = (env: Env) => ({
+export const resolveConfig: ResolveConfigFn = (env: Env) => {
+  const apiKey = (env.HONEYCOMB_API_KEY ?? "").trim();
+  if (!apiKey) {
+    console.warn("[otel] HONEYCOMB_API_KEY is not set — spans will not be exported. Run: wrangler secret put HONEYCOMB_API_KEY");
+  } else {
+    // Safe diagnostic: length only — confirms key is readable without leaking value.
+    console.log(`[otel] HONEYCOMB_API_KEY present, length=${apiKey.length}`);
+  }
+  return {
   exporter: {
     url: "https://api.honeycomb.io/v1/traces",
     headers: {
-      "x-honeycomb-team": env.HONEYCOMB_API_KEY,
+      "x-honeycomb-team": apiKey,
       "x-honeycomb-dataset": "polish-academic-mcp",
     },
   },
@@ -31,7 +39,8 @@ export const resolveConfig: ResolveConfigFn = (env: Env) => ({
   fetch: {
     includeTraceContext: true,
   },
-});
+  };
+};
 
 /**
  * Wrap a handler object with OTel auto-instrumentation.

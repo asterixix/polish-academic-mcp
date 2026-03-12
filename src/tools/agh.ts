@@ -19,12 +19,67 @@ import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
 import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
-const API_BASE = "https://repo.agh.edu.pl/server/api";
+const API_BASES = [
+  "https://api.repo.agh.edu.pl/server/api",
+  "https://repo.agh.edu.pl/server/api",
+  "https://repo.agh.edu.pl/api",
+] as const;
 const HANDLE_BASE = "https://repo.agh.edu.pl/handle";
 const JSON_HEADERS = { Accept: "application/json" };
 const CACHE_TTL = 86_400; // 24 h
 
 const API_FIELDS = ["title", "author", "subject", "abstract", "date", "language", "doi", "keywords"];
+
+function getHttpStatusFromError(err: unknown): number | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  const match = /HTTP\s+(\d{3})\b/.exec(msg);
+  if (!match) return null;
+  const status = Number(match[1]);
+  return Number.isFinite(status) ? status : null;
+}
+
+function shouldTryNextApiBase(err: unknown): boolean {
+  const status = getHttpStatusFromError(err);
+  if (status === null) return true;
+  return status === 404 || status === 429 || status >= 500;
+}
+
+async function aghFetchWithFallback(
+  kv: KVNamespace,
+  cachePrefix: string,
+  cacheParams: Record<string, unknown>,
+  pathAndQuery: string,
+  ttlSeconds: number,
+): Promise<string> {
+  const errors: string[] = [];
+
+  for (let i = 0; i < API_BASES.length; i++) {
+    const base = API_BASES[i];
+    const url = `${base}${pathAndQuery}`;
+    const cacheKey = makeCacheKey(cachePrefix, {
+      ...cacheParams,
+      apiBaseIdx: i,
+    });
+
+    try {
+      return await cachedFetch(
+        kv,
+        cacheKey,
+        url,
+        { headers: JSON_HEADERS },
+        ttlSeconds,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(msg);
+      if (!shouldTryNextApiBase(err) || i === API_BASES.length - 1) {
+        break;
+      }
+    }
+  }
+
+  throw new Error(`AGH API endpoints failed: ${errors.join(" | ")}`);
+}
 
 /**
  * Append a DSpace discovery filter parameter.
@@ -269,17 +324,23 @@ export function registerAghTools(server: McpServer, env: Env): void {
               searchParams.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
             }
 
-            const url = `${API_BASE}/discover/search/objects?${searchParams}`;
-            const cacheKey = makeCacheKey("agh_search", {
-              query, page, size, sort,
-              author, subject, language, itemtype,
-              date_issued, date_accessioned, has_full_text,
-            });
-            const data = await cachedFetch(
+            const data = await aghFetchWithFallback(
               env.CACHE_KV,
-              cacheKey,
-              url,
-              { headers: JSON_HEADERS },
+              "agh_search",
+              {
+                query,
+                page,
+                size,
+                sort,
+                author,
+                subject,
+                language,
+                itemtype,
+                date_issued,
+                date_accessioned,
+                has_full_text,
+              },
+              `/discover/search/objects?${searchParams}`,
               CACHE_TTL,
             );
             return { content: [{ type: "text", text: summarizeSearch(data) }] };
@@ -325,13 +386,11 @@ export function registerAghTools(server: McpServer, env: Env): void {
         async (span) => {
           span.setAttribute("mcp.source", "agh");
           try {
-            const url = `${API_BASE}/core/items/${uuid}`;
-            const cacheKey = makeCacheKey("agh_item", { uuid });
-            const data = await cachedFetch(
+            const data = await aghFetchWithFallback(
               env.CACHE_KV,
-              cacheKey,
-              url,
-              { headers: JSON_HEADERS },
+              "agh_item",
+              { uuid },
+              `/core/items/${uuid}`,
               CACHE_TTL,
             );
             return { content: [{ type: "text", text: summarizeItem(data) }] };
