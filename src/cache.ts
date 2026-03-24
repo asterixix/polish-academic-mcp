@@ -31,10 +31,7 @@ export async function cachedFetch(
  * Build a deterministic, sorted cache key from a prefix and a params object.
  * Undefined / null values are excluded so optional params don't fragment keys.
  */
-export function makeCacheKey(
-  prefix: string,
-  params: Record<string, unknown>,
-): string {
+export function makeCacheKey(prefix: string, params: Record<string, unknown>): string {
   const entries = Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== null)
     .sort(([a], [b]) => a.localeCompare(b));

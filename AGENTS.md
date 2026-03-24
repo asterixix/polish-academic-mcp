@@ -12,17 +12,17 @@
 (free tier). It exposes nine tools that let any MCP-compatible LLM (Claude, GPT-4, etc.)
 search five Polish academic databases:
 
-| Tool name | Database | Protocol |
-|---|---|---|
-| `bn_search_articles` | Biblioteka Nauki | OAI-PMH (XML) |
-| `bn_get_article` | Biblioteka Nauki | OAI-PMH (XML) |
-| `ruj_search` | RUJ (Jagiellonian Univ.) | DSpace 7 REST (HAL+JSON) |
-| `ruj_get_item` | RUJ | DSpace 7 REST (HAL+JSON) |
-| `rodbuk_search` | RODBuK | Dataverse REST (JSON) |
-| `repod_search` | RePOD | Dataverse REST (JSON) |
-| `repod_get_dataset` | RePOD | Dataverse REST (JSON) |
-| `dane_search` | dane.gov.pl | Custom REST v1.4 (JSON) |
-| `dane_get_dataset` | dane.gov.pl | Custom REST v1.4 (JSON) |
+| Tool name            | Database                 | Protocol                 |
+| -------------------- | ------------------------ | ------------------------ |
+| `bn_search_articles` | Biblioteka Nauki         | OAI-PMH (XML)            |
+| `bn_get_article`     | Biblioteka Nauki         | OAI-PMH (XML)            |
+| `ruj_search`         | RUJ (Jagiellonian Univ.) | DSpace 7 REST (HAL+JSON) |
+| `ruj_get_item`       | RUJ                      | DSpace 7 REST (HAL+JSON) |
+| `rodbuk_search`      | RODBuK                   | Dataverse REST (JSON)    |
+| `repod_search`       | RePOD                    | Dataverse REST (JSON)    |
+| `repod_get_dataset`  | RePOD                    | Dataverse REST (JSON)    |
+| `dane_search`        | dane.gov.pl              | Custom REST v1.4 (JSON)  |
+| `dane_get_dataset`   | dane.gov.pl              | Custom REST v1.4 (JSON)  |
 
 All five databases offer **unauthenticated read access** — no external API keys.
 
@@ -63,7 +63,7 @@ global instance leaks state across clients.
 // index.ts — correct pattern
 export default {
   async fetch(request, env, ctx) {
-    const handler = createMcpHandler(createServer(env));   // fresh each time
+    const handler = createMcpHandler(createServer(env)); // fresh each time
     return handler(request, env, ctx);
   },
 };
@@ -79,6 +79,7 @@ Limit: **10 tool calls per hour per client IP** (CF-Connecting-IP header).
 ### 3. `cachedFetch()` wraps every external API call
 
 Signature:
+
 ```typescript
 cachedFetch(
   env: Env,
@@ -94,6 +95,7 @@ return the text. Writes are fire-and-forget (`ctx.waitUntil` is **not** availabl
 tool handlers, so writes are detached with `.catch(() => {})`).
 
 TTL conventions:
+
 - `86_400` (24 h) for academic repositories (RODBuK, RePOD, RUJ, Biblioteka Nauki)
 - `3_600` (1 h) for dane.gov.pl (frequently updated government data)
 
@@ -123,12 +125,12 @@ const CACHE_TTL = 86_400; // seconds
 
 export function registerMyDatabaseTools(server: McpServer, env: Env): void {
   server.tool(
-    "mydb_search",                // snake_case: prefix = short db name
+    "mydb_search", // snake_case: prefix = short db name
     "One-paragraph description that tells the LLM WHEN to call this tool," +
-    " what arguments it expects, and what shape the response has.",
+      " what arguments it expects, and what shape the response has.",
     {
       query: z.string().describe("Search terms"),
-      page:  z.number().int().min(1).default(1).describe("Page number (1-based)"),
+      page: z.number().int().min(1).default(1).describe("Page number (1-based)"),
     },
     async ({ query, page }) => {
       try {
@@ -146,6 +148,7 @@ export function registerMyDatabaseTools(server: McpServer, env: Env): void {
 ```
 
 Rules:
+
 - Tool name must be globally unique and follow `{prefix}_{action}` naming.
 - Every parameter must have a `.describe()` string — this is the LLM's only hint.
 - Always return raw API text (JSON or XML) rather than parsing it — saves CPU.
@@ -200,7 +203,7 @@ async (params) => {
       isError: true,
     };
   }
-}
+};
 ```
 
 Returning `isError: true` inside the result (not throwing) allows the LLM to see and
@@ -229,6 +232,7 @@ The KV preview IDs in `wrangler.jsonc` point to `"aaa..."` / `"bbb..."` placehol
 Wrangler's dev mode uses in-memory KV for preview namespaces, so this works locally.
 
 Test with MCP Inspector:
+
 ```bash
 npx @modelcontextprotocol/inspector@latest
 # Open http://localhost:5173, connect to http://localhost:8788/mcp
@@ -240,6 +244,7 @@ See `README.md` (Polish) or the GitHub Actions workflow at
 `.github/workflows/deploy.yml` for full deployment instructions.
 
 Quick reference:
+
 ```bash
 npx wrangler kv namespace create "CACHE_KV"      # copy ID → wrangler.jsonc
 npx wrangler kv namespace create "RATE_LIMIT_KV" # copy ID → wrangler.jsonc

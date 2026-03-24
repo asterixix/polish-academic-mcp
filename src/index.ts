@@ -24,20 +24,20 @@ const handler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // ── Rate limiting (only tool/call requests) ─────────────────
     if (request.method === "POST") {
-       let isToolCall = false;
-       try {
-         // Clone before reading so the body stream is still available for the
-         // MCP handler that runs afterwards.
-         const body = (await request.clone().json()) as { method?: string };
-         isToolCall = body.method === "tools/call";
-       } catch {
+      let isToolCall = false;
+      try {
+        // Clone before reading so the body stream is still available for the
+        // MCP handler that runs afterwards.
+        const body = (await request.clone().json()) as { method?: string };
+        isToolCall = body.method === "tools/call";
+      } catch {
         // Malformed JSON — let the MCP handler return a proper error.
       }
-    
+
       if (isToolCall) {
         const clientId = getClientId(request);
         const rl = await checkRateLimit(env.RATE_LIMIT_KV, clientId, RATE_LIMIT);
-    
+
         if (!rl.allowed) {
           return new Response(
             JSON.stringify({
@@ -52,9 +52,7 @@ const handler = {
                 "Retry-After": String(rl.resetInSeconds),
                 "X-RateLimit-Limit": String(RATE_LIMIT),
                 "X-RateLimit-Remaining": "0",
-                "X-RateLimit-Reset": String(
-                  Math.floor(Date.now() / 1000) + rl.resetInSeconds,
-                ),
+                "X-RateLimit-Reset": String(Math.floor(Date.now() / 1000) + rl.resetInSeconds),
               },
             },
           );

@@ -21,7 +21,16 @@ import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 const API_BASE = "https://repod.icm.edu.pl/api";
 const CACHE_TTL = 86_400; // 24 h
 
-const API_FIELDS = ["title", "author", "subject", "abstract", "date", "doi", "keywords", "publisher"];
+const API_FIELDS = [
+  "title",
+  "author",
+  "subject",
+  "abstract",
+  "date",
+  "doi",
+  "keywords",
+  "publisher",
+];
 
 export function registerRepodTools(server: McpServer, env: Env): void {
   // ── repod_search ──────────────────────────────────────────────────────────
@@ -38,19 +47,8 @@ export function registerRepodTools(server: McpServer, env: Env): void {
         .enum(["dataset", "dataverse", "file"])
         .optional()
         .describe("Restrict results to one content type"),
-      per_page: z
-        .number()
-        .int()
-        .min(1)
-        .max(100)
-        .default(10)
-        .describe("Results per page"),
-      start: z
-        .number()
-        .int()
-        .min(0)
-        .default(0)
-        .describe("Zero-based offset for pagination"),
+      per_page: z.number().int().min(1).max(100).default(10).describe("Results per page"),
+      start: z.number().int().min(0).default(0).describe("Zero-based offset for pagination"),
     },
     async ({ query, type, per_page, start }) => {
       return withToolExecutionSpan(
@@ -106,9 +104,7 @@ export function registerRepodTools(server: McpServer, env: Env): void {
       "dcterms for Dublin Core XML, or dataverse_json for the full native record.",
     ].join(" "),
     {
-      doi: z
-        .string()
-        .describe("Dataset DOI without the doi: prefix, e.g. 10.18150/ABCDEF"),
+      doi: z.string().describe("Dataset DOI without the doi: prefix, e.g. 10.18150/ABCDEF"),
       format: z
         .enum(["datacite", "dcterms", "schema.org", "ddi", "dataverse_json"])
         .default("datacite")

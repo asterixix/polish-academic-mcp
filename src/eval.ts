@@ -57,9 +57,9 @@ export function evalResponse(
   // ── Fragment attribution ─────────────────────────────────────────────────
   // Fields cited: source field values that appear verbatim in generated text
   const fieldsCited = Object.entries(sourceRecord)
-    .filter(([, v]) =>
-      v.length >= 4 &&
-      genLower.includes(v.toLowerCase().slice(0, Math.min(20, v.length)))
+    .filter(
+      ([, v]) =>
+        v.length >= 4 && genLower.includes(v.toLowerCase().slice(0, Math.min(20, v.length))),
     )
     .map(([k]) => k);
 
@@ -69,9 +69,7 @@ export function evalResponse(
   const fidelityScore = genWords.length > 0 ? matchCount / genWords.length : 0;
 
   // Fields added: words in generated text not traceable to source
-  const fieldsAdded = genWords
-    .filter((w) => w.length > 5 && !sourceText.includes(w))
-    .slice(0, 10); // cap to avoid large attribute values
+  const fieldsAdded = genWords.filter((w) => w.length > 5 && !sourceText.includes(w)).slice(0, 10); // cap to avoid large attribute values
 
   // ── Classification drift ─────────────────────────────────────────────────
   const ukdPattern = /\b\d{1,3}(\.\d+)+\b/g;
@@ -80,8 +78,8 @@ export function evalResponse(
   const generatedClassification = generatedMatches ? generatedMatches[0] : "";
 
   const ukdOrig = originalClassification.split(".");
-  const ukdGen  = generatedClassification ? generatedClassification.split(".") : [];
-  const ukdDepthOriginal  = ukdOrig.length;
+  const ukdGen = generatedClassification ? generatedClassification.split(".") : [];
+  const ukdDepthOriginal = ukdOrig.length;
   const ukdDepthGenerated = ukdGen.length;
 
   let ukdDigitsMatch = 0;
@@ -91,8 +89,7 @@ export function evalResponse(
   }
 
   const classificationMatch =
-    originalClassification.startsWith(generatedClassification) ||
-    generatedClassification === "";
+    originalClassification.startsWith(generatedClassification) || generatedClassification === "";
 
   let driftDirection: ResponseMeta["driftDirection"] = "match";
   if (!classificationMatch || ukdDigitsMatch < ukdDepthOriginal) {
@@ -104,22 +101,21 @@ export function evalResponse(
   // ── Language quality ─────────────────────────────────────────────────────
   // Transliteration: look for common ą/ę/ó/ś/ź/ż/ć/ń/ł substitution patterns
   const diacriticErrors = [
-    /(?<![ąęóśźżćńł])a(?=[^ąa])|ą(?=[ ,\.])/gi, // ą→a
-    /e(?=[a-z]{2,}ę)/gi,                           // ę→e
-    /o(?=[a-z]{2,}ó)/gi,                           // ó→o
+    /(?<![ąęóśźżćńł])a(?=[^ąa])|ą(?=[ ,.])/gi, // ą→a
+    /e(?=[a-z]{2,}ę)/gi, // ę→e
+    /o(?=[a-z]{2,}ó)/gi, // ó→o
   ];
   const diacriticErrorsCount = diacriticErrors.reduce(
     (sum, re) => sum + (generated.match(re)?.length ?? 0),
     0,
   );
-  const hasTransliterationError = diacriticErrorsCount > 0 ||
-    /[a-z][aeoui](?=[ąęóśźżćńł])/i.test(generated);
+  const hasTransliterationError =
+    diacriticErrorsCount > 0 || /[a-z][aeoui](?=[ąęóśźżćńł])/i.test(generated);
 
   const sentences = generated.split(/[.!?]+/);
   const codeSwitchSentenceCount = sentences.filter(
     (s) =>
-      /[ąęóśźżćńł]/i.test(s) &&
-      /\b(the|and|for|with|from|that|research|study|analysis)\b/i.test(s),
+      /[ąęóśźżćńł]/i.test(s) && /\b(the|and|for|with|from|that|research|study|analysis)\b/i.test(s),
   ).length;
   const hasCodeSwitching = codeSwitchSentenceCount > 0;
 
@@ -134,8 +130,7 @@ export function evalResponse(
 
   // ── Semantic shift ───────────────────────────────────────────────────────
   const sourceTitle = (sourceRecord["title"] ?? "").toLowerCase();
-  const titlePreserved =
-    sourceTitle.length > 0 && genLower.includes(sourceTitle.slice(0, 30));
+  const titlePreserved = sourceTitle.length > 0 && genLower.includes(sourceTitle.slice(0, 30));
 
   const sourceSubject = (sourceRecord["subject"] ?? "").toLowerCase();
   // Generalization heuristic: generated subject is shorter / broader
@@ -151,8 +146,7 @@ export function evalResponse(
     generated.includes("...") &&
     estimateTokens(generated) < estimateTokens(sourceAbstract) * 0.6;
   const abstractExpanded =
-    sourceAbstract.length > 0 &&
-    estimateTokens(generated) > estimateTokens(sourceAbstract) * 1.5;
+    sourceAbstract.length > 0 && estimateTokens(generated) > estimateTokens(sourceAbstract) * 1.5;
 
   // ── Hallucination summary ────────────────────────────────────────────────
   const hallucinationDetected = fidelityScore < 0.6 || fieldsAdded.length > 5;

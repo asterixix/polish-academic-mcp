@@ -8,31 +8,27 @@
     {
       "binding": "CACHE_KV",
       "id": "3a65887199da444388b42a88ee993376",
-      "preview_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      "preview_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     },
     {
       "binding": "RATE_LIMIT_KV",
       "id": "c24afe24902a4d549dee309557d42cd1",
-      "preview_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    }
+      "preview_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    },
   ],
   "observability": {
     "logs": {
       "enabled": true,
-      "destinations": [
-        "honeycomb-logs"
-      ],
+      "destinations": ["honeycomb-logs"],
       "head_sampling_rate": 1,
       "persist": true,
-      "invocation_logs": true
+      "invocation_logs": true,
     },
     "traces": {
       "enabled": true,
-      "destinations": [
-        "honeycomb-traces"
-      ],
+      "destinations": ["honeycomb-traces"],
       "persist": true,
-      "head_sampling_rate": 1
-    }
-  }
+      "head_sampling_rate": 1,
+    },
+  },
 }

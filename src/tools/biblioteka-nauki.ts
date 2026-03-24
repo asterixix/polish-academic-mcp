@@ -19,7 +19,16 @@ import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 const OAI_BASE = "https://bibliotekanauki.pl/api/oai/articles";
 const CACHE_TTL = 86_400; // 24 h — academic records rarely change
 
-const API_FIELDS = ["title", "author", "subject", "abstract", "date", "language", "doi", "publisher"];
+const API_FIELDS = [
+  "title",
+  "author",
+  "subject",
+  "abstract",
+  "date",
+  "language",
+  "doi",
+  "publisher",
+];
 
 export function registerBibliotekaTools(server: McpServer, env: Env): void {
   // ── bn_search_articles ────────────────────────────────────────────────────
@@ -32,26 +41,16 @@ export function registerBibliotekaTools(server: McpServer, env: Env): void {
       "Use resumption_token from a previous response to fetch the next page.",
     ].join(" "),
     {
-      from_date: z
-        .string()
-        .optional()
-        .describe("Earliest publication date, format YYYY-MM-DD"),
-      until_date: z
-        .string()
-        .optional()
-        .describe("Latest publication date, format YYYY-MM-DD"),
+      from_date: z.string().optional().describe("Earliest publication date, format YYYY-MM-DD"),
+      until_date: z.string().optional().describe("Latest publication date, format YYYY-MM-DD"),
       set: z
         .string()
         .optional()
-        .describe(
-          "OAI set identifier to scope results to a journal or discipline.",
-        ),
+        .describe("OAI set identifier to scope results to a journal or discipline."),
       metadata_format: z
         .enum(["oai_dc", "jats"])
         .default("oai_dc")
-        .describe(
-          "oai_dc — Dublin Core (smaller, faster); jats — full structured metadata.",
-        ),
+        .describe("oai_dc — Dublin Core (smaller, faster); jats — full structured metadata."),
       resumption_token: z
         .string()
         .optional()
@@ -61,7 +60,10 @@ export function registerBibliotekaTools(server: McpServer, env: Env): void {
       return withToolExecutionSpan(
         {
           toolName: "bn_search_articles",
-          params: { from_date, until_date, set, metadata_format, resumption_token } as Record<string, unknown>,
+          params: { from_date, until_date, set, metadata_format, resumption_token } as Record<
+            string,
+            unknown
+          >,
           fieldsRequested: API_FIELDS,
           fieldsReturned: API_FIELDS,
           tokensByField: {},

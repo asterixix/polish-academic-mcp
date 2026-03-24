@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript"],
+  "env": {
+    "es2022": true
+  },
+  "rules": {
+    "no-console": "warn",
+    "no-debugger": "error",
+    "no-unused-vars": "off",
+    "typescript/no-unused-vars": "error",
+    "no-undef": "off",
+    "eqeqeq": "error",
+    "no-var": "error",
+    "prefer-const": "error"
+  },
+  "ignore": ["node_modules", "dist", ".wrangler"]
+}

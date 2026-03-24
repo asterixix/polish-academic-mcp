@@ -27,12 +27,12 @@ Instead, use one of the following private channels:
 
 ### Response timeline
 
-| Event | Target time |
-|---|---|
-| Acknowledgement of your report | 48 hours |
-| Initial assessment & severity rating | 5 business days |
-| Patch or mitigation | 14 days for critical/high, 30 days for medium/low |
-| Public disclosure | After patch is deployed; coordinated with reporter |
+| Event                                | Target time                                        |
+| ------------------------------------ | -------------------------------------------------- |
+| Acknowledgement of your report       | 48 hours                                           |
+| Initial assessment & severity rating | 5 business days                                    |
+| Patch or mitigation                  | 14 days for critical/high, 30 days for medium/low  |
+| Public disclosure                    | After patch is deployed; coordinated with reporter |
 
 We appreciate responsible disclosure and will credit researchers in the security
 advisory unless they prefer to remain anonymous.
@@ -42,6 +42,7 @@ advisory unless they prefer to remain anonymous.
 ## Scope
 
 This project is a **read-only proxy** to public academic databases. It:
+
 - Makes only GET/POST requests to external open APIs (no write access).
 - Stores only API response text and rate-limit counters in Cloudflare KV.
 - Does **not** collect, store, or transmit user data beyond the IP-based rate-limit
@@ -70,10 +71,10 @@ This project is a **read-only proxy** to public academic databases. It:
 
 ## Security Design Notes
 
-| Concern | Mitigation |
-|---|---|
-| Rate limiting | Sliding-window counter keyed on `CF-Connecting-IP` (injected by Cloudflare, not spoofable). Limit: 10 tool calls / hour / IP. |
-| SSRF | All outbound requests target hardcoded `const API_BASE` URLs in tool files. Tool parameters are never used to construct the hostname or scheme. |
+| Concern                          | Mitigation                                                                                                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rate limiting                    | Sliding-window counter keyed on `CF-Connecting-IP` (injected by Cloudflare, not spoofable). Limit: 10 tool calls / hour / IP.                                             |
+| SSRF                             | All outbound requests target hardcoded `const API_BASE` URLs in tool files. Tool parameters are never used to construct the hostname or scheme.                           |
 | Prompt injection via cached data | Tool responses are raw text passed to the LLM. Operators deploying this server should be aware that cached API responses could theoretically contain adversarial content. |
-| Secret management | No external API keys are managed by default. If keys are added (e.g. PBN), use `wrangler secret put` — never commit secrets to the repository. |
-| Dependency supply chain | `@modelcontextprotocol/sdk` is pinned to an exact version. Run `npm audit` before each release. |
+| Secret management                | No external API keys are managed by default. If keys are added (e.g. PBN), use `wrangler secret put` — never commit secrets to the repository.                            |
+| Dependency supply chain          | `@modelcontextprotocol/sdk` is pinned to an exact version. Run `npm audit` before each release.                                                                           |

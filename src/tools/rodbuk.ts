@@ -16,7 +16,16 @@ import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 const API_BASE = "https://rodbuk.pl/api";
 const CACHE_TTL = 86_400; // 24 h
 
-const API_FIELDS = ["title", "author", "subject", "abstract", "date", "doi", "keywords", "publisher"];
+const API_FIELDS = [
+  "title",
+  "author",
+  "subject",
+  "abstract",
+  "date",
+  "doi",
+  "keywords",
+  "publisher",
+];
 
 export function registerRodbukTools(server: McpServer, env: Env): void {
   server.tool(
@@ -28,26 +37,13 @@ export function registerRodbukTools(server: McpServer, env: Env): void {
       "Use query='*' to browse all available datasets.",
     ].join(" "),
     {
-      query: z
-        .string()
-        .describe("Search query.  Use * to list all datasets"),
+      query: z.string().describe("Search query.  Use * to list all datasets"),
       type: z
         .enum(["dataset", "dataverse", "file"])
         .optional()
         .describe("Restrict results to one content type"),
-      per_page: z
-        .number()
-        .int()
-        .min(1)
-        .max(100)
-        .default(10)
-        .describe("Results per page"),
-      start: z
-        .number()
-        .int()
-        .min(0)
-        .default(0)
-        .describe("Zero-based offset for pagination"),
+      per_page: z.number().int().min(1).max(100).default(10).describe("Results per page"),
+      start: z.number().int().min(0).default(0).describe("Zero-based offset for pagination"),
     },
     async ({ query, type, per_page, start }) => {
       return withToolExecutionSpan(
