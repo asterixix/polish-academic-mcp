@@ -632,7 +632,7 @@ export async function withResponseGenerationSpan<T>(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Naive language detection based on character heuristics */
-function detectLanguage(text: string): "pl" | "en" | "mixed" | "unknown" {
+export function detectLanguage(text: string): "pl" | "en" | "mixed" | "unknown" {
   const plChars = (text.match(/[ąęóśźżćńł]/gi) ?? []).length;
   const enWords = (text.match(/\b(the|and|for|with|from|that)\b/gi) ?? [])
     .length;
