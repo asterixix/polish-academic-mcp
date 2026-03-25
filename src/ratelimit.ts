@@ -56,6 +56,37 @@ export async function checkRateLimit(
 }
 
 /**
+ * Compute rate-limit status without mutating KV.
+ * Used for admin UIs/telemetry, never for enforcement.
+ */
+export async function getRateLimitStatus(
+  kv: KVNamespace,
+  clientId: string,
+  limit = 10,
+): Promise<RateLimitResult> {
+  const key = `rl:${clientId}`;
+  const now = Date.now();
+  const windowStart = now - WINDOW_MS;
+
+  const stored = await kv.get(key);
+  let timestamps: number[] = stored ? (JSON.parse(stored) as number[]) : [];
+
+  timestamps = timestamps.filter((t) => t > windowStart);
+
+  if (timestamps.length >= limit) {
+    const oldest = Math.min(...timestamps);
+    const resetInSeconds = Math.ceil((oldest + WINDOW_MS - now) / 1000);
+    return { allowed: false, remaining: 0, resetInSeconds };
+  }
+
+  return {
+    allowed: true,
+    remaining: limit - timestamps.length,
+    resetInSeconds: WINDOW_SECONDS,
+  };
+}
+
+/**
  * Resolve a stable client identifier from the incoming request.
  * CF-Connecting-IP is injected by Cloudflare and cannot be spoofed by clients.
  */

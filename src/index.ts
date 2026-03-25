@@ -16,10 +16,25 @@
 import { createMcpHandler } from "agents/mcp";
 import type { Env } from "./types.js";
 import { createServer } from "./server.js";
-import { checkRateLimit, getClientId, hasRateLimitBypass } from "./ratelimit.js";
+import { checkRateLimit, getClientId } from "./ratelimit.js";
 import { uploadEvalToolCallToWebdav, type EvalWebdavToolCallRecord } from "./eval-webdav.js";
+import {
+  handleOauthAuthorize,
+  handleOauthRegister,
+  handleOauthToken,
+  handleOauthWellKnownAuthorizationServer,
+  handleOauthWellKnownProtectedResource,
+} from "./oauth-server.js";
 import { getAgentByName } from "agents";
 import { extractToolResultAndSpan, computeRqEvalForToolCall } from "./eval-rq-scorer.js";
+import {
+  authorizeAdmin,
+  listTokenRecordsWithUsagePreview,
+  mintRateLimitToken,
+  patchRateLimitToken,
+  revokeRateLimitToken,
+  resolveRateLimitPolicyFromRequest,
+} from "./token-registry.js";
 
 // Durable Objects / Workflows must be exported from the Worker entry module
 // so Wrangler can wire bindings declared in wrangler.jsonc.
@@ -35,6 +50,47 @@ const handler = {
 
     const url = new URL(request.url);
     const path = url.pathname;
+
+    const corsForAdmin = (init?: { status?: number; headers?: HeadersInit; body?: BodyInit }): Response => {
+      const origin = request.headers.get("Origin") ?? "*";
+      return new Response(init?.body ?? null, {
+        status: init?.status,
+        headers: {
+          "Access-Control-Allow-Origin": origin,
+          "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type,Authorization",
+          "Access-Control-Max-Age": "86400",
+          ...(init?.headers ?? {}),
+        },
+      });
+    };
+
+    // ── OAuth server support (Perplexity remote MCP) ──────────────────────
+    // These endpoints implement a minimal OAuth 2.1 Authorization Server +
+    // RFC7591 dynamic client registration so MCP clients can obtain
+    // client_id/client_secret automatically.
+    if (path === "/.well-known/oauth-protected-resource" && request.method === "GET") {
+      return handleOauthWellKnownProtectedResource(request, env);
+    }
+
+    if (path === "/.well-known/oauth-authorization-server" && request.method === "GET") {
+      return handleOauthWellKnownAuthorizationServer(request, env);
+    }
+
+    if (path === "/register") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+      return handleOauthRegister(request, env);
+    }
+
+    if (path === "/oauth/authorize") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+      return handleOauthAuthorize(request, env);
+    }
+
+    if (path === "/oauth/token") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+      return handleOauthToken(request, env);
+    }
 
     // ── Workflow control plane (Agents Workflows) ──────────────────────────
     if (request.method === "POST" && path === "/pipeline/start") {
@@ -100,9 +156,8 @@ const handler = {
         reason?: string;
       };
 
-      // Reuse the existing JWT bypass secret for approval gating.
-      const bypass = await hasRateLimitBypass(request, env.RATE_LIMIT_BYPASS_JWT_SECRET);
-      if (!bypass) {
+      const policy = await resolveRateLimitPolicyFromRequest(request, env);
+      if (!policy?.bypass) {
         return new Response(JSON.stringify({ error: "forbidden" }), {
           status: 403,
           headers: { "Content-Type": "application/json" },
@@ -204,6 +259,208 @@ const handler = {
       );
     }
 
+    // ── Admin: rate-limit token registry ──────────────────────────────────
+    // Note: Admin endpoints are not rate-limited.
+    if (path === "/admin/tokens" || path.startsWith("/admin/tokens/")) {
+      if (request.method === "OPTIONS") {
+        return corsForAdmin({ status: 204 });
+      }
+
+      const ok = await authorizeAdmin(request, env);
+      if (!ok) {
+        return corsForAdmin({
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "forbidden" }, null, 2),
+        });
+      }
+
+      const parts = url.pathname.split("/").filter(Boolean);
+      // parts: ["admin","tokens"] OR ["admin","tokens",jti] OR ["admin","tokens",jti,"revoke"]
+      if (parts.length === 2 && parts[0] === "admin" && parts[1] === "tokens") {
+        if (request.method === "GET") {
+          const limitParam = url.searchParams.get("limit");
+          const limit = limitParam ? Number(limitParam) : undefined;
+          const safeLimit = typeof limit === "number" && Number.isFinite(limit) ? Math.max(1, Math.min(200, limit)) : 200;
+          const tokens = await listTokenRecordsWithUsagePreview(env, { limit: safeLimit });
+          return corsForAdmin({
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tokens }, null, 2),
+          });
+        }
+
+        if (request.method === "POST") {
+          let payload: unknown;
+          try {
+            payload = await request.json();
+          } catch {
+            return corsForAdmin({
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "invalid_json" }, null, 2),
+            });
+          }
+
+          const p = payload as {
+            bypass?: boolean;
+            limitPerHour?: number;
+            expiresAtMs?: number;
+            expiresInSeconds?: number;
+            expiresAt?: string;
+            label?: string;
+            owner?: string;
+          };
+
+          const bypass = typeof p.bypass === "boolean" ? p.bypass : false;
+          const limitPerHour = typeof p.limitPerHour === "number" && Number.isFinite(p.limitPerHour) ? p.limitPerHour : RATE_LIMIT;
+
+          const now = nowMsFromIndex();
+          let expiresAtMs: number;
+          if (typeof p.expiresAtMs === "number" && Number.isFinite(p.expiresAtMs)) {
+            expiresAtMs = Math.floor(p.expiresAtMs);
+          } else if (typeof p.expiresInSeconds === "number" && Number.isFinite(p.expiresInSeconds)) {
+            expiresAtMs = Math.floor(now + p.expiresInSeconds * 1000);
+          } else if (typeof p.expiresAt === "string") {
+            const d = new Date(p.expiresAt);
+            expiresAtMs = Number.isFinite(d.getTime()) ? d.getTime() : now + 30 * 24 * 60 * 60 * 1000;
+          } else {
+            // Default: 30 days.
+            expiresAtMs = now + 30 * 24 * 60 * 60 * 1000;
+          }
+
+          try {
+            const minted = await mintRateLimitToken(env, {
+              bypass,
+              limitPerHour,
+              expiresAtMs,
+              createdBy: "admin",
+              label: typeof p.label === "string" ? p.label : undefined,
+              owner: typeof p.owner === "string" ? p.owner : undefined,
+            });
+            return corsForAdmin({
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(
+                {
+                  token: minted.token,
+                  record: minted.record,
+                },
+                null,
+                2,
+              ),
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return corsForAdmin({
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "mint_failed", message: msg }, null, 2),
+            });
+          }
+        }
+      }
+
+      if (parts.length === 3 && parts[0] === "admin" && parts[1] === "tokens") {
+        const jti = parts[2];
+        if (request.method === "PATCH") {
+          let payload: unknown;
+          try {
+            payload = await request.json();
+          } catch {
+            return corsForAdmin({
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "invalid_json" }, null, 2),
+            });
+          }
+
+          const p = payload as {
+            bypass?: boolean;
+            limitPerHour?: number;
+            expiresAtMs?: number;
+            expiresInSeconds?: number;
+            expiresAt?: string;
+            label?: string;
+            owner?: string;
+          };
+
+          const now = nowMsFromIndex();
+          let expiresAtMs: number | undefined;
+          if (typeof p.expiresAtMs === "number" && Number.isFinite(p.expiresAtMs)) {
+            expiresAtMs = Math.floor(p.expiresAtMs);
+          } else if (typeof p.expiresInSeconds === "number" && Number.isFinite(p.expiresInSeconds)) {
+            expiresAtMs = Math.floor(now + p.expiresInSeconds * 1000);
+          } else if (typeof p.expiresAt === "string") {
+            const d = new Date(p.expiresAt);
+            expiresAtMs = Number.isFinite(d.getTime()) ? d.getTime() : undefined;
+          }
+
+          try {
+            const updated = await patchRateLimitToken(env, {
+              jti,
+              bypass: typeof p.bypass === "boolean" ? p.bypass : undefined,
+              limitPerHour: typeof p.limitPerHour === "number" ? p.limitPerHour : undefined,
+              expiresAtMs,
+              label: typeof p.label === "string" ? p.label : undefined,
+              owner: typeof p.owner === "string" ? p.owner : undefined,
+            });
+            return corsForAdmin({
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ record: updated }, null, 2),
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return corsForAdmin({
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "patch_failed", message: msg }, null, 2),
+            });
+          }
+        }
+      }
+
+      if (
+        parts.length === 4 &&
+        parts[0] === "admin" &&
+        parts[1] === "tokens" &&
+        parts[3] === "revoke"
+      ) {
+        const jti = parts[2];
+        if (request.method === "POST") {
+          let payload: unknown;
+          try {
+            payload = await request.json();
+          } catch {
+            payload = {};
+          }
+          const p = payload as { reason?: string };
+          try {
+            const updated = await revokeRateLimitToken(env, { jti, reason: typeof p.reason === "string" ? p.reason : undefined });
+            return corsForAdmin({
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ record: updated }, null, 2),
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return corsForAdmin({
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "revoke_failed", message: msg }, null, 2),
+            });
+          }
+        }
+      }
+
+      return corsForAdmin({
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "not_found" }, null, 2),
+      });
+    }
+
     let isToolCall = false;
     let toolCallName: string | undefined;
     let toolCallArguments: unknown = undefined;
@@ -237,16 +494,22 @@ const handler = {
       }
 
       if (isToolCall) {
-        const bypass = await hasRateLimitBypass(request, env.RATE_LIMIT_BYPASS_JWT_SECRET);
-        if (!bypass) {
-          const clientId = getClientId(request);
-          const rl = await checkRateLimit(env.RATE_LIMIT_KV, clientId, RATE_LIMIT);
+        const policy = await resolveRateLimitPolicyFromRequest(request, env);
+        const limitForRequest = policy?.bypass
+          ? null
+          : policy?.kind === "token"
+            ? policy.limitPerHour
+            : RATE_LIMIT;
+
+        if (!policy?.bypass) {
+          const clientId = policy?.kind === "token" ? policy.identityKey : getClientId(request);
+          const rl = await checkRateLimit(env.RATE_LIMIT_KV, clientId, limitForRequest ?? RATE_LIMIT);
 
           if (!rl.allowed) {
             return new Response(
               JSON.stringify({
                 error: "rate_limit_exceeded",
-                message: `Limit of ${RATE_LIMIT} tool calls per hour reached. Retry in ${rl.resetInSeconds} seconds.`,
+                message: `Limit of ${limitForRequest ?? RATE_LIMIT} tool calls per hour reached. Retry in ${rl.resetInSeconds} seconds.`,
                 retry_after_seconds: rl.resetInSeconds,
               }),
               {
@@ -254,7 +517,7 @@ const handler = {
                 headers: {
                   "Content-Type": "application/json",
                   "Retry-After": String(rl.resetInSeconds),
-                  "X-RateLimit-Limit": String(RATE_LIMIT),
+                  "X-RateLimit-Limit": String(limitForRequest ?? RATE_LIMIT),
                   "X-RateLimit-Remaining": "0",
                   "X-RateLimit-Reset": String(Math.floor(Date.now() / 1000) + rl.resetInSeconds),
                 },
@@ -347,6 +610,10 @@ const handler = {
     return response;
   },
 } satisfies ExportedHandler<Env>;
+
+function nowMsFromIndex(): number {
+  return Date.now();
+}
 
 // CF native Workers Logs + Traces (configured in wrangler.jsonc) handle
 // observability automatically — no code-level wrapper needed.

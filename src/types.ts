@@ -1,7 +1,9 @@
 export interface Env {
   CACHE_KV: KVNamespace;
   RATE_LIMIT_KV: KVNamespace;
+  TOKEN_REGISTRY_KV: KVNamespace;
   RATE_LIMIT_BYPASS_JWT_SECRET?: string;
+  ADMIN_PANEL_BEARER_SECRET?: string;
 
   // Cloudflare Agents / Workflows bindings.
   AI: Ai;

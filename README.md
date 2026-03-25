@@ -10,6 +10,12 @@ Jeśli nie chcesz przekazywać mi danych badawczych wystarczy odpalić serwer lo
 
 ---
 
+## Autoreklama: Token JWT i wsparcie dla OAuth
+
+Jeśli interesuje Ciebie większy rate limiting i w tym wsparcie do OAuth co da ci możliwość podpiąć MCP np. pod Perplexity to napisz na [artur@sendyka.dev](mailto:artur@sendyka.dev) z zapytaniem. Jeśli wykorzystanie będzie znaczne (no tak powyżej 100 requestów na dobę) czy komercyjne to niestety będzie to już odpłatne.
+
+---
+
 ## Dostępne bazy danych i narzędzia
 
 | Narzędzie            | Baza danych                                                  | Opis                                                            |

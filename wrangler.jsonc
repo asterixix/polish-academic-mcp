@@ -16,6 +16,11 @@
       "id": "c24afe24902a4d549dee309557d42cd1",
       "preview_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     },
+    {
+      "binding": "TOKEN_REGISTRY_KV",
+      "id": "af815b2723bd4e4abf45adfe5a1340ba",
+      "preview_id": "cccccccccccccccccccccccccccccccc",
+    },
   ],
   "durable_objects": {
     "bindings": [
@@ -49,6 +54,10 @@
     // Optional folder/prefix inside the WebDAV share.
     "NEXTCLOUD_WEBDAV_PATH_PREFIX": "mcp-eval",
     // Best-effort cap to keep JSON payload bounded.
-    "EVAL_WEBDAV_MAX_JSON_BYTES": "120000"
+    "EVAL_WEBDAV_MAX_JSON_BYTES": "120000",
+
+    // Admin panel auth (for mint/revoke/update of rate-limit bypass tokens).
+    // Panel uses `Authorization: Bearer <ADMIN_PANEL_BEARER_SECRET>`.
+    "ADMIN_PANEL_BEARER_SECRET": ""
   }
 }
