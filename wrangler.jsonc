@@ -8,16 +8,16 @@
     {
       "binding": "CACHE_KV",
       "id": "3a65887199da444388b42a88ee993376",
-      "preview_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      "preview_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     },
     {
       "binding": "RATE_LIMIT_KV",
       "id": "c24afe24902a4d549dee309557d42cd1",
-      "preview_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    }
+      "preview_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    },
   ],
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
-  }
+    "head_sampling_rate": 1,
+  },
 }

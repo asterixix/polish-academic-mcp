@@ -19,7 +19,7 @@ import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const API_BASE = "https://api.dane.gov.pl/1.4";
 const JSON_HEADERS = { Accept: "application/json" };
-const SEARCH_TTL = 3_600;  // 1 h — portal updates more frequently than academic repos
+const SEARCH_TTL = 3_600; // 1 h — portal updates more frequently than academic repos
 const DETAIL_TTL = 3_600;
 
 const API_FIELDS = ["title", "subject", "date", "publisher"];
@@ -42,19 +42,8 @@ export function registerDaneTools(server: McpServer, env: Env): void {
         .describe(
           'DCAT category name, e.g. "Science and technology", "Education", "Health", "Transport"',
         ),
-      per_page: z
-        .number()
-        .int()
-        .min(1)
-        .max(100)
-        .default(20)
-        .describe("Results per page"),
-      page: z
-        .number()
-        .int()
-        .min(1)
-        .default(1)
-        .describe("Page number — 1-based"),
+      per_page: z.number().int().min(1).max(100).default(20).describe("Results per page"),
+      page: z.number().int().min(1).default(1).describe("Page number — 1-based"),
       sort: z
         .enum(["relevance", "date", "-date", "title", "views_count"])
         .default("relevance")
@@ -122,10 +111,7 @@ export function registerDaneTools(server: McpServer, env: Env): void {
       "The dataset_id is the integer id field returned by dane_search.",
     ].join(" "),
     {
-      dataset_id: z
-        .number()
-        .int()
-        .describe("Numeric dataset ID from dane_search results"),
+      dataset_id: z.number().int().describe("Numeric dataset ID from dane_search results"),
     },
     async ({ dataset_id }) => {
       return withToolExecutionSpan(

@@ -17,6 +17,7 @@ import { registerUafmTools } from "./tools/uafm.js";
 import { registerIcmTools } from "./tools/icm.js";
 import { registerImgwTools } from "./tools/imgw.js";
 import { registerAghTools } from "./tools/agh.js";
+import { registerEvalTools } from "./tools/response-eval.js";
 
 export function createServer(env: Env): McpServer {
   const server = new McpServer({
@@ -34,6 +35,7 @@ export function createServer(env: Env): McpServer {
   registerIcmTools(server, env);
   registerImgwTools(server, env);
   registerAghTools(server, env);
+  registerEvalTools(server, env);
 
   return server;
 }

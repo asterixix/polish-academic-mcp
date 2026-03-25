@@ -42,11 +42,15 @@ export function registerImgwTools(server: McpServer, env: Env): void {
       station_id: z
         .string()
         .optional()
-        .describe("Numeric synoptic station ID, e.g. '12500'. Overrides station_name if both given."),
+        .describe(
+          "Numeric synoptic station ID, e.g. '12500'. Overrides station_name if both given.",
+        ),
       station_name: z
         .string()
         .optional()
-        .describe("Station name without Polish diacritics, e.g. 'jeleniagora', 'warszawa', 'krakow'."),
+        .describe(
+          "Station name without Polish diacritics, e.g. 'jeleniagora', 'warszawa', 'krakow'.",
+        ),
     },
     async ({ station_id, station_name }) => {
       return withToolExecutionSpan(
@@ -75,7 +79,12 @@ export function registerImgwTools(server: McpServer, env: Env): void {
             return { content: [{ type: "text", text: data }] };
           } catch (e) {
             return {
-              content: [{ type: "text", text: `Error fetching IMGW synoptic data: ${e instanceof Error ? e.message : String(e)}` }],
+              content: [
+                {
+                  type: "text",
+                  text: `Error fetching IMGW synoptic data: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
               isError: true,
             };
           }
@@ -113,7 +122,12 @@ export function registerImgwTools(server: McpServer, env: Env): void {
             return { content: [{ type: "text", text: data }] };
           } catch (e) {
             return {
-              content: [{ type: "text", text: `Error fetching IMGW hydrological data: ${e instanceof Error ? e.message : String(e)}` }],
+              content: [
+                {
+                  type: "text",
+                  text: `Error fetching IMGW hydrological data: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
               isError: true,
             };
           }
@@ -151,7 +165,12 @@ export function registerImgwTools(server: McpServer, env: Env): void {
             return { content: [{ type: "text", text: data }] };
           } catch (e) {
             return {
-              content: [{ type: "text", text: `Error fetching IMGW meteorological data: ${e instanceof Error ? e.message : String(e)}` }],
+              content: [
+                {
+                  type: "text",
+                  text: `Error fetching IMGW meteorological data: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
               isError: true,
             };
           }
@@ -208,7 +227,12 @@ export function registerImgwTools(server: McpServer, env: Env): void {
             return { content: [{ type: "text", text: text ?? "" }] };
           } catch (e) {
             return {
-              content: [{ type: "text", text: `Error fetching IMGW warnings: ${e instanceof Error ? e.message : String(e)}` }],
+              content: [
+                {
+                  type: "text",
+                  text: `Error fetching IMGW warnings: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
               isError: true,
             };
           }

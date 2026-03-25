@@ -27,6 +27,7 @@ Be respectful, constructive, and welcoming to all contributors.
 ## Getting Started
 
 1. Fork the repository and clone your fork:
+
    ```bash
    git clone https://github.com/<your-username>/polish-academic-mcp.git
    cd polish-academic-mcp
@@ -37,6 +38,7 @@ Be respectful, constructive, and welcoming to all contributors.
    for adding new tools. Following it ensures your PR is reviewed quickly.
 
 3. Run the dev server to verify your environment:
+
    ```bash
    npm run dev
    # → http://localhost:8788/mcp
@@ -52,6 +54,7 @@ Be respectful, constructive, and welcoming to all contributors.
 ## Reporting Bugs
 
 Use the **Bug Report** issue template. Please include:
+
 - The exact tool name and parameters you called
 - The error message or unexpected behaviour
 - Whether you can reproduce it locally (`npm run dev`) or only on the deployed Worker

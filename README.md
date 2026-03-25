@@ -8,29 +8,29 @@ Zdalny serwer MCP działający na Cloudflare Workers, który udostępnia dziesi�
 
 ## Dostępne bazy danych i narzędzia
 
-| Narzędzie | Baza danych | Opis |
-|---|---|---|
-| `bn_search_articles` | [Biblioteka Nauki](https://bibliotekanauki.pl) | Przeszukiwanie polskich artykułów naukowych (OAI-PMH) |
-| `bn_get_article` | Biblioteka Nauki | Pobranie szczegółów artykułu po ID |
-| `ruj_search` | [RUJ — Repozytorium UJ](https://ruj.uj.edu.pl) | Wyszukiwanie publikacji z Repozytorium Jagiellońskiego |
-| `ruj_get_item` | RUJ | Pobranie metadanych pozycji po UUID |
-| `agh_search` | [AGH — Repozytorium AGH](https://repo.agh.edu.pl) | Wyszukiwanie prac i publikacji AGH w Krakowie |
-| `agh_get_item` | AGH | Pobranie metadanych pozycji po UUID |
-| `amu_search` | [AMU — Repozytorium UAM](https://repozytorium.amu.edu.pl) | Wyszukiwanie publikacji Uniwersytetu Adama Mickiewicza |
-| `amu_get_item` | AMU | Pobranie metadanych pozycji po UUID |
-| `uafm_search` | [UAFM — Repozytorium UAFM](https://repozytorium.uafm.edu.pl) | Wyszukiwanie publikacji Akademii Nauk Stosowanych w Nowym Sączu |
-| `uafm_get_item` | UAFM | Pobranie metadanych pozycji po UUID |
-| `icm_search` | [ICM — Otwarte Dane Badawcze UW](https://open.icm.edu.pl) | Wyszukiwanie danych badawczych ICM UW |
-| `icm_get_item` | ICM | Pobranie metadanych pozycji po UUID |
-| `rodbuk_search` | [RODBuK](https://rodbuk.pl) | Wyszukiwanie zbiorów danych badawczych uczelni krakowskich |
-| `repod_search` | [RePOD](https://repod.icm.edu.pl) | Wyszukiwanie polskich otwartych danych badawczych |
-| `repod_get_dataset` | RePOD | Pobranie metadanych zbioru danych po DOI |
-| `dane_search` | [dane.gov.pl](https://dane.gov.pl) | Wyszukiwanie danych otwartych z portalu rządowego |
-| `dane_get_dataset` | dane.gov.pl | Pobranie szczegółów zbioru danych po ID |
-| `imgw_synop` | [IMGW-PIB](https://danepubliczne.imgw.pl) | Aktualne odczyty ze stacji synoptycznych (pogodowych) |
-| `imgw_hydro` | IMGW-PIB | Aktualne odczyty z wodowskazów i stacji hydrologicznych |
-| `imgw_meteo` | IMGW-PIB | Aktualne odczyty ze stacji meteorologicznych |
-| `imgw_warnings` | IMGW-PIB | Aktywne ostrzeżenia meteorologiczne i hydrologiczne |
+| Narzędzie            | Baza danych                                                  | Opis                                                            |
+| -------------------- | ------------------------------------------------------------ | --------------------------------------------------------------- |
+| `bn_search_articles` | [Biblioteka Nauki](https://bibliotekanauki.pl)               | Przeszukiwanie polskich artykułów naukowych (OAI-PMH)           |
+| `bn_get_article`     | Biblioteka Nauki                                             | Pobranie szczegółów artykułu po ID                              |
+| `ruj_search`         | [RUJ — Repozytorium UJ](https://ruj.uj.edu.pl)               | Wyszukiwanie publikacji z Repozytorium Jagiellońskiego          |
+| `ruj_get_item`       | RUJ                                                          | Pobranie metadanych pozycji po UUID                             |
+| `agh_search`         | [AGH — Repozytorium AGH](https://repo.agh.edu.pl)            | Wyszukiwanie prac i publikacji AGH w Krakowie                   |
+| `agh_get_item`       | AGH                                                          | Pobranie metadanych pozycji po UUID                             |
+| `amu_search`         | [AMU — Repozytorium UAM](https://repozytorium.amu.edu.pl)    | Wyszukiwanie publikacji Uniwersytetu Adama Mickiewicza          |
+| `amu_get_item`       | AMU                                                          | Pobranie metadanych pozycji po UUID                             |
+| `uafm_search`        | [UAFM — Repozytorium UAFM](https://repozytorium.uafm.edu.pl) | Wyszukiwanie publikacji Akademii Nauk Stosowanych w Nowym Sączu |
+| `uafm_get_item`      | UAFM                                                         | Pobranie metadanych pozycji po UUID                             |
+| `icm_search`         | [ICM — Otwarte Dane Badawcze UW](https://open.icm.edu.pl)    | Wyszukiwanie danych badawczych ICM UW                           |
+| `icm_get_item`       | ICM                                                          | Pobranie metadanych pozycji po UUID                             |
+| `rodbuk_search`      | [RODBuK](https://rodbuk.pl)                                  | Wyszukiwanie zbiorów danych badawczych uczelni krakowskich      |
+| `repod_search`       | [RePOD](https://repod.icm.edu.pl)                            | Wyszukiwanie polskich otwartych danych badawczych               |
+| `repod_get_dataset`  | RePOD                                                        | Pobranie metadanych zbioru danych po DOI                        |
+| `dane_search`        | [dane.gov.pl](https://dane.gov.pl)                           | Wyszukiwanie danych otwartych z portalu rządowego               |
+| `dane_get_dataset`   | dane.gov.pl                                                  | Pobranie szczegółów zbioru danych po ID                         |
+| `imgw_synop`         | [IMGW-PIB](https://danepubliczne.imgw.pl)                    | Aktualne odczyty ze stacji synoptycznych (pogodowych)           |
+| `imgw_hydro`         | IMGW-PIB                                                     | Aktualne odczyty z wodowskazów i stacji hydrologicznych         |
+| `imgw_meteo`         | IMGW-PIB                                                     | Aktualne odczyty ze stacji meteorologicznych                    |
+| `imgw_warnings`      | IMGW-PIB                                                     | Aktywne ostrzeżenia meteorologiczne i hydrologiczne             |
 
 Wszystkie bazy oferują **otwarty, nieuwierzytelniony dostęp do odczytu** — żadne klucze API nie są wymagane.
 
@@ -124,10 +124,10 @@ Repozytorium zawiera gotowy workflow CI/CD (`.github/workflows/deploy.yml`).
 
 Przejdź do: **GitHub → Settings → Secrets and variables → Actions** i dodaj:
 
-| Sekret | Wartość |
-|---|---|
-| `CLOUDFLARE_API_TOKEN` | Token API z [Cloudflare Dashboard](https://dash.cloudflare.com/profile/api-tokens) z uprawnieniami `Workers:Edit` i `Workers KV:Edit` |
-| `CLOUDFLARE_ACCOUNT_ID` | ID twojego konta Cloudflare (widoczny w prawym panelu dashboardu) |
+| Sekret                  | Wartość                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Token API z [Cloudflare Dashboard](https://dash.cloudflare.com/profile/api-tokens) z uprawnieniami `Workers:Edit` i `Workers KV:Edit` |
+| `CLOUDFLARE_ACCOUNT_ID` | ID twojego konta Cloudflare (widoczny w prawym panelu dashboardu)                                                                     |
 
 Po skonfigurowaniu sekretów każdy push na gałąź `main` automatycznie wdroży serwer.
 
@@ -144,16 +144,14 @@ Dodaj do pliku konfiguracyjnego Claude Desktop (`claude_desktop_config.json`):
   "mcpServers": {
     "polish-academic": {
       "command": "npx",
-      "args": [
-        "mcp-remote",
-        "https://polish-academic-mcp.kolpol25.workers.dev/mcp"
-      ]
+      "args": ["mcp-remote", "https://polish-academic-mcp.kolpol25.workers.dev/mcp"]
     }
   }
 }
 ```
 
 Lokalizacja pliku konfiguracyjnego:
+
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
@@ -374,20 +372,20 @@ Wyślij żądanie HTTP POST do `/mcp` z nagłówkiem `Accept: application/json, 
 
 Odpowiedzi z zewnętrznych API są buforowane w Cloudflare KV:
 
-| Baza danych | TTL cache |
-|---|---|
+| Baza danych                                               | TTL cache  |
+| --------------------------------------------------------- | ---------- |
 | Biblioteka Nauki, RUJ, AGH, AMU, UAFM, ICM, RODBuK, RePOD | 24 godziny |
-| dane.gov.pl, IMGW-PIB | 1 godzina |
+| dane.gov.pl, IMGW-PIB                                     | 1 godzina  |
 
 ### Limity ogólne
 
-| Zasób | Limit |
-|---|---|
-| Żądania | 100 000 / dobę |
-| Czas CPU | 10 ms / wywołanie |
-| Odczyty KV | 100 000 / dobę |
-| Zapisy KV | 1 000 / dobę |
-| Pamięć Worker | 128 MB |
+| Zasób         | Limit             |
+| ------------- | ----------------- |
+| Żądania       | 100 000 / dobę    |
+| Czas CPU      | 10 ms / wywołanie |
+| Odczyty KV    | 100 000 / dobę    |
+| Zapisy KV     | 1 000 / dobę      |
+| Pamięć Worker | 128 MB            |
 
 ---
 
@@ -414,6 +412,7 @@ Cloudflare Worker (index.ts)
 ```
 
 Kluczowe decyzje projektowe:
+
 - **Bezstanowy** — nowa instancja `McpServer` na każde żądanie (wymagane od SDK 1.26.0)
 - **Brak Durable Objects** — całość działa na darmowym planie
 - **Kompaktowe podsumowania JSON** dla repozytoriów DSpace 7 (RUJ, AGH, AMU, UAFM, ICM) zamiast surowego HAL+JSON — zmniejsza zużycie tokenów

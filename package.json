@@ -7,6 +7,10 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "types": "wrangler types",
+    "lint": "oxlint src/",
+    "lint:fix": "oxlint src/ --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "eval": "npx tsx scripts/eval/runner.ts",
     "eval:rq1": "npx tsx scripts/eval/runner.ts --rq RQ1",
     "eval:rq2": "npx tsx scripts/eval/runner.ts --rq RQ2",
@@ -23,10 +27,13 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@openrouter/ai-sdk-provider": "^0.4.0",
     "@cloudflare/workers-types": "^4.20250224.0",
+    "@openrouter/ai-sdk-provider": "^0.4.0",
     "@types/node": "^22.0.0",
+    "cross-env": "^7.0.3",
     "dotenv": "^16.0.0",
+    "oxlint": "^1.57.0",
+    "prettier": "^3.8.1",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "wrangler": "^4.0.0"
