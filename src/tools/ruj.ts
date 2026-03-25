@@ -71,11 +71,19 @@ function trunc(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + "…" : s;
 }
 
+function scrubPii(text: string): string {
+  return text
+    .replace(/\d{4}-\d{4}-\d{4}-\d{3}[\dX]/g, "[REDACTED_ORCID]")
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "[REDACTED_EMAIL]")
+    .replace(/\b\d{11}\b/g, "[REDACTED_PESEL]")
+    .replace(/\+?[\d\s\-()]{9,}/g, "[REDACTED_PHONE]");
+}
+
 /**
  * Collapse ruj_search HAL+JSON into a compact summary.
  * Returns the raw string unchanged if parsing fails.
  */
-function summarizeSearch(raw: string): string {
+function summarizeSearch(raw: string, minimizePii = false): string {
   try {
     const json = JSON.parse(raw);
     const sr = json?._embedded?.searchResult;
@@ -92,17 +100,17 @@ function summarizeSearch(raw: string): string {
         url: h ? `https://ruj.uj.edu.pl/xmlui/handle/${h}` : undefined,
         title: dcFirst(m, "dc.title") || undefined,
         titleAlt: dcFirst(m, "dc.title.alternative") || undefined,
-        authors: dcAll(m, "dc.contributor.author"),
+        authors: minimizePii ? [] : dcAll(m, "dc.contributor.author"),
         type: dcFirst(m, "dc.type") || undefined,
         language: dcFirst(m, "dc.language") || undefined,
         dateIssued: dcFirst(m, "dc.date.issued") || undefined,
         dateSubmitted: dcFirst(m, "dc.date.submitted") || undefined,
-        affiliation: dcFirst(m, "dc.affiliation") || undefined,
+        affiliation: minimizePii ? undefined : dcFirst(m, "dc.affiliation") || undefined,
         subject: dcFirst(m, "dc.subject.en") || dcFirst(m, "dc.subject.pl") || undefined,
         abstract: abs ? trunc(abs, 500) : undefined,
       };
     });
-    return JSON.stringify(
+    const out = JSON.stringify(
       {
         totalElements: p.totalElements,
         page: { number: p.number, size: p.size, totalPages: p.totalPages },
@@ -111,8 +119,9 @@ function summarizeSearch(raw: string): string {
       null,
       2,
     );
+    return minimizePii ? scrubPii(out) : out;
   } catch {
-    return raw;
+    return minimizePii ? scrubPii(raw) : raw;
   }
 }
 
@@ -267,6 +276,13 @@ export function registerRujTools(server: McpServer, env: Env): void {
         .describe(
           "Submission date filter (default op: equals). " + "Maps to DSpace field dateSubmitted.",
         ),
+      minimize_pii: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "When true, redacts personal identifiers and removes author/affiliation fields for privacy-sensitive use cases.",
+        ),
     },
     async ({
       query,
@@ -287,6 +303,7 @@ export function registerRujTools(server: McpServer, env: Env): void {
       date_issued,
       date_accessioned,
       date_submitted,
+      minimize_pii,
     }) => {
       return withToolExecutionSpan(
         {
@@ -354,7 +371,7 @@ export function registerRujTools(server: McpServer, env: Env): void {
               { headers: JSON_HEADERS },
               CACHE_TTL,
             );
-            return { content: [{ type: "text", text: summarizeSearch(data) }] };
+            return { content: [{ type: "text", text: summarizeSearch(data, Boolean(minimize_pii)) }] };
           } catch (e) {
             return {
               content: [

@@ -17,7 +17,7 @@
     "eval:rq3": "npx tsx scripts/eval/runner.ts --rq RQ3",
     "eval:rq4": "npx tsx scripts/eval/runner.ts --rq RQ4",
     "eval:local": "cross-env MCP_SERVER_URL=http://localhost:8787/mcp npx tsx scripts/eval/runner.ts",
-    "eval:remote": "npx tsx scripts/eval/runner.ts --url https://polish-academic-mcp.workers.dev/mcp"
+    "eval:remote": "npx tsx scripts/eval/runner.ts --url https://polish-academic-mcp.kolpol25.workers.dev/mcp"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

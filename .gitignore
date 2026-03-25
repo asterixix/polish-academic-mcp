@@ -3,3 +3,5 @@ node_modules/
 dist/
 .dev.vars
 *.tsbuildinfo
+/eval-results
+/logs

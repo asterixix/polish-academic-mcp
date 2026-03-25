@@ -4,6 +4,10 @@ Zdalny serwer MCP działający na Cloudflare Workers, który udostępnia dziesi�
 
 > **MCP** (Model Context Protocol) to otwarty standard pozwalający modelom językowym (Claude, GPT, Bielik.AI itp.) na wywoływanie zewnętrznych narzędzi i API w ustandaryzowany sposób.
 
+**WAŻNE!** Serwer zdalny (link do cloudflare) zbiera domyślnie anonimowe dane ewaluacyjne z każdego zapytania narzędzia MCP jako dane do dalszych badań i ewaluacji, czyli jak używasz tego narzędzia to tak jakbyś wypełniał dla mnie ankietę do badań <3 Dzięki za zrozumienie! 
+
+Jeśli nie chcesz przekazywać mi danych badawczych wystarczy odpalić serwer lokalnie ;)
+
 ---
 
 ## Dostępne bazy danych i narzędzia
@@ -113,23 +117,6 @@ Otwórz `wrangler.jsonc` i zastąp wartości placeholder prawdziwymi ID:
 npm run deploy
 # → Dostępny pod adresem: https://polish-academic-mcp.<twoje-konto>.workers.dev/mcp
 ```
-
----
-
-## Automatyczne wdrożenie przez GitHub Actions
-
-Repozytorium zawiera gotowy workflow CI/CD (`.github/workflows/deploy.yml`).
-
-### Konfiguracja sekretów w GitHub
-
-Przejdź do: **GitHub → Settings → Secrets and variables → Actions** i dodaj:
-
-| Sekret                  | Wartość                                                                                                                               |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`  | Token API z [Cloudflare Dashboard](https://dash.cloudflare.com/profile/api-tokens) z uprawnieniami `Workers:Edit` i `Workers KV:Edit` |
-| `CLOUDFLARE_ACCOUNT_ID` | ID twojego konta Cloudflare (widoczny w prawym panelu dashboardu)                                                                     |
-
-Po skonfigurowaniu sekretów każdy push na gałąź `main` automatycznie wdroży serwer.
 
 ---
 
@@ -377,6 +364,25 @@ Odpowiedzi z zewnętrznych API są buforowane w Cloudflare KV:
 | Biblioteka Nauki, RUJ, AGH, AMU, UAFM, ICM, RODBuK, RePOD | 24 godziny |
 | dane.gov.pl, IMGW-PIB                                     | 1 godzina  |
 
+### Eksport danych ewaluacyjnych do Nextcloud (WebDAV)
+
+Jeśli ustawisz `EVAL_WEBDAV_ENABLED=true` (w `wrangler.jsonc`/env), serwer zapisuje dane
+ewaluacyjne dla każdego wywołania MCP `tools/call` do Nextcloud przez WebDAV.
+
+Wymagane zmienne:
+- `NEXTCLOUD_WEBDAV_BASE_URL`
+- `NEXTCLOUD_WEBDAV_USERNAME`
+- `NEXTCLOUD_WEBDAV_PASSWORD`
+
+Opcjonalne:
+- `NEXTCLOUD_WEBDAV_PATH_PREFIX` (domyślnie `mcp-eval`)
+- `EVAL_WEBDAV_MAX_JSON_BYTES` (domyślnie `120000`)
+
+Dla każdego `tools/call` robione jest `PUT` pliku JSON do WebDAV:
+`NEXTCLOUD_WEBDAV_PATH_PREFIX/<tool>-<timestamp>-<uuid>.json`.
+Plik zawiera surową odpowiedź (w tym `_span`) oraz pole `rqEval` — policzone metryki
+RQ1–RQ4, o ile wywołanie pasuje do przypadku testowego z `scripts/eval/test-cases.ts`.
+
 ### Limity ogólne
 
 | Zasób         | Limit             |
@@ -414,12 +420,89 @@ Cloudflare Worker (index.ts)
 Kluczowe decyzje projektowe:
 
 - **Bezstanowy** — nowa instancja `McpServer` na każde żądanie (wymagane od SDK 1.26.0)
-- **Brak Durable Objects** — całość działa na darmowym planie
+- **Durable Objects tylko dla orkiestracji pipeline** — MCP tools pozostają stateless
 - **Kompaktowe podsumowania JSON** dla repozytoriów DSpace 7 (RUJ, AGH, AMU, UAFM, ICM) zamiast surowego HAL+JSON — zmniejsza zużycie tokenów
-- **Surowe odpowiedzi XML/JSON** dla pozostałych API (Biblioteka Nauki, RODBuK, RePOD, dane.gov.pl, IMGW) — oszczędza czas CPU
+- **Surowe odpowiedzi XML/JSON** dla API bez warstwy normalizacji (Biblioteka Nauki, dane.gov.pl, IMGW) — oszczędza czas CPU
+- **Normalizacja wyników Dataverse** dla `rodbuk_search` i `repod_search` do stabilnych pól (`title`, `author`, `date`, `doi`) przy zachowaniu danych źródłowych
 - **Fire-and-forget zapisy do KV** — nie blokują odpowiedzi
 
 ---
+
+## Aktualizacje implementacji (RQ3/RQ4)
+
+W ramach hardeningu ewaluacji dodano:
+
+- **Tryb minimalizacji danych osobowych** (`minimize_pii`) w:
+  - `ruj_search` — ukrywa pola autorów/afiliacji i redaguje typowe wzorce PII,
+  - `bn_search_articles` — redaguje wzorce PII w odpowiedzi XML (m.in. ORCID, e-mail, PESEL-like, phone-like).
+- **Normalizację odpowiedzi Dataverse** w:
+  - `rodbuk_search`,
+  - `repod_search`.
+- **Fallback odpornościowy** w `bn_search_articles`:
+  - gdy zapytanie z restrykcyjnym `set` zwróci `noRecordsMatch`, narzędzie ponawia zapytanie raz bez `set` (z zachowaniem `from_date`/`until_date` i `metadata_format`).
+
+Domyślne zachowanie narzędzi pozostaje bezpieczne wstecznie (`minimize_pii=false`), więc istniejące integracje nie wymagają zmian.
+
+---
+
+## Pipeline wieloagentowy (narzędzia `pipeline_*`)
+
+Repo udostępnia narzędzia MCP zaprojektowane jako klocki do budowy systemu wieloagentowego (LLM jako orchestrator/agent, a Worker jako backend do danych i walidacji).
+
+Każde narzędzie `pipeline_*` zwraca JSON jako `content[0].text` i jest nastawione na deterministyczne przygotowanie kolejnych kroków:
+
+- `pipeline_discover_publications`: generuje listę planowanych wywołań bazowych narzędzi wyszukujących (np. `ruj_search`, `agh_search`), które orchestrator wykona w następnym kroku.
+- `pipeline_extract_metadata`: na podstawie wyników wyszukiwania (kompaktowe JSON summary / lekkie parsowanie XML) przygotowuje listę `*_get_item` / `bn_get_article` do pobrania pełnych rekordów.
+- `pipeline_classify_document`: przygotowuje instrukcje i wymagany format wyniku klasyfikacji (np. UKD) do wykonania przez zewnętrzny agent.
+- `pipeline_quality_check`: uruchamia walidację jakości (`evalResponse`) dla wygenerowanej odpowiedzi i oznacza `requires_revision`.
+- `pipeline_prepare_author_outreach`: przygotowuje plan komunikacji autorów z bramką bezpieczeństwa — draft jest zwracany tylko gdy `approval_decision="approved"` oraz (opcjonalnie) `open_access=true`.
+
+### Sterowanie pipeline przez endpointy (HITL + trwałość)
+Pipeline katalogowania jest uruchamiany jako durable orchestration:
+
+1. `POST /pipeline/start`
+   - startuje workflow `CATALOGUING_PIPELINE` i tworzy instancję durable `PipelineAgent`
+   - przykładowy payload:
+     - `user_id: string`
+     - `institution_query: string`
+     - `topics?: string[]`
+     - `language?: "pl" | "en" | "mixed"`
+     - `bn_set?: string`
+     - `max_items_per_job?: number` (domyślnie `5`)
+     - `require_open_access?: boolean` (domyślnie `true`)
+     - `job_id?: string` (opcjonalnie)
+   - odpowiedź: `{ "instanceId": "..." }`
+
+2. `POST /pipeline/approval`
+   - zamyka krok `waitForApproval` w workflow i odblokowuje generowanie draftów po `decision="approved"`
+   - wymaga autoryzacji dla bypass rate limit:
+     - nagłówek `Authorization: Bearer <jwt>` z claim `rl_bypass=true` lub scope zawierającym `ratelimit:bypass`
+     - alternatywnie token równy `RATE_LIMIT_BYPASS_JWT_SECRET` (tryb pre-shared)
+   - przykładowy payload:
+     - `instanceId: string`
+     - `approvedBy: string`
+     - `decision: "approved" | "rejected"`
+     - `reason?: string`
+
+`GET /pipeline/status?instanceId=...` zwraca snapshot statusu instancji workflow (`wait-for-approval`, `running`, `complete`, `error` itp.) do UI/debug.
+
+Uwaga: w aktualnym kodzie nie ma endpointu do pobrania finalnych `outreachDrafts` przez HTTP.
+
+### Wymagane exporty w entrypoint
+Żeby Wrangler poprawnie mapował bindings z `wrangler.jsonc`, moduł entrypoint (`src/index.ts`) eksportuje:
+- `PipelineAgent`
+- `CataloguingPipelineWorkflow`
+
+## Ewaluacja wieloagentowa
+
+Skrypt ewaluacyjny (`scripts/eval/runner.ts`) obsługuje przypadki wielokrokowe przez opcjonalne pole `scenario` w `scripts/eval/test-cases.ts`.
+
+- `scenario.steps` to lista narzędzi MCP wykonywanych sekwencyjnie.
+- `scenario.scoreFromStepId` wskazuje, z którego kroku bierzemy odpowiedź do metryk RQ.
+
+Dla nowych narzędzi pipeline dodano testy w `scripts/eval/test-cases.ts` (m.in. `RQ4-013..RQ4-015` oraz `MA-001`).
+
+Uruchomienie: `npm run eval:rq4` (zawiera testy outbound gate oraz scenariusz `MA-001`).
 
 ## Rozwój i wkład
 

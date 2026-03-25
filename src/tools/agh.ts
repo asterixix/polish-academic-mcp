@@ -264,24 +264,29 @@ export function registerAghTools(server: McpServer, env: Env): void {
         async (span) => {
           span.setAttribute("mcp.source", "agh");
           try {
-            const searchParams = new URLSearchParams({
-              query,
-              page: String(page),
-              size: String(size),
-              sort,
-            });
+            const buildParams = (useAllFilters: boolean): URLSearchParams => {
+              const params = new URLSearchParams({
+                query,
+                page: String(page),
+                size: String(size),
+                sort,
+              });
+              if (!useAllFilters) return params;
 
-            if (author) addFilter(searchParams, "author", author, "contains");
-            if (subject) addFilter(searchParams, "subject", subject, "equals");
-            if (language) addFilter(searchParams, "language", language, "equals");
-            if (itemtype) addFilter(searchParams, "itemtype", itemtype, "equals");
-            if (date_issued) addFilter(searchParams, "dateIssued", date_issued, "equals");
-            if (date_accessioned)
-              addFilter(searchParams, "dateAccessioned", date_accessioned, "equals");
-            if (has_full_text !== undefined) {
-              searchParams.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
-            }
+              if (author) addFilter(params, "author", author, "contains");
+              if (subject) addFilter(params, "subject", subject, "equals");
+              if (language) addFilter(params, "language", language, "equals");
+              if (itemtype) addFilter(params, "itemtype", itemtype, "equals");
+              if (date_issued) addFilter(params, "dateIssued", date_issued, "equals");
+              if (date_accessioned)
+                addFilter(params, "dateAccessioned", date_accessioned, "equals");
+              if (has_full_text !== undefined) {
+                params.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
+              }
+              return params;
+            };
 
+            const searchParams = buildParams(true);
             const url = `${API_BASE}/discover/search/objects?${searchParams}`;
             const cacheKey = makeCacheKey("agh_search", {
               query,
@@ -296,14 +301,40 @@ export function registerAghTools(server: McpServer, env: Env): void {
               date_accessioned,
               has_full_text,
             });
-            const data = await cachedFetch(
-              env.CACHE_KV,
-              cacheKey,
-              url,
-              { headers: JSON_HEADERS },
-              CACHE_TTL,
-            );
-            return { content: [{ type: "text", text: summarizeSearch(data) }] };
+            try {
+              const data = await cachedFetch(
+                env.CACHE_KV,
+                cacheKey,
+                url,
+                { headers: JSON_HEADERS },
+                CACHE_TTL,
+              );
+              return { content: [{ type: "text", text: summarizeSearch(data) }] };
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              // Robustness fallback: some AGH discovery filter combos can return 404.
+              // Retry with only core query/page/size/sort to keep the tool usable.
+              if (/HTTP 404/i.test(msg) || /HTTP 400/i.test(msg)) {
+                span.setAttribute("mcp.fallback", "agh_search_core_query_only");
+                const fallbackParams = buildParams(false);
+                const fallbackUrl = `${API_BASE}/discover/search/objects?${fallbackParams}`;
+                const fallbackKey = makeCacheKey("agh_search_fallback", {
+                  query,
+                  page,
+                  size,
+                  sort,
+                });
+                const data = await cachedFetch(
+                  env.CACHE_KV,
+                  fallbackKey,
+                  fallbackUrl,
+                  { headers: JSON_HEADERS },
+                  CACHE_TTL,
+                );
+                return { content: [{ type: "text", text: summarizeSearch(data) }] };
+              }
+              throw err;
+            }
           } catch (e) {
             return {
               content: [

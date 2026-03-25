@@ -59,7 +59,7 @@ All databases offer **unauthenticated read access** — no external API keys.
 
 ```
 src/
-├── index.ts           Worker entry: rate-limit gate → MCP dispatch
+├── index.ts           Worker entry: rate-limit gate → MCP dispatch + eval export
 ├── types.ts           Env interface (CACHE_KV, RATE_LIMIT_KV, HONEYCOMB_API_KEY)
 ├── cache.ts           cachedFetch(kv, key, url, options?, ttl?) + makeCacheKey()
 ├── ratelimit.ts       sliding-window KV rate limiter: checkRateLimit() + getClientId()
@@ -69,8 +69,10 @@ src/
 │                        detectLanguage, detectFieldsInText, annotateCurrentSpan
 ├── eval.ts            Post-LLM evaluation: evalResponse(sourceRecord, generated)
 │                        → hallucination markers, classification drift, language flags
+├── eval-webdav.ts     Upload MCP tool-call eval records to Nextcloud WebDAV
+├── eval-rq-scorer.ts  Compute RQ1–RQ4 scores/reports from tool-call spans
 ├── server.ts          createServer(env) — registers all tools, returns McpServer
-└── tools/
+├── tools/
     ├── biblioteka-nauki.ts  → bn_search_articles, bn_get_article
     ├── ruj.ts               → ruj_search, ruj_get_item
     ├── rodbuk.ts            → rodbuk_search
@@ -81,7 +83,19 @@ src/
     ├── icm.ts               → icm_search, icm_get_item
     ├── imgw.ts              → imgw_synop, imgw_hydro, imgw_meteo, imgw_warnings
     ├── agh.ts               → agh_search, agh_get_item
-    └── response-eval.ts     → eval_response  (RQ2 telemetry)
+    ├── response-eval.ts     → eval_response  (RQ2 telemetry)
+    ├── pipeline-discover-publications.ts  → pipeline_discover_publications
+    ├── pipeline-extract-metadata.ts       → pipeline_extract_metadata
+    ├── pipeline-classify-document.ts     → pipeline_classify_document
+    ├── pipeline-quality-check.ts         → pipeline_quality_check
+    └── pipeline-prepare-author-outreach.ts → pipeline_prepare_author_outreach
+
+├── pipeline/
+│   └── job-model.ts       → job/run id + kontekst pipeline
+├── agents/
+│   └── pipeline-agent.ts  → Durable Object: orchestrator stanu + HITL
+└── workflows/
+    └── cataloguing-pipeline-workflow.ts → AgentWorkflow: kroki pipeline
 
 wrangler.jsonc         Cloudflare Workers config (KV bindings + Honeycomb observability)
 tsconfig.json          TypeScript config (strict, module: ES2022, target: ES2022)
@@ -145,8 +159,45 @@ the version bundled inside the `agents` package. npm deduplicates to one copy an
 eliminates the private-field type conflict. Do **not** bump this without also checking
 the `agents` package's bundled SDK version.
 
+### 5. RQ3/RQ4 hardening: normalized fields + optional PII minimization
+
+Recent tool updates add two important behaviors used by the evaluation harness:
+
+- **Normalized Dataverse search output** in `rodbuk_search` and `repod_search`.
+  Both tools now return a normalized item shape containing stable keys used by
+  evaluation (`title`, `author`, `date`, `doi`) while preserving source fields
+  in `source_raw`.
+- **Optional privacy mode** for sensitive use cases:
+  - `ruj_search` supports `minimize_pii: boolean` (default `false`) and removes
+    direct personal fields (`authors`, `affiliation`) plus redacts common PII patterns.
+  - `bn_search_articles` supports `minimize_pii: boolean` (default `false`) and
+    redacts common PII patterns in XML (`ORCID`, email, PESEL-like, phone-like).
+- **Robust retrieval fallback** in `bn_search_articles`: when a restrictive OAI set
+  returns `noRecordsMatch`, the tool retries once without `set` (same date range and
+  metadata format) to improve practical recall in evaluation scenarios.
+
 ---
 
+## Eval export to Nextcloud WebDAV
+
+When `EVAL_WEBDAV_ENABLED=true`, the Worker uploads one JSON file for every
+incoming MCP JSON-RPC request with `method: "tools/call"`.
+
+Uploaded record includes:
+- `request.toolName` and `request.arguments`
+- raw MCP response body (truncated to `EVAL_WEBDAV_MAX_JSON_BYTES`)
+- `_span` span attributes (attached by `src/tracing.ts` wrappers)
+- `rqEval` — computed RQ1–RQ4 scores/report when the tool call arguments match
+  an eval test case from `scripts/eval/test-cases.ts`
+
+Configuration is done via `wrangler.jsonc` vars:
+`NEXTCLOUD_WEBDAV_BASE_URL`, `NEXTCLOUD_WEBDAV_USERNAME`, `NEXTCLOUD_WEBDAV_PASSWORD`,
+`NEXTCLOUD_WEBDAV_PATH_PREFIX`, and `EVAL_WEBDAV_MAX_JSON_BYTES`.
+
+RQ metrics are computed server-side using the same metric functions as the
+local evaluator (`scripts/eval/metrics.ts`).
+
+---
 ## How to add a new database tool
 
 ### Step 1 — Create `src/tools/my-database.ts`
@@ -248,6 +299,52 @@ async (params) => {
 Returning `isError: true` inside the result (not throwing) allows the LLM to see and
 potentially handle the error message. Throwing from a tool handler causes a JSON-RPC
 protocol error that is opaque to the LLM.
+
+---
+
+## Pipeline orchestrator (Durable) — start i approval
+
+Oprócz „czystych” tooli MCP, projekt udostępnia też durable orchestration dla pipeline’u katalogowania.
+Sterowanie odbywa się przez endpointy HTTP (control plane), a właściwe kroki wykonuje `AgentWorkflow`:
+
+### 1) Start workflow
+`POST /pipeline/start`
+
+Body (JSON):
+- `user_id: string`
+- `institution_query: string`
+- `topics?: string[]`
+- `language?: "pl" | "en" | "mixed"`
+- `bn_set?: string`
+- `max_items_per_job?: number` (domyślnie `5`)
+- `require_open_access?: boolean` (domyślnie `true`)
+- `job_id?: string` (opcjonalnie)
+
+Response:
+- `{ "instanceId": "..." }`
+
+### 2) Human-in-the-loop approval
+`POST /pipeline/approval`
+
+Body (JSON):
+- `instanceId: string`
+- `approvedBy: string`
+- `decision: "approved" | "rejected"`
+- `reason?: string`
+
+Endpoint wymaga autoryzacji do bypass rate limit (patrz `hasRateLimitBypass()`):
+- `Authorization: Bearer <jwt>` z claim `rl_bypass=true` lub `scope` zawierającym `ratelimit:bypass`
+- lub token, który jest równy `RATE_LIMIT_BYPASS_JWT_SECRET` (tryb pre-shared)
+
+### Ważne ograniczenie
+Jest `GET /pipeline/status?instanceId=...` zwracający snapshot statusu instancji workflow (dla UI/debug).
+Jest też `GET /pipeline/outreach?instanceId=...` zwracający finalne `outreachDrafts` po `step.reportComplete()`.
+Do diagnozy i weryfikacji używa się logów/telemetrii oraz narzędzia ewaluacyjnego (`scripts/eval/runner.ts`).
+
+### Deploy wiring (wymagane exporty)
+Żeby bindings z `wrangler.jsonc` działały poprawnie, moduł `src/index.ts` musi eksportować:
+- `export { PipelineAgent } from "./agents/pipeline-agent.js";`
+- `export { CataloguingPipelineWorkflow } from "./workflows/cataloguing-pipeline-workflow.js";`
 
 ---
 

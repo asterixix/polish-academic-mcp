@@ -4,6 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-03-10",
   "compatibility_flags": ["nodejs_compat"],
+  "ai": { "binding": "AI", "remote": true },
   "kv_namespaces": [
     {
       "binding": "CACHE_KV",
@@ -16,8 +17,38 @@
       "preview_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     },
   ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "PipelineAgent", "class_name": "PipelineAgent" }
+    ]
+  },
+  "workflows": [
+    {
+      "name": "CATALOGUING_PIPELINE",
+      "binding": "CATALOGUING_PIPELINE",
+      "class_name": "CataloguingPipelineWorkflow"
+    }
+  ],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PipelineAgent"]
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
   },
+  "vars": {
+    // Upload MCP tool-call evaluation data to Nextcloud via WebDAV.
+    // Set EVAL_WEBDAV_ENABLED=true and provide WebDAV credentials.
+    "EVAL_WEBDAV_ENABLED": "false",
+    "NEXTCLOUD_WEBDAV_BASE_URL": "https://nx85370.your-storageshare.de/f/1028079",
+    "NEXTCLOUD_WEBDAV_USERNAME": "",
+    "NEXTCLOUD_WEBDAV_PASSWORD": "",
+    // Optional folder/prefix inside the WebDAV share.
+    "NEXTCLOUD_WEBDAV_PATH_PREFIX": "mcp-eval",
+    // Best-effort cap to keep JSON payload bounded.
+    "EVAL_WEBDAV_MAX_JSON_BYTES": "120000"
+  }
 }

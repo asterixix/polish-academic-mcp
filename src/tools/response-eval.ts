@@ -22,6 +22,7 @@ import {
   estimateTokens,
   detectLanguage,
 } from "../tracing.js";
+import { withToolExecutionSpan } from "../tracing.js";
 
 export function registerEvalTools(server: McpServer, _env: Env): void {
   server.tool(
@@ -44,63 +45,79 @@ export function registerEvalTools(server: McpServer, _env: Env): void {
         .describe("Full LLM-generated response text to evaluate against the source record"),
     },
     async ({ source_record, generated_text }) => {
-      // Parse and normalise source_record to Record<string, string>
-      let record: Record<string, string>;
-      try {
-        const parsed = JSON.parse(source_record) as unknown;
-        if (
-          typeof parsed !== "object" ||
-          parsed === null ||
-          Array.isArray(parsed)
-        ) {
-          return {
-            content: [{ type: "text", text: "Error: source_record must be a JSON object" }],
-            isError: true,
-          };
-        }
-        record = Object.fromEntries(
-          Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [
-            k,
-            String(v),
-          ]),
-        );
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error parsing source_record: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+      return withToolExecutionSpan(
+        {
+          toolName: "eval_response",
+          params: {},
+          fieldsRequested: [],
+          fieldsReturned: [],
+          tokensByField: {},
+          queryTokens: estimateTokens(generated_text),
+        },
+        async () => {
+          // Parse and normalise source_record to Record<string, string>
+          let record: Record<string, string>;
+          try {
+            const parsed = JSON.parse(source_record) as unknown;
+            if (
+              typeof parsed !== "object" ||
+              parsed === null ||
+              Array.isArray(parsed)
+            ) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: "Error: source_record must be a JSON object",
+                  },
+                ],
+                isError: true,
+              };
+            }
+            record = Object.fromEntries(
+              Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+            );
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error parsing source_record: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
 
-      const evalResult = evalResponse(record, generated_text);
+          const evalResult = evalResponse(record, generated_text);
 
-      try {
-        return await withResponseGenerationSpan(
-          {
-            ...evalResult,
-            tokensGenerated: estimateTokens(generated_text),
-            responseBytes: generated_text.length,
-            languageDetectedResponse: detectLanguage(generated_text),
-          },
-          async () => ({
-            content: [{ type: "text", text: JSON.stringify(evalResult, null, 2) }],
-          }),
-        );
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error emitting eval span: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+          try {
+            return await withResponseGenerationSpan(
+              {
+                ...evalResult,
+                tokensGenerated: estimateTokens(generated_text),
+                responseBytes: generated_text.length,
+                languageDetectedResponse: detectLanguage(generated_text),
+              },
+              async () => ({
+                content: [
+                  { type: "text", text: JSON.stringify(evalResult, null, 2) },
+                ],
+              }),
+            );
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error emitting eval span: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
     },
   );
 }

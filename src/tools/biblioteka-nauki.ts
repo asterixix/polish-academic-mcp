@@ -30,6 +30,18 @@ const API_FIELDS = [
   "publisher",
 ];
 
+function hasNoRecordsMatch(xml: string): boolean {
+  return /<error[^>]*code=["']noRecordsMatch["'][^>]*>/i.test(xml);
+}
+
+function scrubPiiXml(xml: string): string {
+  return xml
+    .replace(/\d{4}-\d{4}-\d{4}-\d{3}[\dX]/g, "[REDACTED_ORCID]")
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "[REDACTED_EMAIL]")
+    .replace(/\b\d{11}\b/g, "[REDACTED_PESEL]")
+    .replace(/\+?[\d\s\-()]{9,}/g, "[REDACTED_PHONE]");
+}
+
 export function registerBibliotekaTools(server: McpServer, env: Env): void {
   // ── bn_search_articles ────────────────────────────────────────────────────
   server.tool(
@@ -55,12 +67,19 @@ export function registerBibliotekaTools(server: McpServer, env: Env): void {
         .string()
         .optional()
         .describe("Token returned in a previous response for fetching the next page."),
+      minimize_pii: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "When true, redacts ORCID/email/phone/PESEL-like patterns for privacy-sensitive use cases.",
+        ),
     },
-    async ({ from_date, until_date, set, metadata_format, resumption_token }) => {
+    async ({ from_date, until_date, set, metadata_format, resumption_token, minimize_pii }) => {
       return withToolExecutionSpan(
         {
           toolName: "bn_search_articles",
-          params: { from_date, until_date, set, metadata_format, resumption_token } as Record<
+          params: { from_date, until_date, set, metadata_format, resumption_token, minimize_pii } as Record<
             string,
             unknown
           >,
@@ -89,8 +108,28 @@ export function registerBibliotekaTools(server: McpServer, env: Env): void {
             }
 
             const cacheKey = makeCacheKey("bn_search", { url });
-            const xml = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-            return { content: [{ type: "text", text: xml }] };
+            let xml = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
+
+            // Robustness fallback: if a restrictive set yields no records, retry once without set.
+            if (!resumption_token && set && hasNoRecordsMatch(xml)) {
+              const fallbackParams = new URLSearchParams({
+                verb: "ListRecords",
+                metadataPrefix: metadata_format,
+              });
+              if (from_date) fallbackParams.set("from", from_date);
+              if (until_date) fallbackParams.set("until", until_date);
+              const fallbackUrl = `${OAI_BASE}?${fallbackParams}`;
+              const fallbackKey = makeCacheKey("bn_search_fallback", {
+                from_date,
+                until_date,
+                metadata_format,
+              });
+              xml = await cachedFetch(env.CACHE_KV, fallbackKey, fallbackUrl, {}, CACHE_TTL);
+            }
+
+            return {
+              content: [{ type: "text", text: minimize_pii ? scrubPiiXml(xml) : xml }],
+            };
           } catch (e) {
             return {
               content: [

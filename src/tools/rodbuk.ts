@@ -27,6 +27,52 @@ const API_FIELDS = [
   "publisher",
 ];
 
+type DataverseSearchItem = {
+  name?: string;
+  authors?: string[];
+  description?: string;
+  published_at?: string;
+  global_id?: string;
+  url?: string;
+  type?: string;
+};
+
+function normalizeRodbukSearch(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as {
+      status?: string;
+      data?: {
+        q?: string;
+        total_count?: number;
+        start?: number;
+        items?: DataverseSearchItem[];
+      };
+    };
+    const items = (parsed.data?.items ?? []).map((it) => ({
+      title: it.name,
+      author: it.authors?.join(", "),
+      date: it.published_at,
+      doi: it.global_id?.startsWith("doi:") ? it.global_id.slice(4) : it.global_id,
+      url: it.url,
+      type: it.type,
+      abstract: it.description,
+      source_raw: it,
+    }));
+    return JSON.stringify(
+      {
+        query: parsed.data?.q,
+        total_count: parsed.data?.total_count,
+        start: parsed.data?.start,
+        items,
+      },
+      null,
+      2,
+    );
+  } catch {
+    return raw;
+  }
+}
+
 export function registerRodbukTools(server: McpServer, env: Env): void {
   server.tool(
     "rodbuk_search",
@@ -73,7 +119,7 @@ export function registerRodbukTools(server: McpServer, env: Env): void {
               start,
             });
             const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-            return { content: [{ type: "text", text: data }] };
+            return { content: [{ type: "text", text: normalizeRodbukSearch(data) }] };
           } catch (e) {
             return {
               content: [

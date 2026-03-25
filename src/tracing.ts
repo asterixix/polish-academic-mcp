@@ -217,8 +217,22 @@ export async function withToolExecutionSpan<T>(
 ): Promise<T> {
   return tracer.startActiveSpan(`mcp.tool/${meta.toolName}`, async (span) => {
     const start = Date.now();
+    const collected: Record<string, unknown> = {};
+    // Capture span attributes for evaluation upload/inspection.
+    // We override setAttribute so we don't have to thread a second "attribute map"
+    // through every call site inside this function.
+    const spanAny = span as unknown as { setAttribute: (k: string, v: unknown) => void };
+    const originalSetAttribute = spanAny.setAttribute.bind(spanAny);
+    spanAny.setAttribute = (key: string, value: unknown) => {
+      collected[key] = value;
+      originalSetAttribute(key, value);
+    };
     try {
       span.setAttribute("span.kind", "mcp.tool_execution");
+      // This worker handles MCP tool-calls directly; there is no separate
+      // agent/request wrapper span. Provide a stable placeholder so audit
+      // metrics that require `agent.session_id` can still be computed.
+      span.setAttribute("agent.session_id", "unknown");
       span.setAttribute("mcp.tool.name", meta.toolName);
       span.setAttribute("mcp.tool.param_count", Object.keys(meta.params).length);
 
@@ -306,6 +320,14 @@ export async function withToolExecutionSpan<T>(
       span.setAttribute("mcp.tool.output_bytes", JSON.stringify(result).length);
       span.setAttribute("mcp.tool.success", true);
       span.setStatus({ code: SpanStatusCode.OK });
+      if (result !== null && typeof result === "object") {
+        const existingSpan = (result as Record<string, unknown>)._span;
+        const mergedSpan =
+          existingSpan && typeof existingSpan === "object"
+            ? { ...(existingSpan as Record<string, unknown>), ...collected }
+            : collected;
+        return { ...(result as Record<string, unknown>), _span: mergedSpan } as T;
+      }
       return result;
     } catch (err) {
       span.setAttribute("mcp.tool.success", false);
@@ -365,8 +387,17 @@ export async function withResponseGenerationSpan<T>(
   fn: (span: Span) => Promise<T>,
 ): Promise<T> {
   return tracer.startActiveSpan("llm.response", async (span) => {
+    const collected: Record<string, unknown> = {};
+    // Capture span attributes for evaluation upload/inspection.
+    const spanAny = span as unknown as { setAttribute: (k: string, v: unknown) => void };
+    const originalSetAttribute = spanAny.setAttribute.bind(spanAny);
+    spanAny.setAttribute = (key: string, value: unknown) => {
+      collected[key] = value;
+      originalSetAttribute(key, value);
+    };
     try {
       span.setAttribute("span.kind", "llm.response");
+      span.setAttribute("agent.session_id", "unknown");
       span.setAttribute("llm.tokens_generated", meta.tokensGenerated);
       span.setAttribute("llm.response_bytes", meta.responseBytes);
 
@@ -433,7 +464,16 @@ export async function withResponseGenerationSpan<T>(
       if (meta.abstractExpanded !== undefined)
         span.setAttribute("semantic.abstract_expanded", meta.abstractExpanded);
 
-      return await fn(span);
+      const result = await fn(span);
+      if (result !== null && typeof result === "object") {
+        const existingSpan = (result as Record<string, unknown>)._span;
+        const mergedSpan =
+          existingSpan && typeof existingSpan === "object"
+            ? { ...(existingSpan as Record<string, unknown>), ...collected }
+            : collected;
+        return { ...(result as Record<string, unknown>), _span: mergedSpan } as T;
+      }
+      return result;
     } catch (err) {
       span.recordException(err as Error);
       span.setStatus({

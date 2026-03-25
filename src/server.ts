@@ -18,6 +18,11 @@ import { registerIcmTools } from "./tools/icm.js";
 import { registerImgwTools } from "./tools/imgw.js";
 import { registerAghTools } from "./tools/agh.js";
 import { registerEvalTools } from "./tools/response-eval.js";
+import { registerPipelineDiscoverPublicationsTool } from "./tools/pipeline-discover-publications.js";
+import { registerPipelineExtractMetadataTool } from "./tools/pipeline-extract-metadata.js";
+import { registerPipelineClassifyDocumentTool } from "./tools/pipeline-classify-document.js";
+import { registerPipelineQualityCheckTool } from "./tools/pipeline-quality-check.js";
+import { registerPipelinePrepareAuthorOutreachTool } from "./tools/pipeline-prepare-author-outreach.js";
 
 export function createServer(env: Env): McpServer {
   const server = new McpServer({
@@ -36,6 +41,11 @@ export function createServer(env: Env): McpServer {
   registerImgwTools(server, env);
   registerAghTools(server, env);
   registerEvalTools(server, env);
+  registerPipelineDiscoverPublicationsTool(server, env);
+  registerPipelineExtractMetadataTool(server, env);
+  registerPipelineClassifyDocumentTool(server, env);
+  registerPipelineQualityCheckTool(server, env);
+  registerPipelinePrepareAuthorOutreachTool(server, env);
 
   return server;
 }

@@ -11,7 +11,8 @@
  * Run:
  *   npm run eval              — all RQs against localhost:8787
  *   npm run eval -- --rq RQ2 — only RQ2 cases
- *   npm run eval -- --rq RQ4 --url https://your-worker.workers.dev/mcp
+ *   npm run eval:remote -- --rq RQ4
+ *   npm run eval -- --rq RQ4 --url https://polish-academic-mcp.kolpol25.workers.dev/mcp
  */
 
 // ─────────────────────────────────────────────────────────────────────────────

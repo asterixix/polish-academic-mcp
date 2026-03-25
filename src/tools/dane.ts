@@ -62,30 +62,60 @@ export function registerDaneTools(server: McpServer, env: Env): void {
         async (span) => {
           span.setAttribute("mcp.source", "dane-gov");
           try {
-            const searchParams = new URLSearchParams({
-              q: query,
-              per_page: String(per_page),
-              page: String(page),
-              sort,
-            });
-            if (category) searchParams.set("category[id]", category);
+            const buildParams = (withCategory: boolean): URLSearchParams => {
+              const params = new URLSearchParams({
+                q: query,
+                per_page: String(per_page),
+                page: String(page),
+                sort,
+              });
+              if (withCategory && category) params.set("category[id]", category);
+              return params;
+            };
 
+            const searchParams = buildParams(true);
             const url = `${API_BASE}/datasets?${searchParams}`;
             const cacheKey = makeCacheKey("dane_search", {
-              query,
+              q: query,
               category,
               per_page,
               page,
               sort,
             });
-            const data = await cachedFetch(
-              env.CACHE_KV,
-              cacheKey,
-              url,
-              { headers: JSON_HEADERS },
-              SEARCH_TTL,
-            );
-            return { content: [{ type: "text", text: data }] };
+            try {
+              const data = await cachedFetch(
+                env.CACHE_KV,
+                cacheKey,
+                url,
+                { headers: JSON_HEADERS },
+                SEARCH_TTL,
+              );
+              return { content: [{ type: "text", text: data }] };
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              // Robustness fallback: some category values (labels vs IDs) cause 400.
+              // Retry once without the category filter to keep search usable.
+              if (category && /HTTP 400/i.test(msg)) {
+                span.setAttribute("mcp.fallback", "dane_search_without_category");
+                const fallbackParams = buildParams(false);
+                const fallbackUrl = `${API_BASE}/datasets?${fallbackParams}`;
+                const fallbackKey = makeCacheKey("dane_search_fallback", {
+                  query,
+                  per_page,
+                  page,
+                  sort,
+                });
+                const data = await cachedFetch(
+                  env.CACHE_KV,
+                  fallbackKey,
+                  fallbackUrl,
+                  { headers: JSON_HEADERS },
+                  SEARCH_TTL,
+                );
+                return { content: [{ type: "text", text: data }] };
+              }
+              throw err;
+            }
           } catch (e) {
             return {
               content: [
