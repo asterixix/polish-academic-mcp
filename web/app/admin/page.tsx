@@ -52,6 +52,25 @@ export default function AdminTokensPage() {
 
   const apiBase = useMemo(() => workerBaseUrl.replace(/\/+$/, ""), [workerBaseUrl]);
 
+  useEffect(() => {
+    const LOCAL_KEY = "polish_academic_mcp_admin_bearer";
+    // If user already stored token, reuse; otherwise prompt once.
+    const maybe = window.localStorage.getItem(LOCAL_KEY);
+    if (maybe && typeof maybe === "string") {
+      setAdminBearer(maybe);
+      return;
+    }
+
+    const entered = window.prompt(
+      "Enter admin bearer token for this panel.\n\nAuthorization header value should be:\nBearer <token>\n\nPaste only <token>.",
+    );
+    if (entered === null) return;
+    const trimmed = entered.trim();
+    if (!trimmed) return;
+    window.localStorage.setItem(LOCAL_KEY, trimmed);
+    setAdminBearer(trimmed);
+  }, []);
+
   const [mintBypass, setMintBypass] = useState<boolean>(false);
   const [mintLimitPerHour, setMintLimitPerHour] = useState<number>(10);
   const [mintExpiresInDays, setMintExpiresInDays] = useState<number>(30);
