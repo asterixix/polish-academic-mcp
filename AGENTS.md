@@ -9,9 +9,10 @@
 ## Project overview
 
 **polish-academic-mcp** is a stateless Remote MCP Server running on Cloudflare Workers
-(free tier). It exposes nine tools that let any MCP-compatible LLM (Claude, GPT-4, etc.)
-search five Polish academic databases:
+(free tier). It exposes tools that let any MCP-compatible LLM (Claude, GPT-4, etc.)
+search Polish academic databases, plus a research evaluation tool:
 
+<<<<<<< HEAD
 | Tool name            | Database                 | Protocol                 |
 | -------------------- | ------------------------ | ------------------------ |
 | `bn_search_articles` | Biblioteka Nauki         | OAI-PMH (XML)            |
@@ -23,8 +24,34 @@ search five Polish academic databases:
 | `repod_get_dataset`  | RePOD                    | Dataverse REST (JSON)    |
 | `dane_search`        | dane.gov.pl              | Custom REST v1.4 (JSON)  |
 | `dane_get_dataset`   | dane.gov.pl              | Custom REST v1.4 (JSON)  |
+=======
+| Tool name | Database | Protocol |
+|---|---|---|
+| `bn_search_articles` | Biblioteka Nauki | OAI-PMH (XML) |
+| `bn_get_article` | Biblioteka Nauki | OAI-PMH (XML) |
+| `ruj_search` | RUJ (Jagiellonian Univ.) | DSpace 7 REST (HAL+JSON) |
+| `ruj_get_item` | RUJ | DSpace 7 REST (HAL+JSON) |
+| `rodbuk_search` | RODBuK | Dataverse REST (JSON) |
+| `repod_search` | RePOD | Dataverse REST (JSON) |
+| `repod_get_dataset` | RePOD | Dataverse REST (JSON) |
+| `dane_search` | dane.gov.pl | Custom REST v1.4 (JSON) |
+| `dane_get_dataset` | dane.gov.pl | Custom REST v1.4 (JSON) |
+| `amu_search` | AMU Repository (Adam Mickiewicz Univ.) | DSpace 7 REST (HAL+JSON) |
+| `amu_get_item` | AMU Repository | DSpace 7 REST (HAL+JSON) |
+| `uafm_search` | UAFM Repository (Andrzej Frycz Modrzewski) | DSpace 7 REST (HAL+JSON) |
+| `uafm_get_item` | UAFM Repository | DSpace 7 REST (HAL+JSON) |
+| `icm_search` | ICM Open (Univ. of Warsaw) | DSpace 7 REST (HAL+JSON) |
+| `icm_get_item` | ICM Open | DSpace 7 REST (HAL+JSON) |
+| `imgw_synop` | IMGW-PIB (meteorology) | Custom REST (JSON) |
+| `imgw_hydro` | IMGW-PIB (hydrology) | Custom REST (JSON) |
+| `imgw_meteo` | IMGW-PIB (climate) | Custom REST (JSON) |
+| `imgw_warnings` | IMGW-PIB (warnings) | Custom REST (JSON) |
+| `agh_search` | AGH University Repository | DSpace 7 REST (HAL+JSON) |
+| `agh_get_item` | AGH University Repository | DSpace 7 REST (HAL+JSON) |
+| `eval_response` | — (research evaluation) | local (no external API) |
+>>>>>>> vk/d774-check-mcp-eval-c
 
-All five databases offer **unauthenticated read access** — no external API keys.
+All databases offer **unauthenticated read access** — no external API keys.
 
 ---
 
@@ -33,18 +60,30 @@ All five databases offer **unauthenticated read access** — no external API key
 ```
 src/
 ├── index.ts           Worker entry: rate-limit gate → MCP dispatch
-├── types.ts           Env interface (CACHE_KV, RATE_LIMIT_KV KV bindings)
-├── cache.ts           cachedFetch(env, key, url, ttl, headers?) + makeCacheKey()
+├── types.ts           Env interface (CACHE_KV, RATE_LIMIT_KV, HONEYCOMB_API_KEY)
+├── cache.ts           cachedFetch(kv, key, url, options?, ttl?) + makeCacheKey()
 ├── ratelimit.ts       sliding-window KV rate limiter: checkRateLimit() + getClientId()
+├── tracing.ts         OTel span helpers: withAgentRequestSpan, withLlmCallSpan,
+│                        withToolSelectionSpan, withToolExecutionSpan,
+│                        withResponseGenerationSpan, estimateTokens,
+│                        detectLanguage, detectFieldsInText, annotateCurrentSpan
+├── eval.ts            Post-LLM evaluation: evalResponse(sourceRecord, generated)
+│                        → hallucination markers, classification drift, language flags
 ├── server.ts          createServer(env) — registers all tools, returns McpServer
 └── tools/
     ├── biblioteka-nauki.ts  → bn_search_articles, bn_get_article
     ├── ruj.ts               → ruj_search, ruj_get_item
     ├── rodbuk.ts            → rodbuk_search
     ├── repod.ts             → repod_search, repod_get_dataset
-    └── dane.ts              → dane_search, dane_get_dataset
+    ├── dane.ts              → dane_search, dane_get_dataset
+    ├── amu.ts               → amu_search, amu_get_item
+    ├── uafm.ts              → uafm_search, uafm_get_item
+    ├── icm.ts               → icm_search, icm_get_item
+    ├── imgw.ts              → imgw_synop, imgw_hydro, imgw_meteo, imgw_warnings
+    ├── agh.ts               → agh_search, agh_get_item
+    └── response-eval.ts     → eval_response  (RQ2 telemetry)
 
-wrangler.jsonc         Cloudflare Workers config (KV namespace bindings)
+wrangler.jsonc         Cloudflare Workers config (KV bindings + Honeycomb observability)
 tsconfig.json          TypeScript config (strict, module: ES2022, target: ES2022)
 package.json           Dependencies pinned: @modelcontextprotocol/sdk@1.26.0
 ```
