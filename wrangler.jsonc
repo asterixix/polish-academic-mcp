@@ -17,18 +17,7 @@
     },
   ],
   "observability": {
-    "logs": {
-      "enabled": true,
-      "destinations": ["honeycomb-logs"],
-      "head_sampling_rate": 1,
-      "persist": true,
-      "invocation_logs": true,
-    },
-    "traces": {
-      "enabled": true,
-      "destinations": ["honeycomb-traces"],
-      "persist": true,
-      "head_sampling_rate": 1,
-    },
+    "enabled": true,
+    "head_sampling_rate": 1,
   },
 }
