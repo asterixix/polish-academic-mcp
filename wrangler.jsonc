@@ -21,6 +21,16 @@
       "preview_id": "cccccccccccccccccccccccccccccccc",
     },
   ],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PipelineAgent"]
+    },
+    {
+      "tag": "v2",
+      "deleted_classes": ["PipelineAgent"]
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
