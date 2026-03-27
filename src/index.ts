@@ -14,9 +14,6 @@
  */
 
 import { createMcpHandler } from "agents/mcp";
-import { createOpenAI } from "@ai-sdk/openai";
-import { experimental_createMCPClient as createMCPClient } from "@ai-sdk/mcp";
-import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import type { Env } from "./types.js";
 import { createServer } from "./server.js";
 import { checkRateLimit, getClientId } from "./ratelimit.js";
@@ -32,6 +29,7 @@ import { extractToolResultAndSpan, computeRqEvalForToolCall } from "./eval-rq-sc
 import {
   authorizeAdmin,
   getTokenRecord,
+  introspectConnectBearer,
   listTokenRecordsWithUsagePreview,
   mintRateLimitToken,
   patchRateLimitToken,
@@ -39,32 +37,57 @@ import {
   resolveRateLimitPolicyFromRequest,
 } from "./token-registry.js";
 import { getAdminPanelHtml } from "./admin-panel.js";
+import { getConnectPageHtml } from "./connect-page.js";
 
 const RATE_LIMIT = 10; // tool calls per hour per IP
+const PUBLIC_TOOL_NAMES = new Set<string>([
+  "bn_search_articles",
+  "bn_get_article",
+  "ruj_search",
+  "ruj_get_item",
+  "agh_search",
+  "agh_get_item",
+  "amu_search",
+  "amu_get_item",
+  "uafm_search",
+  "uafm_get_item",
+  "icm_search",
+  "icm_get_item",
+  "rodbuk_search",
+  "repod_search",
+  "repod_get_dataset",
+  "dane_search",
+  "dane_get_dataset",
+  "imgw_synop",
+  "imgw_hydro",
+  "imgw_meteo",
+  "imgw_warnings",
+  "eval_response",
+]);
 
 const ADMIN_PANEL_HTML = getAdminPanelHtml(RATE_LIMIT);
-type ModelProfile = "cheapest" | "balanced" | "quality";
-type ChatDiagnostics = {
-  configured: {
-    chatUiUrl: boolean;
-    cfAccountId: boolean;
-    cfGatewayId: boolean;
-    cfAigToken: boolean;
-    mcpServerUrl: boolean;
-  };
-  resolved: {
-    mcpUrl: string;
-    chatUiUrl?: string;
-  };
-  probes: {
-    chatUiReachable: boolean | null;
-    chatUiStatus?: number;
-    chatUiError?: string;
-    mcpToolsReachable: boolean | null;
-    mcpToolsCount?: number;
-    mcpError?: string;
-  };
+
+type ToolAccessPolicy = {
+  hasFullAccess: boolean;
+  allowedToolNames: Set<string>;
 };
+
+function resolveToolAccessPolicy(
+  policy: Awaited<ReturnType<typeof resolveRateLimitPolicyFromRequest>>,
+): ToolAccessPolicy {
+  // Legacy bypass secret retains full access.
+  if (policy?.kind === "legacy_bypass" || policy?.allowedTools?.includes("*")) {
+    return { hasFullAccess: true, allowedToolNames: new Set() };
+  }
+
+  const allowed = new Set(PUBLIC_TOOL_NAMES);
+  if (policy?.kind === "token" && Array.isArray(policy.allowedTools)) {
+    for (const t of policy.allowedTools) {
+      if (typeof t === "string" && t.trim().length > 0) allowed.add(t.trim());
+    }
+  }
+  return { hasFullAccess: false, allowedToolNames: allowed };
+}
 
 const handler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -72,40 +95,6 @@ const handler = {
 
     const url = new URL(request.url);
     const path = url.pathname;
-    const acceptHeader = request.headers.get("Accept") ?? "";
-    const isBrowserNavigation =
-      (request.method === "GET" || request.method === "HEAD") &&
-      acceptHeader.includes("text/html");
-
-    // If a separate frontend app is configured, serve it for browser navigations.
-    // API endpoints remain handled by this worker.
-    if (env.CHAT_UI_URL && isBrowserNavigation) {
-      const frontendBase = new URL(env.CHAT_UI_URL);
-      const sameOrigin = frontendBase.origin === url.origin;
-      const isBackendApiPath =
-        path.startsWith("/admin/tokens") ||
-        path === "/chat/health" ||
-        path === "/oauth/authorize" ||
-        path === "/oauth/token" ||
-        path === "/register" ||
-        path === "/.well-known/oauth-authorization-server" ||
-        path === "/.well-known/oauth-protected-resource";
-
-      if (!sameOrigin && !isBackendApiPath) {
-        const frontendTarget = new URL(`${path}${url.search}`, frontendBase);
-        const proxyResponse = await fetch(frontendTarget.toString(), {
-          method: request.method,
-          headers: request.headers,
-        });
-        return proxyResponse;
-      }
-    }
-
-    // Convenience redirect so opening the worker root URL works.
-    if ((path === "/" || path === "") && (request.method === "GET" || request.method === "HEAD")) {
-      return Response.redirect(`${url.origin}/mcp`, 302);
-    }
-
     const corsForAdmin = (init?: { status?: number; headers?: HeadersInit; body?: BodyInit }): Response => {
       const origin = request.headers.get("Origin") ?? "*";
       return new Response(init?.body ?? null, {
@@ -149,8 +138,6 @@ const handler = {
             ok: true,
             service: "polish-academic-mcp",
             endpoints: {
-              chat_ui: `${url.origin}/chat`,
-              chat_health: `${url.origin}/chat/health`,
               mcp: `${url.origin}/mcp`,
               oauth_authorization_server: `${url.origin}/.well-known/oauth-authorization-server`,
             },
@@ -166,6 +153,46 @@ const handler = {
           },
         },
       );
+    }
+
+    if ((path === "/connect" || path === "/connect/") && request.method === "GET") {
+      return new Response(getConnectPageHtml(url.origin), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
+    if (path === "/connect/token-status" || path === "/connect/token-status/") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET,OPTIONS",
+            "Access-Control-Allow-Headers": "Authorization",
+            "Access-Control-Max-Age": "86400",
+          },
+        });
+      }
+      if (request.method === "GET") {
+        const info = await introspectConnectBearer(request, env);
+        const status = info.ok ? 200 : 401;
+        return new Response(JSON.stringify(info, null, 2), {
+          status,
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+      return new Response(JSON.stringify({ error: "method_not_allowed" }), {
+        status: 405,
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
     }
 
     if (path === "/register") {
@@ -193,54 +220,6 @@ const handler = {
     ) {
       return new Response(ADMIN_PANEL_HTML, {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
-      });
-    }
-
-    if ((path === "/chat" || path === "/api/chat") && request.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": request.headers.get("Origin") ?? "*",
-          "Access-Control-Allow-Methods": "POST,OPTIONS,GET",
-          "Access-Control-Allow-Headers": "Content-Type,Authorization",
-          "Access-Control-Max-Age": "86400",
-        },
-      });
-    }
-
-    if (path === "/chat" && request.method === "GET") {
-      const diagnostics = await buildChatDiagnostics(env, url);
-      return new Response(getChatPageHtml(env.CHAT_UI_URL, diagnostics), {
-        status: 200,
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-store",
-        },
-      });
-    }
-
-    if (path === "/chat/health" && request.method === "GET") {
-      const diagnostics = await buildChatDiagnostics(env, url);
-      return new Response(JSON.stringify({ ok: true, diagnostics }, null, 2), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": request.headers.get("Origin") ?? "*",
-          "Cache-Control": "no-store",
-        },
-      });
-    }
-
-    if (request.method === "POST" && (path === "/chat" || path === "/api/chat")) {
-      const chatResponse = await handleChatRequest(request, env, url);
-      const headers = new Headers(chatResponse.headers);
-      headers.set("Access-Control-Allow-Origin", request.headers.get("Origin") ?? "*");
-      headers.set("Access-Control-Allow-Methods", "POST,OPTIONS,GET");
-      headers.set("Access-Control-Allow-Headers", "Content-Type,Authorization");
-      return new Response(chatResponse.body, {
-        status: chatResponse.status,
-        statusText: chatResponse.statusText,
-        headers,
       });
     }
 
@@ -295,6 +274,7 @@ const handler = {
             expiresAt?: string;
             label?: string;
             owner?: string;
+            allowedTools?: string[];
           };
 
           const bypass = typeof p.bypass === "boolean" ? p.bypass : false;
@@ -322,6 +302,7 @@ const handler = {
               createdBy: "admin",
               label: typeof p.label === "string" ? p.label : undefined,
               owner: typeof p.owner === "string" ? p.owner : undefined,
+              allowedTools: Array.isArray(p.allowedTools) ? p.allowedTools : undefined,
             });
             return corsForAdmin({
               status: 200,
@@ -384,6 +365,7 @@ const handler = {
             expiresAt?: string;
             label?: string;
             owner?: string;
+            allowedTools?: string[] | null;
           };
 
           const now = nowMsFromIndex();
@@ -405,6 +387,7 @@ const handler = {
               expiresAtMs,
               label: typeof p.label === "string" ? p.label : undefined,
               owner: typeof p.owner === "string" ? p.owner : undefined,
+              allowedTools: Array.isArray(p.allowedTools) || p.allowedTools === null ? p.allowedTools : undefined,
             });
             return corsForAdmin({
               status: 200,
@@ -464,6 +447,8 @@ const handler = {
 
     let isToolCall = false;
     let isMcpJsonRpcRequest = false;
+    let rpcMethod: string | undefined;
+    let rateLimitPolicy: Awaited<ReturnType<typeof resolveRateLimitPolicyFromRequest>> = null;
     let toolCallName: string | undefined;
     let toolCallArguments: unknown = undefined;
     let toolCallId: string | number | undefined;
@@ -478,6 +463,7 @@ const handler = {
         if (body && typeof body === "object") {
           const b = body as Record<string, unknown>;
           const method = typeof b["method"] === "string" ? b["method"] : undefined;
+          rpcMethod = method;
           const jsonrpc = typeof b["jsonrpc"] === "string" ? b["jsonrpc"] : undefined;
           isMcpJsonRpcRequest = Boolean(method && (jsonrpc === "2.0" || jsonrpc === undefined));
           isToolCall = method === "tools/call";
@@ -497,16 +483,37 @@ const handler = {
         // Malformed JSON — let the MCP handler return a proper error.
       }
 
+      if (isMcpJsonRpcRequest) {
+        rateLimitPolicy = await resolveRateLimitPolicyFromRequest(request, env);
+      }
+
       if (isToolCall) {
-        const policy = await resolveRateLimitPolicyFromRequest(request, env);
-        const limitForRequest = policy?.bypass
+        const toolAccess = resolveToolAccessPolicy(rateLimitPolicy);
+        if (
+          toolCallName &&
+          !toolAccess.hasFullAccess &&
+          !toolAccess.allowedToolNames.has(toolCallName)
+        ) {
+          return new Response(
+            JSON.stringify({
+              error: "tool_forbidden",
+              message: `Tool '${toolCallName}' is not available for this token/profile.`,
+            }),
+            {
+              status: 403,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+
+        const limitForRequest = rateLimitPolicy?.bypass
           ? null
-          : policy?.kind === "token"
-            ? policy.limitPerHour
+          : rateLimitPolicy?.kind === "token"
+            ? rateLimitPolicy.limitPerHour
             : RATE_LIMIT;
 
-        if (!policy?.bypass) {
-          const clientId = policy?.kind === "token" ? policy.identityKey : getClientId(request);
+        if (!rateLimitPolicy?.bypass) {
+          const clientId = rateLimitPolicy?.kind === "token" ? rateLimitPolicy.identityKey : getClientId(request);
           const rl = await checkRateLimit(env.RATE_LIMIT_KV, clientId, limitForRequest ?? RATE_LIMIT);
 
           if (!rl.allowed) {
@@ -538,7 +545,36 @@ const handler = {
     // Compatibility: some MCP clients enumerate tools only when JSON responses
     // are enabled for list/initialize requests too (not just tools/call).
     const mcpHandler = createMcpHandler(server, { enableJsonResponse: isMcpJsonRpcRequest });
-    const response = await mcpHandler(request, env, ctx);
+    let response = await mcpHandler(request, env, ctx);
+
+    // Mixed-mode access control:
+    // - guest: sees only public tools
+    // - JWT token: public + explicitly allowedTools
+    if (isMcpJsonRpcRequest && rpcMethod === "tools/list") {
+      try {
+        const payload = (await response.clone().json()) as Record<string, unknown>;
+        const result = payload["result"];
+        const toolAccess = resolveToolAccessPolicy(rateLimitPolicy);
+        if (result && typeof result === "object" && !Array.isArray(result)) {
+          const resultObj = result as Record<string, unknown>;
+          const tools = resultObj["tools"];
+          if (Array.isArray(tools) && !toolAccess.hasFullAccess) {
+            resultObj["tools"] = tools.filter((t) => {
+              if (!t || typeof t !== "object" || Array.isArray(t)) return false;
+              const name = (t as Record<string, unknown>)["name"];
+              return typeof name === "string" && toolAccess.allowedToolNames.has(name);
+            });
+            payload["result"] = resultObj;
+            response = new Response(JSON.stringify(payload), {
+              status: response.status,
+              headers: response.headers,
+            });
+          }
+        }
+      } catch {
+        // If response isn't JSON, keep original response.
+      }
+    }
 
     // ── WebDAV eval-data upload ───────────────────────────────────────────
     if (isToolCall && toolCallName) {
@@ -625,77 +661,6 @@ function nowMsFromIndex(): number {
 // observability automatically — no code-level wrapper needed.
 export default handler;
 
-function getChatPageHtml(chatUiUrl: string | undefined, diagnostics: ChatDiagnostics): string {
-  const safeUrl = chatUiUrl && /^https?:\/\//.test(chatUiUrl) ? chatUiUrl : "";
-  const iframe = safeUrl
-    ? `<div class="stack">
-         <div class="bar">
-           <strong>Polish Academic Chat</strong>
-           <span class="muted">iframe: ${safeUrl}</span>
-         </div>
-         <iframe id="chat-frame" src="${safeUrl}" title="Polish Academic Chat" style="width:100%;height:100%;border:0;"></iframe>
-         <div id="status" class="status">Loading interactive UI...</div>
-       </div>`
-    : `<div class="card">
-         <h1>Interactive Chat UI not configured</h1>
-         <p>Set <code>CHAT_UI_URL</code> in <code>wrangler.jsonc</code> vars to your deployed frontend URL (for example your Next.js app URL).</p>
-         <p>The API is still available via <code>POST /chat</code>.</p>
-       </div>`;
-
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Polish Academic Chat</title>
-    <style>
-      :root { color-scheme: dark; }
-      body { margin: 0; font-family: system-ui, sans-serif; background: #0b1220; color: #e6edf7; }
-      .wrap { width: 100vw; height: 100vh; display: grid; place-items: center; gap: 10px; padding: 10px; box-sizing: border-box; }
-      .stack { width: min(100%, 1400px); height: calc(100vh - 20px); border: 1px solid #263248; border-radius: 12px; overflow: hidden; display: grid; grid-template-rows: auto 1fr auto; background: #0f1625; }
-      .bar { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #263248; font-size: 13px; }
-      .muted { color: #9db1d2; }
-      .status { border-top: 1px solid #263248; padding: 8px 12px; font-size: 12px; color: #9db1d2; }
-      .card { max-width: 760px; padding: 24px; border-radius: 12px; border: 1px solid #263248; background: #121b2b; }
-      code { background: #1c2940; padding: 2px 6px; border-radius: 6px; }
-      details { width: min(100%, 1400px); border: 1px solid #263248; border-radius: 12px; background: #121b2b; }
-      summary { cursor: pointer; padding: 10px 12px; font-weight: 600; }
-      pre { margin: 0; padding: 12px; overflow: auto; font-size: 12px; }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">${iframe}</div>
-    <details>
-      <summary>Diagnostics</summary>
-      <pre>${escapeHtml(JSON.stringify(diagnostics, null, 2))}</pre>
-    </details>
-    <script>
-      (function () {
-        const frame = document.getElementById("chat-frame");
-        const status = document.getElementById("status");
-        if (!frame || !status) return;
-        let loaded = false;
-        const timeout = setTimeout(() => {
-          if (!loaded) {
-            status.textContent = "UI did not finish loading in time. Check Diagnostics for CHAT_UI_URL reachability and frame restrictions.";
-          }
-        }, 12000);
-        frame.addEventListener("load", () => {
-          loaded = true;
-          clearTimeout(timeout);
-          status.textContent = "Interactive UI loaded.";
-        });
-        frame.addEventListener("error", () => {
-          loaded = false;
-          clearTimeout(timeout);
-          status.textContent = "Iframe load error. The target app may block framing or be unavailable.";
-        });
-      })();
-    </script>
-  </body>
-</html>`;
-}
-
 function getRootPageHtml(url: URL): string {
   const origin = url.origin;
   return `<!doctype html>
@@ -721,9 +686,7 @@ function getRootPageHtml(url: URL): string {
         <h1>Polish Academic MCP</h1>
         <p>Service is running. Use one of the endpoints below:</p>
         <ul>
-          <li><a href="${origin}/chat">${origin}/chat</a> — interactive chat entry page</li>
-          <li><a href="${origin}/chat/health">${origin}/chat/health</a> — chat diagnostics</li>
-          <li><code>${origin}/chat</code> (POST) — assistant-ui chat API</li>
+          <li><a href="${origin}/connect">${origin}/connect</a> — interactive MCP connect (JWT/guest)</li>
           <li><code>${origin}/mcp</code> — MCP server endpoint</li>
           <li><a href="${origin}/health">${origin}/health</a> — basic service health JSON</li>
         </ul>
@@ -731,158 +694,4 @@ function getRootPageHtml(url: URL): string {
     </div>
   </body>
 </html>`;
-}
-
-async function buildChatDiagnostics(env: Env, url: URL): Promise<ChatDiagnostics> {
-  const safeChatUiUrl = env.CHAT_UI_URL && /^https?:\/\//.test(env.CHAT_UI_URL) ? env.CHAT_UI_URL : undefined;
-  const mcpUrl = env.MCP_SERVER_URL ?? `${url.origin}/mcp`;
-
-  const diagnostics: ChatDiagnostics = {
-    configured: {
-      chatUiUrl: Boolean(safeChatUiUrl),
-      cfAccountId: Boolean(env.CF_ACCOUNT_ID),
-      cfGatewayId: Boolean(env.CF_GATEWAY_ID),
-      cfAigToken: Boolean(env.CF_AIG_TOKEN),
-      mcpServerUrl: Boolean(env.MCP_SERVER_URL),
-    },
-    resolved: {
-      mcpUrl,
-      chatUiUrl: safeChatUiUrl,
-    },
-    probes: {
-      chatUiReachable: null,
-      mcpToolsReachable: null,
-    },
-  };
-
-  if (safeChatUiUrl) {
-    try {
-      const response = await fetch(safeChatUiUrl, { method: "GET", redirect: "follow" });
-      diagnostics.probes.chatUiReachable = response.ok;
-      diagnostics.probes.chatUiStatus = response.status;
-    } catch (err) {
-      diagnostics.probes.chatUiReachable = false;
-      diagnostics.probes.chatUiError = err instanceof Error ? err.message : String(err);
-    }
-  }
-
-  try {
-    const probeClient = await createMCPClient({
-      transport: { type: "http", url: mcpUrl },
-    });
-    const tools = await probeClient.tools();
-    diagnostics.probes.mcpToolsReachable = true;
-    diagnostics.probes.mcpToolsCount = Object.keys(tools).length;
-    await probeClient.close();
-  } catch (err) {
-    diagnostics.probes.mcpToolsReachable = false;
-    diagnostics.probes.mcpError = err instanceof Error ? err.message : String(err);
-  }
-
-  return diagnostics;
-}
-
-function escapeHtml(input: string): string {
-  return input
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-type ChatRequestBody = {
-  messages: UIMessage[];
-  system?: string;
-  config?: {
-    modelProfile?: ModelProfile;
-  };
-};
-
-function resolveChatModelAlias(env: Env, profile: ModelProfile): string {
-  switch (profile) {
-    case "balanced":
-      return env.CF_AIG_MODEL_BALANCED ?? "dynamic/academic-balanced";
-    case "quality":
-      return env.CF_AIG_MODEL_QUALITY ?? "dynamic/academic-quality";
-    default:
-      return env.CF_AIG_MODEL_CHEAPEST ?? "dynamic/academic-cheapest";
-  }
-}
-
-async function handleChatRequest(request: Request, env: Env, url: URL): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  const responseHeaders = new Headers({
-    "Content-Type": "application/json",
-    "X-Request-Id": requestId,
-  });
-
-  if (!env.CF_ACCOUNT_ID || !env.CF_GATEWAY_ID || !env.CF_AIG_TOKEN) {
-    return new Response(
-      JSON.stringify(
-        {
-          error: "missing_ai_gateway_config",
-          message:
-            "Missing required vars: CF_ACCOUNT_ID, CF_GATEWAY_ID, CF_AIG_TOKEN",
-          requestId,
-        },
-        null,
-        2,
-      ),
-      { status: 500, headers: responseHeaders },
-    );
-  }
-
-  let body: ChatRequestBody;
-  try {
-    body = (await request.json()) as ChatRequestBody;
-  } catch {
-    return new Response(JSON.stringify({ error: "invalid_json", requestId }, null, 2), {
-      status: 400,
-      headers: responseHeaders,
-    });
-  }
-
-  const modelProfile = body.config?.modelProfile ?? "cheapest";
-  const modelAlias = resolveChatModelAlias(env, modelProfile);
-  const mcpUrl = env.MCP_SERVER_URL ?? `${url.origin}/mcp`;
-
-  const mcpClient = await createMCPClient({
-    transport: {
-      type: "http",
-      url: mcpUrl,
-      headers: request.headers.get("authorization")
-        ? { Authorization: request.headers.get("authorization") ?? "" }
-        : undefined,
-    }
-  });
-
-  try {
-    const mcpTools = await mcpClient.tools();
-    const gateway = createOpenAI({
-      apiKey: env.CF_AIG_TOKEN,
-      baseURL: `https://gateway.ai.cloudflare.com/v1/${env.CF_ACCOUNT_ID}/${env.CF_GATEWAY_ID}/compat`,
-    });
-
-    const result = streamText({
-      model: gateway(modelAlias),
-      messages: await convertToModelMessages(body.messages ?? []),
-      system: body.system,
-      tools: mcpTools,
-      onFinish: async () => {
-        await mcpClient.close();
-      },
-    });
-
-    return result.toUIMessageStreamResponse({
-      sendReasoning: true,
-    });
-  } catch (err) {
-    await mcpClient.close().catch(() => {});
-    const msg = err instanceof Error ? err.message : String(err);
-    return new Response(JSON.stringify({ error: "chat_failed", message: msg, requestId, modelAlias, mcpUrl }, null, 2), {
-      status: 500,
-      headers: responseHeaders,
-    });
-  }
 }

@@ -20,13 +20,10 @@
     "eval:remote": "npx tsx scripts/eval/runner.ts --url https://polish-academic-mcp.kolpol25.workers.dev/mcp"
   },
   "dependencies": {
-    "@ai-sdk/mcp": "^1.0.30",
-    "@ai-sdk/openai": "^3.0.48",
     "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "1.26.0",
     "@opentelemetry/api": "^1.9.0",
     "agents": "^0.6.0",
-    "ai": "^6.0.141",
     "zod": "^3.24.0"
   },
   "devDependencies": {

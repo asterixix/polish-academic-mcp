@@ -13,6 +13,10 @@ export interface RateLimitTokenRecord {
   // Token-level expiry (dynamic; enforced by KV).
   expiresAtMs: number;
 
+  // Optional additional MCP tools beyond the guest/public baseline.
+  // Empty/undefined means "public tools only".
+  allowedTools?: string[];
+
   revokedAtMs?: number;
   revokeReason?: string;
 
@@ -26,6 +30,7 @@ export interface RateLimitTokenPolicy {
   identityKey: string; // used as clientId for rate-limiter counters
   bypass: boolean;
   limitPerHour: number;
+  allowedTools?: string[];
   record?: RateLimitTokenRecord;
 }
 
@@ -125,6 +130,19 @@ function tokenKey(jti: string): string {
   return `${TOKEN_KEY_PREFIX}${jti}`;
 }
 
+function normalizeAllowedTools(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const out = new Set<string>();
+  for (const raw of input) {
+    if (typeof raw !== "string") continue;
+    const name = raw.trim();
+    // Keep validation permissive but avoid storing malformed names.
+    if (!/^[a-z0-9_]+$/i.test(name)) continue;
+    out.add(name);
+  }
+  return [...out].sort();
+}
+
 export async function getTokenRecord(env: Env, jti: string): Promise<RateLimitTokenRecord | null> {
   const raw = await env.TOKEN_REGISTRY_KV.get(tokenKey(jti));
   if (!raw) return null;
@@ -184,6 +202,7 @@ export async function mintRateLimitToken(
     createdBy?: string;
     label?: string;
     owner?: string;
+    allowedTools?: string[];
   },
 ): Promise<{ token: string; record: RateLimitTokenRecord }> {
   const secret = env.RATE_LIMIT_BYPASS_JWT_SECRET;
@@ -207,6 +226,7 @@ export async function mintRateLimitToken(
     expiresAtMs: Math.floor(params.expiresAtMs),
     label: params.label,
     owner: params.owner,
+    allowedTools: normalizeAllowedTools(params.allowedTools),
   };
 
   const payload = {
@@ -262,6 +282,7 @@ export async function patchRateLimitToken(
     expiresAtMs?: number;
     label?: string;
     owner?: string;
+    allowedTools?: string[] | null;
   },
 ): Promise<RateLimitTokenRecord> {
   const record = await getTokenRecord(env, params.jti);
@@ -281,12 +302,183 @@ export async function patchRateLimitToken(
         : record.expiresAtMs,
     label: typeof params.label === "string" ? params.label : record.label,
     owner: typeof params.owner === "string" ? params.owner : record.owner,
+    allowedTools:
+      params.allowedTools === null
+        ? []
+        : Array.isArray(params.allowedTools)
+          ? normalizeAllowedTools(params.allowedTools)
+          : normalizeAllowedTools(record.allowedTools),
   };
 
   await env.TOKEN_REGISTRY_KV.put(tokenKey(params.jti), JSON.stringify(updated), {
     expirationTtl: computeTtlSeconds(updated.expiresAtMs),
   });
   return updated;
+}
+
+/** Response for GET /connect/token-status — safe to expose to token holder (no admin secrets). */
+export type ConnectTokenIntrospection =
+  | { ok: false; error: "missing_bearer" | "invalid_signature" | "missing_jti" }
+  | {
+      ok: true;
+      kind: "legacy_bypass";
+      bypass: true;
+      full_access_tools: true;
+      rate_limit_per_hour: null;
+      remaining: null;
+      revoked: false;
+    }
+  | {
+      ok: true;
+      kind: "token";
+      jti: string;
+      label?: string;
+      bypass: boolean;
+      revoked: boolean;
+      revoked_at_ms?: number;
+      expired: boolean;
+      expires_at_ms: number;
+      rate_limit_per_hour: number | null;
+      remaining: number | null;
+      reset_in_seconds: number;
+      allowed: boolean;
+      allowed_tools: string[];
+    };
+
+/**
+ * Introspect Bearer JWT for the /connect page: limits, bypass, revoke, expiry.
+ * Unlike resolveRateLimitPolicyFromRequest, returns details for revoked/expired tokens when KV still has the record.
+ */
+export async function introspectConnectBearer(request: Request, env: Env): Promise<ConnectTokenIntrospection> {
+  const jwtSecret = env.RATE_LIMIT_BYPASS_JWT_SECRET;
+  if (!jwtSecret) {
+    return { ok: false, error: "missing_bearer" };
+  }
+
+  const token = parseBearerToken(request);
+  if (!token) {
+    return { ok: false, error: "missing_bearer" };
+  }
+
+  if (token === jwtSecret) {
+    return {
+      ok: true,
+      kind: "legacy_bypass",
+      bypass: true,
+      full_access_tools: true,
+      rate_limit_per_hour: null,
+      remaining: null,
+      revoked: false,
+    };
+  }
+
+  const payload = await verifyJwtHs256(token, jwtSecret);
+  if (!payload) {
+    return { ok: false, error: "invalid_signature" };
+  }
+
+  const jti = typeof payload.jti === "string" ? payload.jti : null;
+  if (!jti) {
+    return { ok: false, error: "missing_jti" };
+  }
+
+  const record = await getTokenRecord(env, jti);
+  const allowedTools = record ? normalizeAllowedTools(record.allowedTools) : [];
+
+  if (!record) {
+    const expSec = typeof payload.exp === "number" && Number.isFinite(payload.exp) ? payload.exp : null;
+    const expiresAtMs = expSec !== null ? Math.floor(expSec * 1000) : 0;
+    return {
+      ok: true,
+      kind: "token",
+      jti,
+      bypass: false,
+      revoked: false,
+      expired: true,
+      expires_at_ms: expiresAtMs,
+      rate_limit_per_hour: null,
+      remaining: null,
+      reset_in_seconds: 0,
+      allowed: false,
+      allowed_tools: allowedTools,
+    };
+  }
+
+  const now = nowMs();
+  const revoked = Boolean(record.revokedAtMs);
+  const expired = now >= record.expiresAtMs;
+
+  if (revoked) {
+    return {
+      ok: true,
+      kind: "token",
+      jti: record.jti,
+      label: record.label,
+      bypass: record.bypass,
+      revoked: true,
+      revoked_at_ms: record.revokedAtMs,
+      expired: false,
+      expires_at_ms: record.expiresAtMs,
+      rate_limit_per_hour: record.bypass ? null : record.limitPerHour,
+      remaining: null,
+      reset_in_seconds: 0,
+      allowed: false,
+      allowed_tools: allowedTools,
+    };
+  }
+
+  if (expired) {
+    return {
+      ok: true,
+      kind: "token",
+      jti: record.jti,
+      label: record.label,
+      bypass: record.bypass,
+      revoked: false,
+      expired: true,
+      expires_at_ms: record.expiresAtMs,
+      rate_limit_per_hour: record.bypass ? null : record.limitPerHour,
+      remaining: null,
+      reset_in_seconds: 0,
+      allowed: false,
+      allowed_tools: allowedTools,
+    };
+  }
+
+  if (record.bypass) {
+    return {
+      ok: true,
+      kind: "token",
+      jti: record.jti,
+      label: record.label,
+      bypass: true,
+      revoked: false,
+      expired: false,
+      expires_at_ms: record.expiresAtMs,
+      rate_limit_per_hour: null,
+      remaining: null,
+      reset_in_seconds: 0,
+      allowed: true,
+      allowed_tools: allowedTools,
+    };
+  }
+
+  const usage = await getRateLimitStatus(env.RATE_LIMIT_KV, record.jti, record.limitPerHour);
+  return {
+    ok: true,
+    kind: "token",
+    jti: record.jti,
+    label: record.label,
+    bypass: false,
+    revoked: false,
+    expired: false,
+    expires_at_ms: record.expiresAtMs,
+    rate_limit_per_hour: record.limitPerHour,
+    remaining: usage.remaining,
+    reset_in_seconds: usage.resetInSeconds,
+    allowed: usage.allowed,
+    allowed_tools: allowedTools,
+  };
 }
 
 export async function resolveRateLimitPolicyFromRequest(request: Request, env: Env): Promise<RateLimitTokenPolicy | null> {
@@ -303,6 +495,7 @@ export async function resolveRateLimitPolicyFromRequest(request: Request, env: E
       identityKey: `legacy:${jwtSecret}`,
       bypass: true,
       limitPerHour: Number.POSITIVE_INFINITY,
+      allowedTools: ["*"],
     };
   }
 
@@ -323,6 +516,7 @@ export async function resolveRateLimitPolicyFromRequest(request: Request, env: E
     identityKey: jti,
     bypass: record.bypass,
     limitPerHour: record.limitPerHour,
+    allowedTools: normalizeAllowedTools(record.allowedTools),
     record,
   };
 }

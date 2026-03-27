@@ -164,6 +164,8 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
           <input id="mintLabel" type="text" placeholder="e.g. alice-prod" autocomplete="off" />
           <label for="mintOwner">Owner (optional)</label>
           <input id="mintOwner" type="text" placeholder="e.g. Alice" autocomplete="off" />
+          <label for="mintAllowedTools">Additional tools (optional, comma/newline separated)</label>
+          <textarea id="mintAllowedTools" rows="3" placeholder="e.g. eval_response, repod_get_dataset"></textarea>
           <div class="row" style="margin-top:1rem;">
             <button type="button" class="btn btn-primary" id="btnMint">Mint token</button>
             <button type="button" class="btn" id="btnReload">Refresh list</button>
@@ -225,6 +227,8 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
           <input type="number" id="dlgLimit" min="1" step="1" />
           <label for="dlgExpires">Expires (local)</label>
           <input type="datetime-local" id="dlgExpires" />
+          <label for="dlgAllowedTools">Additional tools (comma/newline separated)</label>
+          <textarea id="dlgAllowedTools" rows="3" placeholder="e.g. eval_response, repod_get_dataset"></textarea>
         </div>
         <div class="dialog-footer">
           <button type="button" class="btn btn-destructive" id="dlgRevoke">Revoke</button>
@@ -274,6 +278,17 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     s = String(s || "");
     if (s.length <= n) return s;
     return s.slice(0, n - 1) + "…";
+  }
+
+  function parseAllowedTools(raw) {
+    if (!raw) return [];
+    var unique = {};
+    String(raw)
+      .split(/[\\n,]/g)
+      .map(function (x) { return x.trim(); })
+      .filter(Boolean)
+      .forEach(function (x) { unique[x] = true; });
+    return Object.keys(unique).sort();
   }
 
   function getAdminBearer() {
@@ -439,6 +454,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     $("dlgLimit").value = String(t.limitPerHour || DEFAULT_LIMIT);
     $("dlgLimit").disabled = !!t.bypass;
     $("dlgExpires").value = msToDatetimeLocalValue(t.expiresAtMs);
+    $("dlgAllowedTools").value = Array.isArray(t.allowedTools) ? t.allowedTools.join(", ") : "";
 
     $("dlgRevoke").disabled = !!t.revokedAtMs;
     $("dlgSave").disabled = !!t.revokedAtMs;
@@ -479,7 +495,8 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
       limitPerHour: Math.max(1, parseInt($("dlgLimit").value, 10) || DEFAULT_LIMIT),
       expiresAtMs: expMs,
       label: $("dlgLabel").value.trim(),
-      owner: $("dlgOwner").value.trim()
+      owner: $("dlgOwner").value.trim(),
+      allowedTools: parseAllowedTools($("dlgAllowedTools").value)
     };
     callAdmin("/admin/tokens/" + encodeURIComponent(selectedJti), {
       method: "PATCH",
@@ -545,6 +562,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     var expiresInDays = Math.max(1, Math.floor(Number($("mintExpiresInDays").value) || 30));
     var label = $("mintLabel").value.trim() || undefined;
     var owner = $("mintOwner").value.trim() || undefined;
+    var allowedTools = parseAllowedTools($("mintAllowedTools").value);
     var expiresAtMs = Date.now() + expiresInDays * 24 * 60 * 60 * 1000;
 
     setStatus("Minting…");
@@ -556,7 +574,8 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
         limitPerHour: limitPerHour,
         expiresAtMs: expiresAtMs,
         label: label,
-        owner: owner
+        owner: owner,
+        allowedTools: allowedTools
       })
     })
       .then(function (data) {

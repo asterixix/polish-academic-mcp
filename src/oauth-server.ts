@@ -1,4 +1,5 @@
 import type { Env } from "./types.js";
+import { resolveRateLimitPolicyFromRequest } from "./token-registry.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -205,6 +206,17 @@ export async function handleOauthWellKnownAuthorizationServer(request: Request, 
 export async function handleOauthRegister(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") {
     return oauthErrorResponse(405, "invalid_request", "Method not allowed");
+  }
+
+  // Dynamic registration is gated: only Bearer JWTs minted via /admin/tokens (or legacy bypass)
+  // are accepted. Anonymous registration is disabled to reduce OAuth client spam.
+  const registrationAuth = await resolveRateLimitPolicyFromRequest(request, env);
+  if (!registrationAuth) {
+    return oauthErrorResponse(
+      401,
+      "invalid_client",
+      "Bearer JWT required for dynamic client registration (mint a token in the admin panel, or use legacy bypass secret).",
+    );
   }
 
   let body: JsonObject;
