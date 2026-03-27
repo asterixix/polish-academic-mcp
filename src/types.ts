@@ -5,11 +5,6 @@ export interface Env {
   RATE_LIMIT_BYPASS_JWT_SECRET?: string;
   ADMIN_PANEL_BEARER_SECRET?: string;
 
-  // Cloudflare Agents / Workflows bindings.
-  AI: Ai;
-  PipelineAgent: DurableObjectNamespace;
-  CATALOGUING_PIPELINE: Workflow;
-
   // Nextcloud WebDAV eval-data upload (tool-call telemetry).
   // Enable with EVAL_WEBDAV_ENABLED=true.
   EVAL_WEBDAV_ENABLED?: string;

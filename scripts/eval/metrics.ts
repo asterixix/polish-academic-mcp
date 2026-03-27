@@ -901,94 +901,6 @@ export function scoreAiTransparency(
   };
 }
 
-/**
- * RQ4-M5: Outreach approval gate
- * Ensures pipeline_prepare_author_outreach blocks drafts unless approval_decision=approved
- * and (optionally) open_access=true.
- */
-export function scoreOutreachApprovalGate(
-  response: ToolResponse,
-  testCase: EvalTestCase,
-): MetricScore {
-  if (testCase.tool !== "pipeline_prepare_author_outreach") {
-    return {
-      metricId: "RQ4-M5",
-      rq: "RQ4",
-      score: 1.0,
-      passed: true,
-      threshold: 1.0,
-      evidence: { skipped: true },
-      notes: "Not a pipeline_prepare_author_outreach test — skipped.",
-    };
-  }
-
-  const expectedApproval = testCase.toolArgs?.approval_decision;
-  const requireOpenAccess = Boolean(testCase.toolArgs?.require_open_access ?? true);
-  const classifiedRecordRaw = testCase.toolArgs?.classified_record;
-
-  let openAccessSignal: boolean | undefined;
-  if (typeof classifiedRecordRaw === "string") {
-    try {
-      const parsed = JSON.parse(classifiedRecordRaw) as unknown;
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-        openAccessSignal = Boolean((parsed as Record<string, unknown>)["open_access"]);
-      }
-    } catch {
-      // ignore parse failure
-    }
-  }
-
-  const expectedHasDraft =
-    expectedApproval === "approved" && (!requireOpenAccess || openAccessSignal === true);
-
-  let manifest: unknown = null;
-  try {
-    manifest = JSON.parse(response.text);
-  } catch {
-    return {
-      metricId: "RQ4-M5",
-      rq: "RQ4",
-      score: 0.0,
-      passed: false,
-      threshold: 1.0,
-      evidence: { parseError: true },
-      notes: "Failed to parse pipeline output as JSON.",
-    };
-  }
-
-  const hasDraft = Boolean(
-    manifest &&
-      typeof manifest === "object" &&
-      !Array.isArray(manifest) &&
-      (manifest as Record<string, unknown>)["outreach_draft"] !== null &&
-      (manifest as Record<string, unknown>)["outreach_draft"] !== undefined,
-  );
-
-  const status = manifest && typeof manifest === "object" ? String((manifest as any)["status"]) : "unknown";
-  const policyDecisions = manifest && typeof manifest === "object" ? (manifest as any)["policy_decisions"] : null;
-
-  const score = hasDraft === expectedHasDraft ? 1.0 : 0.0;
-  return {
-    metricId: "RQ4-M5",
-    rq: "RQ4",
-    score,
-    passed: score === 1.0,
-    threshold: 1.0,
-    evidence: {
-      expectedApproval,
-      requireOpenAccess,
-      openAccessSignal,
-      expectedHasDraft,
-      hasDraft,
-      status,
-      policyDecisions,
-    },
-    notes: hasDraft === expectedHasDraft
-      ? "Approval/open-access gating matches policy."
-      : `Policy mismatch: expectedHasDraft=${expectedHasDraft} got hasDraft=${hasDraft}`,
-  };
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Composite Scorer
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1047,7 +959,6 @@ export function computeCompositeScore(
     metrics.push(scoreDataMinimisation(response, testCase));
     metrics.push(scoreAiTransparency(response, testCase));
   }
-  metrics.push(scoreOutreachApprovalGate(response, testCase));
 
   const compositeScore =
     metrics.reduce((sum, m) => sum + m.score, 0) / metrics.length;

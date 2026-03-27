@@ -426,7 +426,6 @@ Cloudflare Worker (index.ts)
 Kluczowe decyzje projektowe:
 
 - **Bezstanowy** — nowa instancja `McpServer` na każde żądanie (wymagane od SDK 1.26.0)
-- **Durable Objects tylko dla orkiestracji pipeline** — MCP tools pozostają stateless
 - **Kompaktowe podsumowania JSON** dla repozytoriów DSpace 7 (RUJ, AGH, AMU, UAFM, ICM) zamiast surowego HAL+JSON — zmniejsza zużycie tokenów
 - **Surowe odpowiedzi XML/JSON** dla API bez warstwy normalizacji (Biblioteka Nauki, dane.gov.pl, IMGW) — oszczędza czas CPU
 - **Normalizacja wyników Dataverse** dla `rodbuk_search` i `repod_search` do stabilnych pól (`title`, `author`, `date`, `doi`) przy zachowaniu danych źródłowych
@@ -450,65 +449,6 @@ W ramach hardeningu ewaluacji dodano:
 Domyślne zachowanie narzędzi pozostaje bezpieczne wstecznie (`minimize_pii=false`), więc istniejące integracje nie wymagają zmian.
 
 ---
-
-## Pipeline wieloagentowy (narzędzia `pipeline_*`)
-
-Repo udostępnia narzędzia MCP zaprojektowane jako klocki do budowy systemu wieloagentowego (LLM jako orchestrator/agent, a Worker jako backend do danych i walidacji).
-
-Każde narzędzie `pipeline_*` zwraca JSON jako `content[0].text` i jest nastawione na deterministyczne przygotowanie kolejnych kroków:
-
-- `pipeline_discover_publications`: generuje listę planowanych wywołań bazowych narzędzi wyszukujących (np. `ruj_search`, `agh_search`), które orchestrator wykona w następnym kroku.
-- `pipeline_extract_metadata`: na podstawie wyników wyszukiwania (kompaktowe JSON summary / lekkie parsowanie XML) przygotowuje listę `*_get_item` / `bn_get_article` do pobrania pełnych rekordów.
-- `pipeline_classify_document`: przygotowuje instrukcje i wymagany format wyniku klasyfikacji (np. UKD) do wykonania przez zewnętrzny agent.
-- `pipeline_quality_check`: uruchamia walidację jakości (`evalResponse`) dla wygenerowanej odpowiedzi i oznacza `requires_revision`.
-- `pipeline_prepare_author_outreach`: przygotowuje plan komunikacji autorów z bramką bezpieczeństwa — draft jest zwracany tylko gdy `approval_decision="approved"` oraz (opcjonalnie) `open_access=true`.
-
-### Sterowanie pipeline przez endpointy (HITL + trwałość)
-Pipeline katalogowania jest uruchamiany jako durable orchestration:
-
-1. `POST /pipeline/start`
-   - startuje workflow `CATALOGUING_PIPELINE` i tworzy instancję durable `PipelineAgent`
-   - przykładowy payload:
-     - `user_id: string`
-     - `institution_query: string`
-     - `topics?: string[]`
-     - `language?: "pl" | "en" | "mixed"`
-     - `bn_set?: string`
-     - `max_items_per_job?: number` (domyślnie `5`)
-     - `require_open_access?: boolean` (domyślnie `true`)
-     - `job_id?: string` (opcjonalnie)
-   - odpowiedź: `{ "instanceId": "..." }`
-
-2. `POST /pipeline/approval`
-   - zamyka krok `waitForApproval` w workflow i odblokowuje generowanie draftów po `decision="approved"`
-   - wymaga autoryzacji dla bypass rate limit:
-     - nagłówek `Authorization: Bearer <jwt>` z claim `rl_bypass=true` lub scope zawierającym `ratelimit:bypass`
-     - alternatywnie token równy `RATE_LIMIT_BYPASS_JWT_SECRET` (tryb pre-shared)
-   - przykładowy payload:
-     - `instanceId: string`
-     - `approvedBy: string`
-     - `decision: "approved" | "rejected"`
-     - `reason?: string`
-
-`GET /pipeline/status?instanceId=...` zwraca snapshot statusu instancji workflow (`wait-for-approval`, `running`, `complete`, `error` itp.) do UI/debug.
-
-Uwaga: w aktualnym kodzie nie ma endpointu do pobrania finalnych `outreachDrafts` przez HTTP.
-
-### Wymagane exporty w entrypoint
-Żeby Wrangler poprawnie mapował bindings z `wrangler.jsonc`, moduł entrypoint (`src/index.ts`) eksportuje:
-- `PipelineAgent`
-- `CataloguingPipelineWorkflow`
-
-## Ewaluacja wieloagentowa
-
-Skrypt ewaluacyjny (`scripts/eval/runner.ts`) obsługuje przypadki wielokrokowe przez opcjonalne pole `scenario` w `scripts/eval/test-cases.ts`.
-
-- `scenario.steps` to lista narzędzi MCP wykonywanych sekwencyjnie.
-- `scenario.scoreFromStepId` wskazuje, z którego kroku bierzemy odpowiedź do metryk RQ.
-
-Dla nowych narzędzi pipeline dodano testy w `scripts/eval/test-cases.ts` (m.in. `RQ4-013..RQ4-015` oraz `MA-001`).
-
-Uruchomienie: `npm run eval:rq4` (zawiera testy outbound gate oraz scenariusz `MA-001`).
 
 ## Rozwój i wkład
 
