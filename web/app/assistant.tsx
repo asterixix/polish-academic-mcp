@@ -51,7 +51,7 @@ export const Assistant = () => {
 	return (
 		<AssistantRuntimeProvider runtime={runtime}>
 			<SidebarProvider>
-				<div className="flex h-dvh w-full pr-0.5">
+				<div className="flex h-[calc(100dvh-3.5rem)] w-full pr-0.5">
 					<ThreadListSidebar />
 					<SidebarInset>
 						<header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">

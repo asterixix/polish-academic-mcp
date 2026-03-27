@@ -25,15 +25,5 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
-  },
-  "vars": {
-    "CF_ACCOUNT_ID": "",
-    "CF_GATEWAY_ID": "",
-    "CF_AIG_TOKEN": "",
-    "CF_AIG_MODEL_CHEAPEST": "dynamic/academic-cheapest",
-    "CF_AIG_MODEL_BALANCED": "dynamic/academic-balanced",
-    "CF_AIG_MODEL_QUALITY": "dynamic/academic-quality",
-    "MCP_SERVER_URL": "",
-    "CHAT_UI_URL": ""
   }
 }
