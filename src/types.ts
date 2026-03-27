@@ -11,6 +11,7 @@ export interface Env {
   CF_AIG_MODEL_BALANCED?: string;
   CF_AIG_MODEL_QUALITY?: string;
   MCP_SERVER_URL?: string;
+  CHAT_UI_URL?: string;
 
   // Nextcloud WebDAV eval-data upload (tool-call telemetry).
   // Enable with EVAL_WEBDAV_ENABLED=true.

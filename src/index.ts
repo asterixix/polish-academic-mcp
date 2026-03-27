@@ -119,25 +119,13 @@ const handler = {
     }
 
     if (path === "/chat" && request.method === "GET") {
-      return new Response(
-        JSON.stringify(
-          {
-            ok: true,
-            endpoint: "/chat",
-            method: "POST",
-            message: "Use POST /chat with assistant-ui payload.",
-          },
-          null,
-          2,
-        ),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": request.headers.get("Origin") ?? "*",
-          },
+      return new Response(getChatPageHtml(env.CHAT_UI_URL), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
         },
-      );
+      });
     }
 
     if (request.method === "POST" && path === "/chat") {
@@ -528,6 +516,36 @@ function nowMsFromIndex(): number {
 // CF native Workers Logs + Traces (configured in wrangler.jsonc) handle
 // observability automatically — no code-level wrapper needed.
 export default handler;
+
+function getChatPageHtml(chatUiUrl?: string): string {
+  const safeUrl = chatUiUrl && /^https?:\/\//.test(chatUiUrl) ? chatUiUrl : "";
+  const iframe = safeUrl
+    ? `<iframe src="${safeUrl}" title="Polish Academic Chat" style="width:100%;height:100%;border:0;"></iframe>`
+    : `<div class="card">
+         <h1>Interactive Chat UI not configured</h1>
+         <p>Set <code>CHAT_UI_URL</code> in <code>wrangler.jsonc</code> vars to your deployed frontend URL (for example your Next.js app URL).</p>
+         <p>The API is still available via <code>POST /chat</code>.</p>
+       </div>`;
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Polish Academic Chat</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; font-family: system-ui, sans-serif; background: #0b1220; color: #e6edf7; }
+      .wrap { width: 100vw; height: 100vh; display: grid; place-items: center; }
+      .card { max-width: 760px; padding: 24px; border-radius: 12px; border: 1px solid #263248; background: #121b2b; }
+      code { background: #1c2940; padding: 2px 6px; border-radius: 6px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">${iframe}</div>
+  </body>
+</html>`;
+}
 
 type ChatRequestBody = {
   messages: UIMessage[];
