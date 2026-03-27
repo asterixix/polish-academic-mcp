@@ -106,8 +106,51 @@ const handler = {
       });
     }
 
+    if (path === "/chat" && request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": request.headers.get("Origin") ?? "*",
+          "Access-Control-Allow-Methods": "POST,OPTIONS,GET",
+          "Access-Control-Allow-Headers": "Content-Type,Authorization",
+          "Access-Control-Max-Age": "86400",
+        },
+      });
+    }
+
+    if (path === "/chat" && request.method === "GET") {
+      return new Response(
+        JSON.stringify(
+          {
+            ok: true,
+            endpoint: "/chat",
+            method: "POST",
+            message: "Use POST /chat with assistant-ui payload.",
+          },
+          null,
+          2,
+        ),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": request.headers.get("Origin") ?? "*",
+          },
+        },
+      );
+    }
+
     if (request.method === "POST" && path === "/chat") {
-      return handleChatRequest(request, env, url);
+      const chatResponse = await handleChatRequest(request, env, url);
+      const headers = new Headers(chatResponse.headers);
+      headers.set("Access-Control-Allow-Origin", request.headers.get("Origin") ?? "*");
+      headers.set("Access-Control-Allow-Methods", "POST,OPTIONS,GET");
+      headers.set("Access-Control-Allow-Headers", "Content-Type,Authorization");
+      return new Response(chatResponse.body, {
+        status: chatResponse.status,
+        statusText: chatResponse.statusText,
+        headers,
+      });
     }
 
     // ── Admin: rate-limit token registry ──────────────────────────────────
