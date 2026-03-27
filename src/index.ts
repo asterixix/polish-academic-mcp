@@ -32,9 +32,12 @@ import {
   introspectConnectBearer,
   listTokenRecordsWithUsagePreview,
   mintRateLimitToken,
+  parseBearerToken,
   patchRateLimitToken,
   revokeRateLimitToken,
+  resolveMcpBearerPolicy,
   resolveRateLimitPolicyFromRequest,
+  type RateLimitTokenPolicy,
 } from "./token-registry.js";
 import { getAdminPanelHtml } from "./admin-panel.js";
 import { getConnectPageHtml, getVerifyRedirectTarget, listVerifyProviderIds } from "./connect-page.js";
@@ -82,16 +85,17 @@ type ToolAccessPolicy = {
   allowedToolNames: Set<string>;
 };
 
-function resolveToolAccessPolicy(
-  policy: Awaited<ReturnType<typeof resolveRateLimitPolicyFromRequest>>,
-): ToolAccessPolicy {
+function resolveToolAccessPolicy(policy: RateLimitTokenPolicy | null): ToolAccessPolicy {
   // Legacy bypass secret retains full access.
   if (policy?.kind === "legacy_bypass" || policy?.allowedTools?.includes("*")) {
     return { hasFullAccess: true, allowedToolNames: new Set() };
   }
 
   const allowed = new Set(PUBLIC_TOOL_NAMES);
-  if (policy?.kind === "token" && Array.isArray(policy.allowedTools)) {
+  if (
+    (policy?.kind === "token" || policy?.kind === "oauth_access" || policy?.kind === "guest") &&
+    Array.isArray(policy.allowedTools)
+  ) {
     for (const t of policy.allowedTools) {
       if (typeof t === "string" && t.trim().length > 0) allowed.add(t.trim());
     }
@@ -490,10 +494,11 @@ const handler = {
       });
     }
 
+    const isMcpPath = path === "/mcp" || path === "/mcp/";
+
     let isToolCall = false;
     let isMcpJsonRpcRequest = false;
-    let rpcMethod: string | undefined;
-    let rateLimitPolicy: Awaited<ReturnType<typeof resolveRateLimitPolicyFromRequest>> = null;
+    let rateLimitPolicy: RateLimitTokenPolicy | null = null;
     let toolCallName: string | undefined;
     let toolCallArguments: unknown = undefined;
     let toolCallId: string | number | undefined;
@@ -501,6 +506,39 @@ const handler = {
 
     // ── Rate limiting (only tool/call requests) ─────────────────
     if (request.method === "POST") {
+      if (isMcpPath) {
+        const bearer = parseBearerToken(request);
+        if (bearer) {
+          const mcpAuth = await resolveMcpBearerPolicy(request, env);
+          if (!mcpAuth) {
+            return new Response(
+              JSON.stringify({
+                error: "unauthorized",
+                message:
+                  "Invalid Bearer token. Use a valid OAuth access_token from this host’s /oauth/token, a Connect JWT from /admin/tokens, or omit Authorization for anonymous guest (public tools + IP rate limit). Raw API secrets are not accepted as Bearer tokens.",
+              }),
+              {
+                status: 401,
+                headers: {
+                  "Content-Type": "application/json; charset=utf-8",
+                  "Cache-Control": "no-store",
+                  "WWW-Authenticate": 'Bearer error="invalid_token"',
+                },
+              },
+            );
+          }
+          rateLimitPolicy = mcpAuth;
+        } else {
+          rateLimitPolicy = {
+            kind: "guest",
+            identityKey: getClientId(request),
+            bypass: false,
+            limitPerHour: RATE_LIMIT,
+            allowedTools: [],
+          };
+        }
+      }
+
       try {
         // Clone before reading so the body stream is still available for the
         // MCP handler that runs afterwards.
@@ -508,7 +546,6 @@ const handler = {
         if (body && typeof body === "object") {
           const b = body as Record<string, unknown>;
           const method = typeof b["method"] === "string" ? b["method"] : undefined;
-          rpcMethod = method;
           const jsonrpc = typeof b["jsonrpc"] === "string" ? b["jsonrpc"] : undefined;
           isMcpJsonRpcRequest = Boolean(method && (jsonrpc === "2.0" || jsonrpc === undefined));
           isToolCall = method === "tools/call";
@@ -528,7 +565,7 @@ const handler = {
         // Malformed JSON — let the MCP handler return a proper error.
       }
 
-      if (isMcpJsonRpcRequest) {
+      if (isMcpJsonRpcRequest && !isMcpPath) {
         rateLimitPolicy = await resolveRateLimitPolicyFromRequest(request, env);
       }
 
@@ -553,12 +590,19 @@ const handler = {
 
         const limitForRequest = rateLimitPolicy?.bypass
           ? null
-          : rateLimitPolicy?.kind === "token"
+          : rateLimitPolicy?.kind === "token" ||
+              rateLimitPolicy?.kind === "oauth_access" ||
+              rateLimitPolicy?.kind === "guest"
             ? rateLimitPolicy.limitPerHour
             : RATE_LIMIT;
 
         if (!rateLimitPolicy?.bypass) {
-          const clientId = rateLimitPolicy?.kind === "token" ? rateLimitPolicy.identityKey : getClientId(request);
+          const clientId =
+            rateLimitPolicy?.kind === "token" ||
+            rateLimitPolicy?.kind === "oauth_access" ||
+            rateLimitPolicy?.kind === "guest"
+              ? rateLimitPolicy.identityKey
+              : getClientId(request);
           const rl = await checkRateLimit(env.RATE_LIMIT_KV, clientId, limitForRequest ?? RATE_LIMIT);
 
           if (!rl.allowed) {
@@ -592,34 +636,8 @@ const handler = {
     const mcpHandler = createMcpHandler(server, { enableJsonResponse: isMcpJsonRpcRequest });
     let response = await mcpHandler(request, env, ctx);
 
-    // Mixed-mode access control:
-    // - guest: sees only public tools
-    // - JWT token: public + explicitly allowedTools
-    if (isMcpJsonRpcRequest && rpcMethod === "tools/list") {
-      try {
-        const payload = (await response.clone().json()) as Record<string, unknown>;
-        const result = payload["result"];
-        const toolAccess = resolveToolAccessPolicy(rateLimitPolicy);
-        if (result && typeof result === "object" && !Array.isArray(result)) {
-          const resultObj = result as Record<string, unknown>;
-          const tools = resultObj["tools"];
-          if (Array.isArray(tools) && !toolAccess.hasFullAccess) {
-            resultObj["tools"] = tools.filter((t) => {
-              if (!t || typeof t !== "object" || Array.isArray(t)) return false;
-              const name = (t as Record<string, unknown>)["name"];
-              return typeof name === "string" && toolAccess.allowedToolNames.has(name);
-            });
-            payload["result"] = resultObj;
-            response = new Response(JSON.stringify(payload), {
-              status: response.status,
-              headers: response.headers,
-            });
-          }
-        }
-      } catch {
-        // If response isn't JSON, keep original response.
-      }
-    }
+    // tools/list returns the full catalog for every client; tool invocation is
+    // still gated below (tools/call) via PUBLIC_TOOL_NAMES + token allowedTools.
 
     // ── WebDAV eval-data upload ───────────────────────────────────────────
     if (isToolCall && toolCallName) {
@@ -709,7 +727,7 @@ export default handler;
 function getRootPageHtml(url: URL): string {
   const origin = url.origin;
   return `<!doctype html>
-<html lang="en">
+<html lang="pl">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -729,12 +747,12 @@ function getRootPageHtml(url: URL): string {
     <div class="wrap">
       <div class="card">
         <h1>Polish Academic MCP</h1>
-        <p>Service is running. Use one of the endpoints below:</p>
+        <p>Usługa działa. Wybierz punkt wejścia:</p>
         <ul>
-          <li><a href="${origin}/connect">${origin}/connect</a> — interactive MCP connect (JWT/guest)</li>
-          <li><a href="${origin}/verify">${origin}/verify</a> — verify flow + links to ChatGPT / Perplexity / Gemini / Claude</li>
-          <li><code>${origin}/mcp</code> — MCP server endpoint</li>
-          <li><a href="${origin}/health">${origin}/health</a> — basic service health JSON</li>
+          <li><a href="${origin}/connect">${origin}/connect</a> — interaktywne podłączenie MCP (JWT / gość)</li>
+          <li><a href="${origin}/verify">${origin}/verify</a> — weryfikacja i linki do ChatGPT / Perplexity / Gemini / Claude</li>
+          <li><code>${origin}/mcp</code> — endpoint serwera MCP</li>
+          <li><a href="${origin}/health">${origin}/health</a> — podstawowy JSON stanu usługi</li>
         </ul>
       </div>
     </div>

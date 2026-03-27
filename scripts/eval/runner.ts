@@ -5,7 +5,7 @@
  * collects span attributes, and computes RQ-aligned scores.
  *
  * Usage:
- *   npx tsx scripts/eval/runner.ts [--rq RQ1] [--url http://localhost:8787/mcp]
+ *   npx tsx scripts/eval/runner.ts [--rq RQ1] [--url http://localhost:8787/mcp] [--jwt "$MCP_BEARER_TOKEN"]  # omit --jwt for guest
  *   npx tsx scripts/eval/runner.ts --transport sse   # legacy MCP servers (SSE-only)
  *
  * The deployed Cloudflare Worker uses Streamable HTTP (POST + SSE); use default transport.
@@ -54,7 +54,7 @@ function parseArgs(): {
     rq: get("--rq", "ALL") as ResearchQuestion | "ALL",
     outputDir: get("--out", "./eval-results"),
     transport,
-    jwt: get("--jwt", process.env["MCP_BYPASS_JWT"] ?? ""),
+    jwt: get("--jwt", process.env["MCP_BEARER_TOKEN"] ?? process.env["MCP_BYPASS_JWT"] ?? ""),
   };
 }
 
@@ -638,7 +638,7 @@ async function main(): Promise<void> {
   console.log("🎯 Polish Academic MCP — Research Evaluator");
   console.log(`   Server: ${url}`);
   console.log(`   Transport: ${transport}`);
-  console.log(`   JWT bypass: ${jwt ? "enabled" : "disabled"}`);
+  console.log(`   Bearer: ${jwt?.trim() ? `set (${jwt.slice(0, 12)}…)` : "guest (no header)"}`);
   console.log(`   RQ filter: ${rq}\n`);
 
   const client = new EvalClient();

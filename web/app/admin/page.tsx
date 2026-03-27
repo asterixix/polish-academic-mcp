@@ -35,7 +35,7 @@ async function readJson<T>(res: Response): Promise<T> {
 	try {
 		return JSON.parse(text) as T;
 	} catch {
-		throw new Error(`Non-JSON response: ${text.slice(0, 200)}`);
+		throw new Error(`Odpowiedź nie jest JSON: ${text.slice(0, 200)}`);
 	}
 }
 
@@ -66,7 +66,7 @@ export default function AdminTokensPage() {
 		}
 
 		const entered = window.prompt(
-			"Enter admin bearer token for this panel.\n\nAuthorization header value should be:\nBearer <token>\n\nPaste only <token>.",
+			"Podaj token administratora (Bearer) dla tego panelu.\n\nNagłówek Authorization:\nBearer <token>\n\nWklej sam <token>.",
 		);
 		if (entered === null) return;
 		const trimmed = entered.trim();
@@ -82,7 +82,7 @@ export default function AdminTokensPage() {
 	const [mintOwner, setMintOwner] = useState<string>("");
 
 	async function callAdmin<T>(path: string, init?: RequestInit): Promise<T> {
-		if (!adminBearer) throw new Error("Missing admin bearer token");
+		if (!adminBearer) throw new Error("Brak tokena administratora (Bearer)");
 		const headers: Record<string, string> = {
 			...(init?.headers as Record<string, string> | undefined),
 			Authorization: `Bearer ${adminBearer}`,
@@ -102,7 +102,7 @@ export default function AdminTokensPage() {
 	async function copyText(text: string) {
 		try {
 			await navigator.clipboard.writeText(text);
-			setStatus("Copied to clipboard.");
+			setStatus("Skopiowano do schowka.");
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			setStatus(msg);
@@ -154,7 +154,7 @@ export default function AdminTokensPage() {
 			// Refresh list (and show error if something else fails).
 			await loadTokens();
 
-			setStatus("Minted token. Copy it below:");
+			setStatus("Utworzono token. Skopiuj poniżej:");
 			setLastMintedToken(data.token);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
@@ -221,18 +221,18 @@ export default function AdminTokensPage() {
 	return (
 		<div className="mx-auto w-full max-w-5xl p-6">
 			<h1 className="mb-2 text-2xl font-semibold">
-				Rate-limit bypass token panel
+				Panel tokenów i limitów wywołań
 			</h1>
 			<p className="mb-6 text-sm text-muted-foreground">
-				Admin calls require <code>Authorization: Bearer</code> token. Regular
-				users will use minted tokens.
+				Wywołania admin wymagają nagłówka <code>Authorization: Bearer</code>.
+				Użytkownicy korzystają z utworzonych tokenów.
 			</p>
 
 			<div className="mb-6 rounded-lg border p-4">
 				<div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2">
 					<label className="flex flex-col gap-1">
 						<span className="text-sm text-muted-foreground">
-							Worker base URL
+							Bazowy URL workera
 						</span>
 						<input
 							className="rounded border px-3 py-2"
@@ -244,13 +244,13 @@ export default function AdminTokensPage() {
 
 					<label className="flex flex-col gap-1">
 						<span className="text-sm text-muted-foreground">
-							Admin bearer secret
+							Sekret Bearer administratora
 						</span>
 						<input
 							className="rounded border px-3 py-2"
 							value={adminBearer}
 							onChange={(e) => setAdminBearer(e.target.value)}
-							placeholder="paste admin token"
+							placeholder="wklej token admin"
 						/>
 					</label>
 				</div>
@@ -262,7 +262,7 @@ export default function AdminTokensPage() {
 						disabled={loading}
 						type="button"
 					>
-						{loading ? "Loading..." : "Load tokens"}
+						{loading ? "Wczytywanie…" : "Wczytaj tokeny"}
 					</button>
 				</div>
 
@@ -272,7 +272,7 @@ export default function AdminTokensPage() {
 			</div>
 
 			<div className="mb-6 rounded-lg border p-4">
-				<h2 className="mb-4 text-lg font-medium">Mint token</h2>
+				<h2 className="mb-4 text-lg font-medium">Utwórz token</h2>
 				<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
 					<label className="flex items-center gap-2">
 						<input
@@ -280,12 +280,12 @@ export default function AdminTokensPage() {
 							checked={mintBypass}
 							onChange={(e) => setMintBypass(e.target.checked)}
 						/>
-						<span>Bypass rate limit completely</span>
+						<span>Całkowicie pomiń limit (bypass)</span>
 					</label>
 
 					<label className="flex flex-col gap-1">
 						<span className="text-sm text-muted-foreground">
-							Limit per hour
+							Limit na godzinę
 						</span>
 						<input
 							type="number"
@@ -302,7 +302,7 @@ export default function AdminTokensPage() {
 
 					<label className="flex flex-col gap-1">
 						<span className="text-sm text-muted-foreground">
-							Expires in days
+							Wygasa za (dni)
 						</span>
 						<input
 							type="number"
@@ -318,25 +318,25 @@ export default function AdminTokensPage() {
 
 					<label className="flex flex-col gap-1">
 						<span className="text-sm text-muted-foreground">
-							Label (optional)
+							Etykieta (opcjonalnie)
 						</span>
 						<input
 							className="rounded border px-3 py-2"
 							value={mintLabel}
 							onChange={(e) => setMintLabel(e.target.value)}
-							placeholder="e.g. alice-prod"
+							placeholder="np. alice-prod"
 						/>
 					</label>
 
 					<label className="flex flex-col gap-1 md:col-span-2">
 						<span className="text-sm text-muted-foreground">
-							Owner (optional)
+							Właściciel (opcjonalnie)
 						</span>
 						<input
 							className="rounded border px-3 py-2"
 							value={mintOwner}
 							onChange={(e) => setMintOwner(e.target.value)}
-							placeholder="e.g. Alice"
+							placeholder="np. Alice"
 						/>
 					</label>
 				</div>
@@ -348,13 +348,13 @@ export default function AdminTokensPage() {
 						disabled={loading}
 						type="button"
 					>
-						{loading ? "Minting..." : "Mint token"}
+						{loading ? "Tworzenie…" : "Utwórz token"}
 					</button>
 				</div>
 
 				{lastMintedToken ? (
 					<div className="mt-4 rounded border p-3">
-						<div className="mb-2 text-sm font-medium">Last minted token</div>
+						<div className="mb-2 text-sm font-medium">Ostatnio utworzony token</div>
 						<textarea
 							className="h-24 w-full rounded border bg-black/5 p-2 font-mono text-xs"
 							readOnly
@@ -367,7 +367,7 @@ export default function AdminTokensPage() {
 								disabled={loading}
 								type="button"
 							>
-								Copy
+								Kopiuj
 							</button>
 						</div>
 					</div>
@@ -375,10 +375,10 @@ export default function AdminTokensPage() {
 			</div>
 
 			<div className="rounded-lg border p-4">
-				<h2 className="mb-4 text-lg font-medium">Tokens</h2>
+				<h2 className="mb-4 text-lg font-medium">Tokeny</h2>
 
 				{tokens.length === 0 ? (
-					<div className="text-sm text-muted-foreground">No tokens yet.</div>
+					<div className="text-sm text-muted-foreground">Brak tokenów.</div>
 				) : null}
 
 				<div className="space-y-4">
@@ -452,29 +452,29 @@ function TokenCard(props: {
 						jti: <span className="font-mono">{token.jti}</span>
 					</div>
 					<div className="mt-1 text-sm text-muted-foreground">
-						label: {token.label || "—"} · owner: {token.owner || "—"}
+						etykieta: {token.label || "—"} · właściciel: {token.owner || "—"}
 					</div>
 					<div className="mt-1 text-sm text-muted-foreground">
-						bypass: {token.bypass ? "true" : "false"} · limit:{" "}
+						bypass: {token.bypass ? "tak" : "nie"} · limit:{" "}
 						{token.bypass ? "∞" : token.limitPerHour}/h
 					</div>
 					<div className="mt-1 text-sm text-muted-foreground">
-						expiresAt: {msToIso(token.expiresAtMs)}
+						wygasa: {msToIso(token.expiresAtMs)}
 					</div>
 					{token.revokedAtMs ? (
 						<div className="mt-1 text-sm text-red-600">
-							revokedAt: {msToIso(token.revokedAtMs)}
+							odwołano: {msToIso(token.revokedAtMs)}
 						</div>
 					) : expired ? (
-						<div className="mt-1 text-sm text-muted-foreground">expired</div>
+						<div className="mt-1 text-sm text-muted-foreground">wygasły</div>
 					) : null}
 				</div>
 
 				<div className="min-w-[280px]">
-					<div className="text-sm font-medium">usage preview</div>
+					<div className="text-sm font-medium">Podgląd zużycia</div>
 					<div className="mt-1 text-sm text-muted-foreground">
-						remaining: {token.usage.remaining} · resetIn:{" "}
-						{token.usage.resetInSeconds}s
+						pozostało: {token.usage.remaining} · reset za:{" "}
+						{token.usage.resetInSeconds} s
 					</div>
 				</div>
 			</div>
@@ -486,11 +486,11 @@ function TokenCard(props: {
 						checked={bypass}
 						onChange={(e) => setBypass(e.target.checked)}
 					/>
-					bypass
+					pomiń limit
 				</label>
 
 				<label className="flex flex-col gap-1 text-sm">
-					<span className="text-muted-foreground">limitPerHour</span>
+					<span className="text-muted-foreground">limit / godz.</span>
 					<input
 						type="number"
 						className="rounded border px-2 py-1"
@@ -505,7 +505,7 @@ function TokenCard(props: {
 				</label>
 
 				<label className="flex flex-col gap-1 text-sm">
-					<span className="text-muted-foreground">expiresInDays</span>
+					<span className="text-muted-foreground">wygasa za (dni)</span>
 					<input
 						type="number"
 						className="rounded border px-2 py-1"
@@ -520,7 +520,7 @@ function TokenCard(props: {
 				</label>
 
 				<label className="flex flex-col gap-1 text-sm">
-					<span className="text-muted-foreground">label</span>
+					<span className="text-muted-foreground">etykieta</span>
 					<input
 						className="rounded border px-2 py-1"
 						value={label}
@@ -530,7 +530,7 @@ function TokenCard(props: {
 				</label>
 
 				<label className="flex flex-col gap-1 text-sm md:col-span-2">
-					<span className="text-muted-foreground">owner</span>
+					<span className="text-muted-foreground">właściciel</span>
 					<input
 						className="rounded border px-2 py-1"
 						value={owner}
@@ -547,7 +547,7 @@ function TokenCard(props: {
 					disabled={loading || revoked}
 					type="button"
 				>
-					Apply changes
+					Zastosuj zmiany
 				</button>
 
 				<div className="flex items-center gap-2">
@@ -555,7 +555,7 @@ function TokenCard(props: {
 						className="w-56 rounded border px-2 py-1"
 						value={revokeReason}
 						onChange={(e) => setRevokeReason(e.target.value)}
-						placeholder="Revoke reason (optional)"
+						placeholder="Powód odwołania (opcjonalnie)"
 						disabled={revoked}
 					/>
 					<button
@@ -564,7 +564,7 @@ function TokenCard(props: {
 						disabled={loading || revoked}
 						type="button"
 					>
-						Revoke now
+						Odwołaj teraz
 					</button>
 				</div>
 			</div>

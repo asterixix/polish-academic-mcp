@@ -25,8 +25,11 @@ export interface RateLimitTokenRecord {
   owner?: string;
 }
 
+/** Hourly tools/call budget for OAuth access_token (third-party MCP client). */
+export const DEFAULT_OAUTH_ACCESS_LIMIT_PER_HOUR = 10;
+
 export interface RateLimitTokenPolicy {
-  kind: "token" | "legacy_bypass";
+  kind: "token" | "legacy_bypass" | "oauth_access" | "guest";
   identityKey: string; // used as clientId for rate-limiter counters
   bypass: boolean;
   limitPerHour: number;
@@ -318,7 +321,7 @@ export async function patchRateLimitToken(
 
 /** Response for GET /connect/token-status — safe to expose to token holder (no admin secrets). */
 export type ConnectTokenIntrospection =
-  | { ok: false; error: "missing_bearer" | "invalid_signature" | "missing_jti" }
+  | { ok: false; error: "missing_bearer" | "invalid_signature" | "missing_jti" | "unsupported_token" }
   | {
       ok: true;
       kind: "legacy_bypass";
@@ -327,6 +330,16 @@ export type ConnectTokenIntrospection =
       rate_limit_per_hour: null;
       remaining: null;
       revoked: false;
+    }
+  | {
+      ok: true;
+      kind: "oauth_access";
+      sub: string;
+      expired: boolean;
+      expires_at_ms: number;
+      rate_limit_per_hour: number;
+      /** Same sliding-window counter key as MCP tools/call for this token. */
+      identity_key: string;
     }
   | {
       ok: true;
@@ -378,8 +391,36 @@ export async function introspectConnectBearer(request: Request, env: Env): Promi
   }
 
   const jti = typeof payload.jti === "string" ? payload.jti : null;
-  if (!jti) {
-    return { ok: false, error: "missing_jti" };
+  const issRaw = payload["iss"];
+  const iss = typeof issRaw === "string" ? issRaw : null;
+  const origin = new URL(request.url).origin;
+  const resourceAud = `${origin}/mcp`;
+  const subRaw = payload["sub"];
+  const audRaw = payload["aud"];
+
+  if (
+    iss === origin &&
+    typeof audRaw === "string" &&
+    audRaw === resourceAud &&
+    typeof subRaw === "string" &&
+    subRaw.length > 0
+  ) {
+    const expSec = typeof payload.exp === "number" && Number.isFinite(payload.exp) ? Math.floor(payload.exp) : 0;
+    const expiresAtMs = expSec * 1000;
+    const expired = Math.floor(Date.now() / 1000) >= expSec;
+    return {
+      ok: true,
+      kind: "oauth_access",
+      sub: subRaw,
+      expired,
+      expires_at_ms: expiresAtMs,
+      rate_limit_per_hour: DEFAULT_OAUTH_ACCESS_LIMIT_PER_HOUR,
+      identity_key: `oauth:${subRaw}`,
+    };
+  }
+
+  if (!jti || iss !== "polish-academic-mcp") {
+    return { ok: false, error: "unsupported_token" };
   }
 
   const record = await getTokenRecord(env, jti);
@@ -510,6 +551,63 @@ export async function resolveRateLimitPolicyFromRequest(request: Request, env: E
 
   if (record.revokedAtMs) return null;
   if (nowMs() >= record.expiresAtMs) return null;
+
+  return {
+    kind: "token",
+    identityKey: jti,
+    bypass: record.bypass,
+    limitPerHour: record.limitPerHour,
+    allowedTools: normalizeAllowedTools(record.allowedTools),
+    record,
+  };
+}
+
+/**
+ * Policy for MCP HTTP endpoint: Bearer must be either (a) OAuth access_token from /oauth/token
+ * or (b) Connect JWT minted via /admin/tokens. Raw shared secret is rejected.
+ */
+export async function resolveMcpBearerPolicy(request: Request, env: Env): Promise<RateLimitTokenPolicy | null> {
+  const jwtSecret = env.RATE_LIMIT_BYPASS_JWT_SECRET;
+  if (!jwtSecret) return null;
+
+  const token = parseBearerToken(request);
+  if (!token) return null;
+
+  if (token === jwtSecret) return null;
+
+  const payload = await verifyJwtHs256(token, jwtSecret);
+  if (!payload) return null;
+
+  const origin = new URL(request.url).origin;
+  const resourceAud = `${origin}/mcp`;
+  const issRaw = payload["iss"];
+  const iss = typeof issRaw === "string" ? issRaw : null;
+  const jti = typeof payload.jti === "string" ? payload.jti : null;
+  const subRaw = payload["sub"];
+  const audRaw = payload["aud"];
+
+  if (
+    iss === origin &&
+    typeof audRaw === "string" &&
+    audRaw === resourceAud &&
+    typeof subRaw === "string" &&
+    subRaw.length > 0
+  ) {
+    const expSec = typeof payload.exp === "number" && Number.isFinite(payload.exp) ? Math.floor(payload.exp) : 0;
+    if (Math.floor(Date.now() / 1000) >= expSec) return null;
+    return {
+      kind: "oauth_access",
+      identityKey: `oauth:${subRaw}`,
+      bypass: false,
+      limitPerHour: DEFAULT_OAUTH_ACCESS_LIMIT_PER_HOUR,
+      allowedTools: [],
+    };
+  }
+
+  if (!jti || iss !== "polish-academic-mcp") return null;
+
+  const record = await getTokenRecord(env, jti);
+  if (!record || record.revokedAtMs || nowMs() >= record.expiresAtMs) return null;
 
   return {
     kind: "token",

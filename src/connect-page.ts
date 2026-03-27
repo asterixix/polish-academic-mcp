@@ -9,23 +9,23 @@ const CONNECT_PROVIDERS: Record<
     label: "ChatGPT",
     landingUrl: "https://chatgpt.com",
     hint:
-      "Plus/Pro (and plans with connectors): enable Developer mode (Settings → Apps & Connectors → Advanced), then Create connector and paste the MCP URL (Streamable HTTP). UI names may say “Apps” or “Connectors”.",
+      "Plus/Pro (plany z konektorami): włącz tryb deweloperski (Ustawienia → Aplikacje i konektory → Zaawansowane), utwórz konektor i wklej URL MCP (Streamable HTTP). Interfejs może nazywać to „Aplikacje” lub „Konektory”.",
   },
   perplexity: {
     label: "Perplexity",
     landingUrl: "https://docs.perplexity.ai/guides/mcp-server",
     hint:
-      "Official guide covers Perplexity as MCP server and remote MCP with OAuth. Connecting a third-party MCP to Perplexity depends on their client; use /.well-known + /register on this worker when the client supports OAuth/DCR.",
+      "Oficjalny przewodnik: Perplexity jako serwer MCP i zdalne MCP z OAuth. Podłączenie zewnętrznego MCP zależy od klienta; użyj /.well-known + /register na tym workerze, gdy klient obsługuje OAuth/DCR.",
   },
   gemini: {
     label: "Gemini",
     landingUrl: "https://aistudio.google.com",
-    hint: "AI Studio: Tools → Add MCP server. CLI: ~/.gemini/settings.json httpUrl.",
+    hint: "AI Studio: Narzędzia → Dodaj serwer MCP. CLI: ~/.gemini/settings.json httpUrl.",
   },
   claude: {
     label: "Claude",
     landingUrl: "https://claude.ai/settings/connectors",
-    hint: "Web: Connectors → Add custom connector. Desktop: mcp-remote + this server URL.",
+    hint: "Sieć: Konektory → Dodaj niestandardowy konektor. Desktop: mcp-remote + URL tego serwera.",
   },
 };
 
@@ -53,7 +53,7 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
     : null;
   const autoRedirect = sp.get("auto") === "1" || sp.get("auto") === "true";
 
-  const pageTitle = verifyMode ? "Verify & connect" : "MCP Connect";
+  const pageTitle = verifyMode ? "Weryfikacja i połączenie" : "Połączenie MCP";
   const pageInitJson = JSON.stringify({
     verifyMode,
     autoRedirect,
@@ -63,7 +63,7 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
   });
 
   const verifyBannerHtml = verifyMode
-    ? `<div class="verify-banner">Verify flow: choose guest or JWT, run a successful probe, then open your chat app. With <span class="mono">?auto=1&amp;provider=claude</span> the page redirects to that app after a good probe.</div>`
+    ? `<div class="verify-banner">Weryfikacja: tryb gościa (limity wg IP) lub token Bearer — uruchom udany test, potem otwórz czat. Z parametrem <span class="mono">?auto=1&amp;provider=claude</span> strona przekieruje po udanym teście.</div>`
     : "";
 
   const providerCardsHtml = CONNECT_PROVIDER_IDS.map((id) => {
@@ -71,15 +71,15 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
     const rUrl = `${verifyRedirectBase}?provider=${encodeURIComponent(id)}`;
     return `<div class="provider-card">
       <div class="provider-card-head">
-        <button type="button" class="btn btn-primary provider-open" data-provider="${id}">Open ${p.label}</button>
-        <a class="provider-302 mono" href="${rUrl}">302 redirect</a>
+        <button type="button" class="btn btn-primary provider-open" data-provider="${id}">Otwórz ${p.label}</button>
+        <a class="provider-302 mono" href="${rUrl}">Przekierowanie 302</a>
       </div>
       <p class="muted provider-hint">${p.hint}</p>
     </div>`;
   }).join("");
 
   return `<!doctype html>
-<html lang="en" class="dark">
+<html lang="pl" class="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -185,17 +185,17 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
     <div class="container">
       <h1 class="page-title">${pageTitle}</h1>
       <p class="page-desc">
-        Interactive connector for <span class="mono">${mcpUrl}</span>.
-        Continue as guest (public tools) or provide JWT bearer token (extended tools/limits).
-        ${verifyMode ? " This is the <strong>verify</strong> entry — use Session then probe, or jump to your chat app below." : ""}
+        Konektor dla <span class="mono">${mcpUrl}</span>.
+        <strong>Gość</strong> — bez nagłówka <span class="mono">Authorization</span>: tylko publiczne narzędzia, limit godzinowy wg adresu IP. <strong>Bearer</strong> — <span class="mono">OAuth access_token</span> (na klienta OAuth) lub <span class="mono">Connect JWT</span> z <span class="mono">/admin/tokens</span> (dodatkowe narzędzia i limity).
+        ${verifyMode ? " To wejście <strong>weryfikacji</strong> — użyj sekcji Sesja i testu albo przejdź do aplikacji czatu poniżej." : ""}
       </p>
       ${verifyBannerHtml}
 
       <div class="card" style="margin-bottom:1rem;">
-        <h2>Open in your app</h2>
+        <h2>Otwórz w aplikacji</h2>
         <p class="muted" style="margin:0 0 0.75rem;font-size:0.82rem;">
-          After you confirm guest or JWT (probe OK), add this MCP URL in the app. Buttons open the vendor site in a new tab.
-          Backend <span class="mono">GET /verify/redirect?provider=…</span> returns <strong>302</strong> to the same landing pages (shareable links).
+          Po udanym teście (gość lub Bearer) dodaj ten URL MCP w kliencie. Przyciski otwierają stronę dostawcy w nowej karcie.
+          Backend <span class="mono">GET /verify/redirect?provider=…</span> zwraca <strong>302</strong> na te same strony docelowe (linki do udostępnienia).
         </p>
         <p class="mono" style="margin:0 0 0.75rem;font-size:0.8rem;word-break:break-all;">${mcpUrl}</p>
         <div class="provider-grid">
@@ -205,71 +205,71 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
 
       <div class="grid">
         <div class="card">
-          <h2>Session</h2>
-          <label for="jwtInput">JWT token (optional)</label>
-          <textarea id="jwtInput" placeholder="Paste Bearer token value only (without 'Bearer ')"></textarea>
+          <h2>Sesja</h2>
+          <label for="jwtInput">Token Bearer (opcjonalnie — puste = gość)</label>
+          <textarea id="jwtInput" placeholder="OAuth access_token lub Connect JWT — sam token; puste = gość (limity wg IP)"></textarea>
           <div class="row">
-            <button class="btn btn-primary" id="btnUseJwt" type="button">Use JWT + test</button>
-            <button class="btn" id="btnGuest" type="button">Continue as guest + test</button>
-            <button class="btn btn-danger" id="btnClear" type="button">Clear token</button>
+            <button class="btn btn-primary" id="btnUseJwt" type="button">Zapisz + test MCP</button>
+            <button class="btn" id="btnGuest" type="button">Kontynuuj jako gość + test</button>
+            <button class="btn btn-danger" id="btnClear" type="button">Wyczyść token</button>
           </div>
-          <div id="authStatus" class="status">No test executed yet.</div>
-          <label style="display:block;margin-top:0.85rem;">Token status</label>
+          <div id="authStatus" class="status">Nie uruchomiono jeszcze testu.</div>
+          <label style="display:block;margin-top:0.85rem;">Status tokenu</label>
           <p class="muted" style="margin:0 0 0.35rem;font-size:0.78rem;">
-            Hourly tool-call limit, remaining calls, rate-limit bypass, revoke — via <span class="mono">GET /connect/token-status</span> with the same Bearer token.
+            Limit godzinowy wywołań narzędzi, pozostałe wywołania, bypass limitu, odwołanie — przez <span class="mono">GET /connect/token-status</span> z tym samym Bearer.
           </p>
           <div class="row">
-            <button class="btn" id="btnTokenStatus" type="button">Refresh token status</button>
+            <button class="btn" id="btnTokenStatus" type="button">Odśwież status tokenu</button>
           </div>
-          <div id="tokenStatusOut" class="status" style="margin-top:0.5rem;">Paste JWT and refresh.</div>
+          <div id="tokenStatusOut" class="status" style="margin-top:0.5rem;">Wklej token i odśwież (gość nie ma statusu tutaj).</div>
         </div>
 
         <div class="card">
-          <h2>Connection endpoints</h2>
+          <h2>Endpointy połączenia</h2>
           <div class="split">
             <div>
-              <div class="badge">Streamable HTTP (recommended)</div>
+              <div class="badge">Streamable HTTP (zalecane)</div>
               <p class="mono" style="margin-top:0.5rem;">${mcpUrl}</p>
-              <p class="muted">Use MCP client over HTTP JSON-RPC (initialize, tools/list, tools/call).</p>
+              <p class="muted">Klient MCP przez HTTP JSON-RPC (initialize, tools/list, tools/call).</p>
             </div>
             <div>
-              <div class="badge">Legacy SSE fallback</div>
+              <div class="badge">SSE (zapasowo)</div>
               <p class="mono" style="margin-top:0.5rem;">${mcpUrl}</p>
-              <p class="muted">Some clients fallback to SSE on same endpoint when streamable init fails.</p>
+              <p class="muted">Część klientów przełącza się na SSE na tym samym URL po nieudanym starcie streamable.</p>
             </div>
           </div>
           <p class="muted" style="margin-top:0.75rem;">
-            OAuth metadata: <a href="${authServerUrl}" target="_blank" rel="noreferrer">${authServerUrl}</a><br/>
-            Dynamic registration: <span class="mono">${registerUrl}</span> (POST, requires JWT below)
+            Metadane OAuth: <a href="${authServerUrl}" target="_blank" rel="noreferrer">${authServerUrl}</a><br/>
+            Rejestracja dynamiczna: <span class="mono">${registerUrl}</span> (POST — wymaga JWT poniżej)
           </p>
         </div>
       </div>
 
       <div class="card" style="margin-top:1rem;">
-        <h2>OAuth client registration (RFC 7591)</h2>
+        <h2>Rejestracja klienta OAuth (RFC 7591)</h2>
         <p class="muted" style="margin:0 0 0.75rem; font-size:0.82rem;">
-          Register a <strong>Client ID</strong> and <strong>Client Secret</strong> for MCP clients that expect OAuth (PKCE + authorization code).
-          The same JWT as in Session must be sent — only tokens minted in the admin panel (or legacy bypass) are accepted by <span class="mono">POST /register</span>.
+          Utwórz <strong>Client ID</strong> i <strong>Client Secret</strong> dla klientów MCP z OAuth (PKCE + kod autoryzacji).
+          Ten sam JWT co w Sesji — <span class="mono">POST /register</span> akceptuje tokeny z panelu admin (lub legacy bypass).
         </p>
-        <label for="oauthClientName">Client name (optional)</label>
-        <input type="text" id="oauthClientName" placeholder="e.g. Claude Desktop / Perplexity" autocomplete="off" />
-        <label for="oauthRedirectUris">Redirect URIs</label>
-        <textarea id="oauthRedirectUris" placeholder="One URI per line, e.g.&#10;http://127.0.0.1:1234/callback&#10;https://your-app/oauth/callback"></textarea>
+        <label for="oauthClientName">Nazwa klienta (opcjonalnie)</label>
+        <input type="text" id="oauthClientName" placeholder="np. Claude Desktop / Perplexity" autocomplete="off" />
+        <label for="oauthRedirectUris">Adresy przekierowania (redirect URIs)</label>
+        <textarea id="oauthRedirectUris" placeholder="Jeden URI w linii, np.&#10;http://127.0.0.1:1234/callback&#10;https://twoja-aplikacja/oauth/callback"></textarea>
         <div class="row">
-          <button class="btn btn-primary" id="btnRegisterOAuth" type="button">Register OAuth client</button>
-          <button class="btn" id="btnCopyOAuthJson" type="button">Copy response JSON</button>
+          <button class="btn btn-primary" id="btnRegisterOAuth" type="button">Zarejestruj klienta OAuth</button>
+          <button class="btn" id="btnCopyOAuthJson" type="button">Kopiuj JSON odpowiedzi</button>
         </div>
-        <div id="oauthRegStatus" class="status">Paste JWT above, add redirect URI(s), then register.</div>
+        <div id="oauthRegStatus" class="status">Wklej JWT powyżej, dodaj redirect URI, potem zarejestruj.</div>
         <pre id="oauthRegResult" class="mono" style="display:none;margin-top:0.75rem;padding:0.65rem 0.75rem;background:oklch(0.145 0 0);border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);font-size:0.75rem;max-height:14rem;overflow:auto;"></pre>
       </div>
 
       <div class="card" style="margin-top:1rem;">
-        <h2>Live MCP probe</h2>
+        <h2>Test MCP (na żywo)</h2>
         <div class="row">
-          <button class="btn" id="btnProbe" type="button">Run initialize + tools/list</button>
-          <button class="btn" id="btnCopyCurl" type="button">Copy cURL template</button>
+          <button class="btn" id="btnProbe" type="button">Uruchom initialize + tools/list</button>
+          <button class="btn" id="btnCopyCurl" type="button">Kopiuj szablon cURL</button>
         </div>
-        <div id="probeStatus" class="status">Waiting for probe…</div>
+        <div id="probeStatus" class="status">Oczekiwanie na test…</div>
         <div id="toolList" class="tool-list" style="display:none;"></div>
       </div>
     </div>
@@ -309,34 +309,46 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
         function formatTokenStatus(j) {
           if (j.kind === "legacy_bypass") {
             return [
-              "Profile: legacy bypass (shared secret)",
-              "Full tool access: yes",
-              "Rate limit bypass: yes",
-              "Hourly limit: —",
-              "Remaining this hour: —",
-              "Revoked: no"
+              "Profil: legacy bypass (wspólny sekret)",
+              "Uwaga: surowy sekret nie jest akceptowany jako Bearer na /mcp — zmintuj Connect JWT albo użyj OAuth.",
+              "Pełny dostęp do narzędzi: tak (tylko admin / rejestracja OAuth)",
+              "Pominięcie limitu: tak",
+              "Limit godzinowy: —",
+              "Pozostało w tej godzinie: —",
+              "Odwołany: nie"
+            ].join("\\n");
+          }
+          if (j.kind === "oauth_access") {
+            return [
+              "Profil: OAuth access_token (zdalny klient MCP)",
+              "Id klienta OAuth (sub): " + j.sub,
+              "Wygasł: " + (j.expired ? "tak" : "nie"),
+              "Ważny do: " + iso(j.expires_at_ms),
+              "Budżet wywołań MCP / godz.: " + j.rate_limit_per_hour,
+              "Klucz limitu: " + j.identity_key,
+              "Wywoływalne narzędzia: tylko publiczny katalog"
             ].join("\\n");
           }
           var lines = [];
-          lines.push("Token id (jti): " + j.jti);
-          if (j.label) lines.push("Label: " + j.label);
-          lines.push("Bypass: " + (j.bypass ? "yes" : "no"));
-          lines.push("Revoked: " + (j.revoked ? "yes" : "no"));
-          if (j.revoked_at_ms) lines.push("Revoked at: " + iso(j.revoked_at_ms));
-          lines.push("Expired: " + (j.expired ? "yes" : "no"));
-          lines.push("Valid until: " + iso(j.expires_at_ms));
+          lines.push("Identyfikator tokenu (jti): " + j.jti);
+          if (j.label) lines.push("Etykieta: " + j.label);
+          lines.push("Bypass: " + (j.bypass ? "tak" : "nie"));
+          lines.push("Odwołany: " + (j.revoked ? "tak" : "nie"));
+          if (j.revoked_at_ms) lines.push("Odwołano: " + iso(j.revoked_at_ms));
+          lines.push("Wygasł: " + (j.expired ? "tak" : "nie"));
+          lines.push("Ważny do: " + iso(j.expires_at_ms));
           if (j.bypass && !j.revoked && !j.expired) {
-            lines.push("Rate limit: bypass (no hourly cap)");
+            lines.push("Limit: bypass (bez limitu godzinowego)");
           } else if (!j.revoked && !j.expired && !j.bypass) {
-            lines.push("Rate limit (per hour): " + (j.rate_limit_per_hour != null ? j.rate_limit_per_hour : "—"));
-            lines.push("Remaining this hour: " + (j.remaining != null ? j.remaining : "—"));
-            lines.push("Sliding window reset (approx): " + (j.reset_in_seconds != null ? j.reset_in_seconds + " s" : "—"));
-            lines.push("Under limit: " + (j.allowed ? "yes" : "no"));
+            lines.push("Limit (na godzinę): " + (j.rate_limit_per_hour != null ? j.rate_limit_per_hour : "—"));
+            lines.push("Pozostało w tej godzinie: " + (j.remaining != null ? j.remaining : "—"));
+            lines.push("Reset okna (ok.): " + (j.reset_in_seconds != null ? j.reset_in_seconds + " s" : "—"));
+            lines.push("Poniżej limitu: " + (j.allowed ? "tak" : "nie"));
           }
           if (j.allowed_tools && j.allowed_tools.length) {
-            lines.push("Extra allowed tools (beyond public): " + j.allowed_tools.join(", "));
+            lines.push("Dodatkowe narzędzia (poza publicznymi): " + j.allowed_tools.join(", "));
           } else {
-            lines.push("Extra allowed tools: (none — public catalog only)");
+            lines.push("Dodatkowe narzędzia: (brak — tylko publiczny katalog)");
           }
           return lines.join("\\n");
         }
@@ -345,11 +357,11 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
           var token = getToken();
           if (!token) {
             $("tokenStatusOut").className = "status";
-            $("tokenStatusOut").textContent = "No JWT in Session — paste a token to see limits, bypass, and revoke state.";
+            $("tokenStatusOut").textContent = "Brak tokenu — wklej OAuth access_token lub Connect JWT, albo użyj gościa dla MCP bez Bearer.";
             return;
           }
           $("tokenStatusOut").className = "status";
-          $("tokenStatusOut").textContent = "Loading…";
+          $("tokenStatusOut").textContent = "Wczytywanie…";
           try {
             var res = await fetch(tokenStatusUrl, { headers: { "Authorization": "Bearer " + token } });
             var json;
@@ -357,13 +369,13 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
               json = await res.json();
             } catch (parseErr) {
               $("tokenStatusOut").className = "status err";
-              $("tokenStatusOut").textContent = "Bad response (HTTP " + res.status + ")";
+              $("tokenStatusOut").textContent = "Niepoprawna odpowiedź (HTTP " + res.status + ")";
               return;
             }
             if (!json.ok) {
               var err = json.error || "unknown";
               $("tokenStatusOut").className = "status err";
-              $("tokenStatusOut").textContent = "Token check failed: " + err + (res.status === 401 ? " (HTTP 401)" : "");
+              $("tokenStatusOut").textContent = "Weryfikacja tokenu nie powiodła się: " + err + (res.status === 401 ? " (HTTP 401)" : "");
               return;
             }
             $("tokenStatusOut").className = "status";
@@ -390,14 +402,14 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
           if (!PAGE.autoRedirect || !PAGE.providerParam) return;
           var p = PAGE.providers[PAGE.providerParam];
           if (!p || !p.landingUrl) return;
-          setStatus("probeStatus", "OK — redirecting to " + p.label + "…", false);
+          setStatus("probeStatus", "OK — przekierowanie do " + p.label + "…", false);
           setTimeout(function () {
             window.location.href = p.landingUrl;
           }, 500);
         }
 
         async function runProbe(token) {
-          setStatus("probeStatus", "Running initialize...", false);
+          setStatus("probeStatus", "Uruchamianie initialize…", false);
           var init = await rpc({
             jsonrpc: "2.0",
             id: "init",
@@ -409,14 +421,14 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
             }
           }, token);
           if (init.status !== 200 || (init.json && init.json.error)) {
-            var msg = "initialize failed (HTTP " + init.status + ")";
+            var msg = "initialize nie powiodło się (HTTP " + init.status + ")";
             if (init.json && init.json.error) msg += "\\n" + JSON.stringify(init.json.error);
             setStatus("probeStatus", msg, true);
             $("toolList").style.display = "none";
             return false;
           }
 
-          setStatus("probeStatus", "initialize OK. Listing tools...", false);
+          setStatus("probeStatus", "initialize OK. Pobieranie listy narzędzi…", false);
           var list = await rpc({
             jsonrpc: "2.0",
             id: "list",
@@ -424,7 +436,7 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
             params: {}
           }, token);
           if (list.status !== 200 || (list.json && list.json.error)) {
-            var msg2 = "tools/list failed (HTTP " + list.status + ")";
+            var msg2 = "tools/list nie powiodło się (HTTP " + list.status + ")";
             if (list.json && list.json.error) msg2 += "\\n" + JSON.stringify(list.json.error);
             setStatus("probeStatus", msg2, true);
             $("toolList").style.display = "none";
@@ -432,11 +444,11 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
           }
 
           var tools = (list.json && list.json.result && list.json.result.tools) || [];
-          var names = tools.map(function (t) { return t && t.name ? t.name : "(unnamed)"; });
+          var names = tools.map(function (t) { return t && t.name ? t.name : "(bez nazwy)"; });
           var wrap = $("toolList");
           wrap.innerHTML = names.map(function (n) { return "<div class=\\"tool-item mono\\">" + n + "</div>"; }).join("");
           wrap.style.display = "block";
-          setStatus("probeStatus", "tools/list OK. Detected tools: " + names.length, false);
+          setStatus("probeStatus", "tools/list OK. Wykryto narzędzi: " + names.length, false);
           tryAutoRedirect();
           return true;
         }
@@ -444,11 +456,11 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
         $("btnUseJwt").addEventListener("click", async function () {
           var token = getToken();
           if (!token) {
-            setStatus("authStatus", "Provide JWT token first, or use guest mode.", true);
+            setStatus("authStatus", "Najpierw wklej OAuth access_token lub Connect JWT.", true);
             return;
           }
           persistToken(token);
-          setStatus("authStatus", "JWT saved. Running probe...", false);
+          setStatus("authStatus", "Token zapisany. Uruchamianie testu…", false);
           await runProbe(token);
           await refreshTokenStatus();
         });
@@ -456,18 +468,18 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
         $("btnGuest").addEventListener("click", async function () {
           persistToken("");
           $("jwtInput").value = "";
-          setStatus("authStatus", "Guest mode selected. Running probe...", false);
+          setStatus("authStatus", "Tryb gościa — bez Bearer, limity wywołań narzędzi wg IP.", false);
           $("tokenStatusOut").className = "status";
-          $("tokenStatusOut").textContent = "No JWT — guest mode (IP rate limits apply to MCP).";
+          $("tokenStatusOut").textContent = "Gość — brak statusu tokenu; MCP liczy limit godzinowy po Twoim IP.";
           await runProbe("");
         });
 
         $("btnClear").addEventListener("click", function () {
           persistToken("");
           $("jwtInput").value = "";
-          setStatus("authStatus", "Token cleared.", false);
+          setStatus("authStatus", "Token wyczyszczony.", false);
           $("tokenStatusOut").className = "status";
-          $("tokenStatusOut").textContent = "Paste JWT and refresh.";
+          $("tokenStatusOut").textContent = "Wklej token i odśwież (gość nie ma statusu tutaj).";
         });
 
         $("btnTokenStatus").addEventListener("click", function () {
@@ -476,24 +488,24 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
 
         $("btnProbe").addEventListener("click", async function () {
           var token = getToken();
-          await runProbe(token);
-          if (token) await refreshTokenStatus();
+          var ok = await runProbe(token);
+          if (ok && token) await refreshTokenStatus();
         });
 
         $("btnRegisterOAuth").addEventListener("click", async function () {
           var token = getToken();
           if (!token) {
-            setStatus("oauthRegStatus", "Paste your admin JWT in Session first.", true);
+            setStatus("oauthRegStatus", "Najpierw wklej JWT administratora w Sesji.", true);
             return;
           }
           var name = $("oauthClientName").value.trim();
           var urisRaw = $("oauthRedirectUris").value.trim();
           var redirect_uris = urisRaw.split(/[\\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
           if (redirect_uris.length === 0) {
-            setStatus("oauthRegStatus", "Add at least one redirect URI (one per line or comma-separated).", true);
+            setStatus("oauthRegStatus", "Dodaj co najmniej jeden redirect URI (jedna linia lub po przecinku).", true);
             return;
           }
-          setStatus("oauthRegStatus", "Registering…", false);
+          setStatus("oauthRegStatus", "Rejestrowanie…", false);
           $("oauthRegResult").style.display = "none";
           try {
             var res = await fetch(registerUrl, {
@@ -509,10 +521,10 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
             });
             var json = await res.json();
             if (res.status !== 201) {
-              setStatus("oauthRegStatus", "Registration failed (HTTP " + res.status + ")\\n" + JSON.stringify(json, null, 2), true);
+              setStatus("oauthRegStatus", "Rejestracja nie powiodła się (HTTP " + res.status + ")\\n" + JSON.stringify(json, null, 2), true);
               return;
             }
-            setStatus("oauthRegStatus", "Success. Store the client_secret securely; it is shown only once.", false);
+            setStatus("oauthRegStatus", "Sukces. Przechowuj client_secret bezpiecznie — wyświetlany jest tylko raz.", false);
             $("oauthRegResult").textContent = JSON.stringify(json, null, 2);
             $("oauthRegResult").style.display = "block";
           } catch (e) {
@@ -523,20 +535,22 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
         $("btnCopyOAuthJson").addEventListener("click", async function () {
           var text = $("oauthRegResult").textContent || "";
           if (!text.trim()) {
-            setStatus("oauthRegStatus", "Nothing to copy — register first.", true);
+            setStatus("oauthRegStatus", "Brak danych do skopiowania — najpierw zarejestruj.", true);
             return;
           }
           try {
             await navigator.clipboard.writeText(text);
-            setStatus("oauthRegStatus", "OAuth registration JSON copied.", false);
+            setStatus("oauthRegStatus", "Skopiowano JSON rejestracji OAuth.", false);
           } catch (e) {
-            setStatus("oauthRegStatus", "Copy failed: " + String(e && e.message ? e.message : e), true);
+            setStatus("oauthRegStatus", "Kopiowanie nie powiodło się: " + String(e && e.message ? e.message : e), true);
           }
         });
 
         $("btnCopyCurl").addEventListener("click", async function () {
           var token = getToken();
-          var auth = token ? "  -H \\"Authorization: Bearer " + token + "\\" \\\\\\n" : "";
+          var auth = token
+            ? "  -H \\"Authorization: Bearer " + token + "\\" \\\\\\n"
+            : "  # Brak Authorization — gość (limit wg IP)\\n";
           var cmd = [
             "curl -s \\"" + mcpUrl + "\\" \\\\\\n",
             "  -H \\"Content-Type: application/json\\" \\\\\\n",
@@ -546,9 +560,9 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
           ].join("");
           try {
             await navigator.clipboard.writeText(cmd);
-            setStatus("authStatus", "cURL template copied.", false);
+            setStatus("authStatus", "Skopiowano szablon cURL.", false);
           } catch (e) {
-            setStatus("authStatus", "Copy failed: " + String(e && e.message ? e.message : e), true);
+            setStatus("authStatus", "Kopiowanie nie powiodło się: " + String(e && e.message ? e.message : e), true);
           }
         });
 

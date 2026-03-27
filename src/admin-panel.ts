@@ -6,12 +6,12 @@
 export function getAdminPanelHtml(defaultLimitPerHour: number): string {
   const L = String(defaultLimitPerHour);
   return `<!doctype html>
-<html lang="en" class="dark">
+<html lang="pl" class="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>Token admin — rate limit</title>
+    <title>Administracja tokenami — limity</title>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
       :root {
@@ -142,59 +142,59 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
   </head>
   <body>
     <div class="container">
-      <h1 class="page-title">Token administration</h1>
+      <h1 class="page-title">Administracja tokenami</h1>
       <p class="page-desc">
-        Manage rate-limit bypass JWTs. Panel auth uses
+        Zarządzanie JWT do limitów wywołań narzędzi. Logowanie do panelu:
         <span class="mono">Authorization: Bearer &lt;ADMIN_PANEL_BEARER_SECRET&gt;</span>.
-        The token is stored in <span class="mono">localStorage</span>.
+        Wartość zapamiętywana jest w <span class="mono">localStorage</span>.
       </p>
 
       <div class="grid">
         <div class="card">
-          <h2>Mint token</h2>
+          <h2>Utwórz token</h2>
           <div class="label-row">
             <input id="mintBypass" type="checkbox" />
-            <label for="mintBypass" style="margin:0;font-size:0.875rem;color:var(--foreground);">Bypass rate limit completely</label>
+            <label for="mintBypass" style="margin:0;font-size:0.875rem;color:var(--foreground);">Całkowicie pomiń limit (bypass)</label>
           </div>
-          <label for="mintLimit">Limit / hour (when not bypassing)</label>
+          <label for="mintLimit">Limit / godz. (gdy bez bypass)</label>
           <input id="mintLimit" type="number" min="1" step="1" value="${L}" />
-          <label for="mintExpiresInDays">Expires in (days)</label>
+          <label for="mintExpiresInDays">Wygasa za (dni)</label>
           <input id="mintExpiresInDays" type="number" min="1" step="1" value="30" />
-          <label for="mintLabel">Label (optional)</label>
-          <input id="mintLabel" type="text" placeholder="e.g. alice-prod" autocomplete="off" />
-          <label for="mintOwner">Owner (optional)</label>
-          <input id="mintOwner" type="text" placeholder="e.g. Alice" autocomplete="off" />
-          <label for="mintAllowedTools">Additional tools (optional, comma/newline separated)</label>
-          <textarea id="mintAllowedTools" rows="3" placeholder="e.g. eval_response, repod_get_dataset"></textarea>
+          <label for="mintLabel">Etykieta (opcjonalnie)</label>
+          <input id="mintLabel" type="text" placeholder="np. alice-prod" autocomplete="off" />
+          <label for="mintOwner">Właściciel (opcjonalnie)</label>
+          <input id="mintOwner" type="text" placeholder="np. Alice" autocomplete="off" />
+          <label for="mintAllowedTools">Dodatkowe narzędzia (opcjonalnie, przecinek lub nowa linia)</label>
+          <textarea id="mintAllowedTools" rows="3" placeholder="np. eval_response, repod_get_dataset"></textarea>
           <div class="row" style="margin-top:1rem;">
-            <button type="button" class="btn btn-primary" id="btnMint">Mint token</button>
-            <button type="button" class="btn" id="btnReload">Refresh list</button>
+            <button type="button" class="btn btn-primary" id="btnMint">Utwórz token</button>
+            <button type="button" class="btn" id="btnReload">Odśwież listę</button>
           </div>
           <div id="status" class="status"></div>
           <div class="mint-output">
-            <label>JWT (copy after mint)</label>
-            <textarea id="mintedToken" readonly spellcheck="false" placeholder="Mint a token to see the JWT here…"></textarea>
+            <label>JWT (kopiuj po utworzeniu)</label>
+            <textarea id="mintedToken" readonly spellcheck="false" placeholder="Utwórz token, aby zobaczyć JWT…"></textarea>
             <div class="row" style="margin-top:0.5rem;">
-              <button type="button" class="btn btn-primary btn-sm" id="btnCopy" disabled>Copy JWT</button>
-              <button type="button" class="btn btn-sm" id="btnClearMint">Clear</button>
+              <button type="button" class="btn btn-primary btn-sm" id="btnCopy" disabled>Kopiuj JWT</button>
+              <button type="button" class="btn btn-sm" id="btnClearMint">Wyczyść</button>
             </div>
           </div>
         </div>
 
         <div class="card">
-          <h2>Tokens</h2>
+          <h2>Tokeny</h2>
           <div class="toolbar">
-            <input type="search" id="tokenSearch" placeholder="Search by jti, label, owner…" autocomplete="off" />
+            <input type="search" id="tokenSearch" placeholder="Szukaj: jti, etykieta, właściciel…" autocomplete="off" />
           </div>
           <div id="tokenTableWrap" class="table-wrap">
-            <div id="tokenListPlaceholder" class="empty">Loading…</div>
+            <div id="tokenListPlaceholder" class="empty">Wczytywanie…</div>
             <table id="tokenTable" style="display:none;">
               <thead>
                 <tr>
-                  <th>Label / owner</th>
+                  <th>Etykieta / właściciel</th>
                   <th>jti</th>
-                  <th>Status</th>
-                  <th>Usage</th>
+                  <th>Stan</th>
+                  <th>Zużycie</th>
                   <th></th>
                 </tr>
               </thead>
@@ -210,30 +210,30 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     <div id="dialogOverlay" class="dialog-overlay" aria-hidden="true">
       <div class="dialog-content" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
         <div class="dialog-header">
-          <h2 id="dialogTitle" class="dialog-title">Token details</h2>
-          <p class="dialog-desc">View metadata and adjust policy. Changes apply immediately in KV.</p>
+          <h2 id="dialogTitle" class="dialog-title">Szczegóły tokenu</h2>
+          <p class="dialog-desc">Metadane i polityka. Zmiany obowiązują od razu w KV.</p>
         </div>
         <div class="dl" id="dialogReadonly"></div>
         <div id="dialogForm">
-          <label for="dlgLabel">Label</label>
+          <label for="dlgLabel">Etykieta</label>
           <input type="text" id="dlgLabel" />
-          <label for="dlgOwner">Owner</label>
+          <label for="dlgOwner">Właściciel</label>
           <input type="text" id="dlgOwner" />
           <div class="label-row">
             <input type="checkbox" id="dlgBypass" />
-            <label for="dlgBypass" style="margin:0;font-size:0.875rem;">Bypass rate limit</label>
+            <label for="dlgBypass" style="margin:0;font-size:0.875rem;">Pomiń limit (bypass)</label>
           </div>
-          <label for="dlgLimit">Limit / hour</label>
+          <label for="dlgLimit">Limit / godz.</label>
           <input type="number" id="dlgLimit" min="1" step="1" />
-          <label for="dlgExpires">Expires (local)</label>
+          <label for="dlgExpires">Wygasa (czas lokalny)</label>
           <input type="datetime-local" id="dlgExpires" />
-          <label for="dlgAllowedTools">Additional tools (comma/newline separated)</label>
-          <textarea id="dlgAllowedTools" rows="3" placeholder="e.g. eval_response, repod_get_dataset"></textarea>
+          <label for="dlgAllowedTools">Dodatkowe narzędzia (przecinek lub nowa linia)</label>
+          <textarea id="dlgAllowedTools" rows="3" placeholder="np. eval_response, repod_get_dataset"></textarea>
         </div>
         <div class="dialog-footer">
-          <button type="button" class="btn btn-destructive" id="dlgRevoke">Revoke</button>
-          <button type="button" class="btn" id="dlgClose">Cancel</button>
-          <button type="button" class="btn btn-primary" id="dlgSave">Save changes</button>
+          <button type="button" class="btn btn-destructive" id="dlgRevoke">Odwołaj</button>
+          <button type="button" class="btn" id="dlgClose">Anuluj</button>
+          <button type="button" class="btn btn-primary" id="dlgSave">Zapisz zmiany</button>
         </div>
       </div>
     </div>
@@ -295,7 +295,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     var saved = window.localStorage.getItem(LOCAL_KEY);
     if (saved && String(saved).trim()) return String(saved).trim();
     var entered = window.prompt(
-      "Enter admin bearer token.\\nPaste only the token value (not \\"Bearer …\\")."
+      "Podaj token administratora (Bearer).\\nWklej samą wartość (bez prefiksu \\"Bearer …\\")."
     );
     if (entered === null) return "";
     var token = String(entered).trim();
@@ -305,7 +305,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
   }
 
   var adminBearer = getAdminBearer();
-  if (!adminBearer) setStatus("Missing admin token — reload and paste your panel secret.", true);
+  if (!adminBearer) setStatus("Brak tokena administratora — odśwież stronę i wklej sekret panelu.", true);
 
   function callAdmin(path, init) {
     var headers = Object.assign({}, (init && init.headers) || {}, {
@@ -347,13 +347,13 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     tbody.innerHTML = "";
     if (!cachedTokens.length) {
       ph.style.display = "block";
-      ph.textContent = "No tokens yet.";
+      ph.textContent = "Brak tokenów.";
       table.style.display = "none";
       return;
     }
     if (!list.length) {
       ph.style.display = "block";
-      ph.textContent = "No matches for your search.";
+      ph.textContent = "Brak wyników dla zapytania.";
       table.style.display = "none";
       return;
     }
@@ -365,7 +365,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
       var revoked = !!t.revokedAtMs;
       var expired = !revoked && t.expiresAtMs && Date.now() >= t.expiresAtMs;
       var statusClass = revoked ? "badge-bad" : expired ? "badge-warn" : "badge-ok";
-      var statusText = revoked ? "Revoked" : expired ? "Expired" : t.bypass ? "Bypass" : "Limited";
+      var statusText = revoked ? "Odwołany" : expired ? "Wygasły" : t.bypass ? "Bypass" : "Limitowany";
       tr.innerHTML =
         "<td>" +
         "<div><strong>" + esc(t.label || "—") + "</strong></div>" +
@@ -378,7 +378,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
         " / " +
         esc(String(t.bypass ? "∞" : t.limitPerHour)) +
         "</td>" +
-        "<td><button type=\\"button\\" class=\\"btn btn-sm btn-ghost\\" data-jti=\\"" + esc(t.jti) + "\\">Details</button></td>";
+        "<td><button type=\\"button\\" class=\\"btn btn-sm btn-ghost\\" data-jti=\\"" + esc(t.jti) + "\\">Szczegóły</button></td>";
       tr.querySelector("button").addEventListener("click", function () {
         openDialog(t.jti);
       });
@@ -388,7 +388,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
 
   function loadTokens() {
     $("tokenListPlaceholder").style.display = "block";
-    $("tokenListPlaceholder").textContent = "Loading…";
+    $("tokenListPlaceholder").textContent = "Wczytywanie…";
     $("tokenTable").style.display = "none";
     callAdmin("/admin/tokens?limit=200", { method: "GET" })
       .then(function (data) {
@@ -397,7 +397,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
       })
       .catch(function (e) {
         cachedTokens = [];
-        $("tokenListPlaceholder").textContent = "Failed to load.";
+        $("tokenListPlaceholder").textContent = "Nie udało się wczytać.";
         setStatus(String(e.message || e), true);
       });
   }
@@ -437,16 +437,16 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     var ro = $("dialogReadonly");
     ro.innerHTML =
       "<dt>jti</dt><dd class=\\"mono\\">" + esc(t.jti) + "</dd>" +
-      "<dt>Created</dt><dd>" + esc(nowIso(t.createdAtMs)) + "</dd>" +
-      "<dt>Expires (UTC)</dt><dd>" + esc(nowIso(t.expiresAtMs)) + "</dd>" +
+      "<dt>Utworzono</dt><dd>" + esc(nowIso(t.createdAtMs)) + "</dd>" +
+      "<dt>Wygasa (UTC)</dt><dd>" + esc(nowIso(t.expiresAtMs)) + "</dd>" +
       (t.revokedAtMs
-        ? "<dt>Revoked</dt><dd>" + esc(nowIso(t.revokedAtMs)) + "</dd>"
+        ? "<dt>Odwołano</dt><dd>" + esc(nowIso(t.revokedAtMs)) + "</dd>"
         : "") +
-      "<dt>Usage (rolling hour)</dt><dd class=\\"mono\\">remaining " +
+      "<dt>Zużycie (okno godzinne)</dt><dd class=\\"mono\\">pozostało " +
       esc(String(t.usage && t.usage.remaining != null ? t.usage.remaining : "—")) +
-      ", reset in " +
+      ", reset za " +
       esc(String(t.usage && t.usage.resetInSeconds != null ? t.usage.resetInSeconds : "—")) +
-      "s</dd>";
+      " s</dd>";
 
     $("dlgLabel").value = t.label || "";
     $("dlgOwner").value = t.owner || "";
@@ -487,7 +487,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     if (!t || t.revokedAtMs) return;
     var expMs = parseDatetimeLocal($("dlgExpires").value);
     if (expMs == null) {
-      setStatus("Invalid expiry date.", true);
+      setStatus("Nieprawidłowa data wygaśnięcia.", true);
       return;
     }
     var body = {
@@ -504,7 +504,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
       body: JSON.stringify(body)
     })
       .then(function () {
-        showToast("Token updated");
+        showToast("Zaktualizowano token");
         closeDialog();
         loadTokens();
       })
@@ -515,7 +515,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
 
   $("dlgRevoke").addEventListener("click", function () {
     if (!selectedJti) return;
-    var reason = window.prompt("Revoke reason (optional):") || "";
+    var reason = window.prompt("Powód odwołania (opcjonalnie):") || "";
     if (reason === null) return;
     callAdmin("/admin/tokens/" + encodeURIComponent(selectedJti) + "/revoke", {
       method: "POST",
@@ -523,7 +523,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
       body: JSON.stringify({ reason: reason.trim() || undefined })
     })
       .then(function () {
-        showToast("Token revoked");
+        showToast("Token odwołany");
         closeDialog();
         loadTokens();
       })
@@ -546,11 +546,11 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     if (!token) return;
     navigator.clipboard.writeText(token).then(
       function () {
-        showToast("JWT copied to clipboard");
-        setStatus("Copied.");
+        showToast("JWT skopiowano do schowka");
+        setStatus("Skopiowano.");
       },
       function (e) {
-        setStatus("Copy failed: " + String(e && e.message ? e.message : e), true);
+        setStatus("Kopiowanie nie powiodło się: " + String(e && e.message ? e.message : e), true);
       }
     );
   });
@@ -565,7 +565,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     var allowedTools = parseAllowedTools($("mintAllowedTools").value);
     var expiresAtMs = Date.now() + expiresInDays * 24 * 60 * 60 * 1000;
 
-    setStatus("Minting…");
+    setStatus("Tworzenie tokenu…");
     callAdmin("/admin/tokens", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -582,12 +582,12 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
         var token = data.token || "";
         $("mintedToken").value = token;
         $("btnCopy").disabled = !token;
-        setStatus("Minted successfully.");
-        showToast("Token minted — copy the JWT");
+        setStatus("Token utworzony pomyślnie.");
+        showToast("Token utworzony — skopiuj JWT");
         if (token) {
           navigator.clipboard.writeText(token).then(
             function () {
-              showToast("JWT auto-copied to clipboard");
+              showToast("JWT skopiowano automatycznie");
             },
             function () {}
           );

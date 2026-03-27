@@ -4,17 +4,17 @@ import "./globals.css";
 
 const geistSans = Geist({
 	variable: "--font-geist-sans",
-	subsets: ["latin"],
+	subsets: ["latin", "latin-ext"],
 });
 
 const geistMono = Geist_Mono({
 	variable: "--font-geist-mono",
-	subsets: ["latin"],
+	subsets: ["latin", "latin-ext"],
 });
 
 export const metadata: Metadata = {
-	title: "Polish Academic MCP Admin",
-	description: "Admin panel for JWT rate-limit tokens",
+	title: "Polish Academic MCP — panel admin",
+	description: "Panel administracyjny tokenów JWT i limitów wywołań",
 };
 
 export default function RootLayout({
@@ -22,8 +22,8 @@ export default function RootLayout({
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
-	return (
-		<html lang="en">
+		return (
+		<html lang="pl">
 			<body
 				className={`${geistSans.variable} ${geistMono.variable} antialiased`}
 			>
