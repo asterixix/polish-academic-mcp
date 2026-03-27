@@ -12,19 +12,6 @@
 (free tier). It exposes tools that let any MCP-compatible LLM (Claude, GPT-4, etc.)
 search Polish academic databases, plus a research evaluation tool:
 
-<<<<<<< HEAD
-| Tool name            | Database                 | Protocol                 |
-| -------------------- | ------------------------ | ------------------------ |
-| `bn_search_articles` | Biblioteka Nauki         | OAI-PMH (XML)            |
-| `bn_get_article`     | Biblioteka Nauki         | OAI-PMH (XML)            |
-| `ruj_search`         | RUJ (Jagiellonian Univ.) | DSpace 7 REST (HAL+JSON) |
-| `ruj_get_item`       | RUJ                      | DSpace 7 REST (HAL+JSON) |
-| `rodbuk_search`      | RODBuK                   | Dataverse REST (JSON)    |
-| `repod_search`       | RePOD                    | Dataverse REST (JSON)    |
-| `repod_get_dataset`  | RePOD                    | Dataverse REST (JSON)    |
-| `dane_search`        | dane.gov.pl              | Custom REST v1.4 (JSON)  |
-| `dane_get_dataset`   | dane.gov.pl              | Custom REST v1.4 (JSON)  |
-=======
 | Tool name | Database | Protocol |
 |---|---|---|
 | `bn_search_articles` | Biblioteka Nauki | OAI-PMH (XML) |
@@ -49,7 +36,6 @@ search Polish academic databases, plus a research evaluation tool:
 | `agh_search` | AGH University Repository | DSpace 7 REST (HAL+JSON) |
 | `agh_get_item` | AGH University Repository | DSpace 7 REST (HAL+JSON) |
 | `eval_response` | — (research evaluation) | local (no external API) |
->>>>>>> vk/d774-check-mcp-eval-c
 
 All databases offer **unauthenticated read access** — no external API keys.
 

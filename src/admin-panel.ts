@@ -180,6 +180,10 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
           <input id="mintOwner" type="text" placeholder="np. Alice" autocomplete="off" />
           <label for="mintAllowedTools">Dodatkowe narzędzia (opcjonalnie, przecinek lub nowa linia)</label>
           <textarea id="mintAllowedTools" rows="3" placeholder="np. eval_response, repod_get_dataset"></textarea>
+          <label for="mintOAuthAccessLimit">OAuth przy <span class="mono">POST /register</span>: limit <span class="mono">tools/call</span> / godz. dla access_token (puste = jak <span class="mono">OAUTH_ACCESS_LIMIT_PER_HOUR</span> workera)</label>
+          <input id="mintOAuthAccessLimit" type="number" min="1" step="1" placeholder="np. 120" autocomplete="off" />
+          <label for="mintOAuthAccessTtl">OAuth: TTL <span class="mono">access_token</span> w sekundach, 60–604800 (puste = jak <span class="mono">OAUTH_ACCESS_TOKEN_TTL_SECONDS</span>)</label>
+          <input id="mintOAuthAccessTtl" type="number" min="60" step="1" placeholder="np. 86400" autocomplete="off" />
           <div class="row" style="margin-top:1rem;">
             <button type="button" class="btn btn-primary" id="btnMint">Utwórz token</button>
             <button type="button" class="btn" id="btnReload">Odśwież listę</button>
@@ -244,6 +248,10 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
           <input type="datetime-local" id="dlgExpires" />
           <label for="dlgAllowedTools">Dodatkowe narzędzia (przecinek lub nowa linia)</label>
           <textarea id="dlgAllowedTools" rows="3" placeholder="np. eval_response, repod_get_dataset"></textarea>
+          <label for="dlgOAuthAccessLimit">OAuth: limit tools/h (puste = domyślne workera)</label>
+          <input type="number" id="dlgOAuthAccessLimit" min="1" step="1" placeholder="wyczyść, by użyć globalnego" />
+          <label for="dlgOAuthAccessTtl">OAuth: TTL access_token (s)</label>
+          <input type="number" id="dlgOAuthAccessTtl" min="60" step="1" placeholder="wyczyść, by użyć globalnego" />
         </div>
         <div class="dialog-footer">
           <button type="button" class="btn btn-destructive" id="dlgRevoke">Odwołaj</button>
@@ -470,6 +478,14 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     $("dlgLimit").disabled = !!t.bypass;
     $("dlgExpires").value = msToDatetimeLocalValue(t.expiresAtMs);
     $("dlgAllowedTools").value = Array.isArray(t.allowedTools) ? t.allowedTools.join(", ") : "";
+    $("dlgOAuthAccessLimit").value =
+      t.oauthAccessLimitPerHour != null && t.oauthAccessLimitPerHour !== undefined
+        ? String(t.oauthAccessLimitPerHour)
+        : "";
+    $("dlgOAuthAccessTtl").value =
+      t.oauthAccessTokenTtlSeconds != null && t.oauthAccessTokenTtlSeconds !== undefined
+        ? String(t.oauthAccessTokenTtlSeconds)
+        : "";
 
     $("dlgRevoke").disabled = !!t.revokedAtMs;
     $("dlgSave").disabled = !!t.revokedAtMs;
@@ -505,13 +521,33 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
       setStatus("Nieprawidłowa data wygaśnięcia.", true);
       return;
     }
+    var oLimStr = $("dlgOAuthAccessLimit").value.trim();
+    var oTtlStr = $("dlgOAuthAccessTtl").value.trim();
+    var oLim = null;
+    var oTtl = null;
+    if (oLimStr !== "") {
+      oLim = parseInt(oLimStr, 10);
+      if (!Number.isFinite(oLim) || oLim < 1) {
+        setStatus("Nieprawidłowy limit OAuth (min 1).", true);
+        return;
+      }
+    }
+    if (oTtlStr !== "") {
+      oTtl = parseInt(oTtlStr, 10);
+      if (!Number.isFinite(oTtl) || oTtl < 60) {
+        setStatus("Nieprawidłowy TTL OAuth (min 60 s).", true);
+        return;
+      }
+    }
     var body = {
       bypass: $("dlgBypass").checked,
       limitPerHour: Math.max(1, parseInt($("dlgLimit").value, 10) || DEFAULT_LIMIT),
       expiresAtMs: expMs,
       label: $("dlgLabel").value.trim(),
       owner: $("dlgOwner").value.trim(),
-      allowedTools: parseAllowedTools($("dlgAllowedTools").value)
+      allowedTools: parseAllowedTools($("dlgAllowedTools").value),
+      oauthAccessLimitPerHour: oLim,
+      oauthAccessTokenTtlSeconds: oTtl
     };
     callAdmin("/admin/tokens/" + encodeURIComponent(selectedJti), {
       method: "PATCH",
@@ -579,19 +615,28 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     var owner = $("mintOwner").value.trim() || undefined;
     var allowedTools = parseAllowedTools($("mintAllowedTools").value);
     var expiresAtMs = Date.now() + expiresInDays * 24 * 60 * 60 * 1000;
+    var mintOAuthLim = $("mintOAuthAccessLimit").value.trim();
+    var mintOAuthTtl = $("mintOAuthAccessTtl").value.trim();
+    var postBody = {
+      bypass: bypass,
+      limitPerHour: limitPerHour,
+      expiresAtMs: expiresAtMs,
+      label: label,
+      owner: owner,
+      allowedTools: allowedTools
+    };
+    if (mintOAuthLim !== "") {
+      postBody.oauthAccessLimitPerHour = Math.max(1, parseInt(mintOAuthLim, 10) || 0);
+    }
+    if (mintOAuthTtl !== "") {
+      postBody.oauthAccessTokenTtlSeconds = Math.max(60, parseInt(mintOAuthTtl, 10) || 0);
+    }
 
     setStatus("Tworzenie tokenu…");
     callAdmin("/admin/tokens", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bypass: bypass,
-        limitPerHour: limitPerHour,
-        expiresAtMs: expiresAtMs,
-        label: label,
-        owner: owner,
-        allowedTools: allowedTools
-      })
+      body: JSON.stringify(postBody)
     })
       .then(function (data) {
         var token = data.token || "";

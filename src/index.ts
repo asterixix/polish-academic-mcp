@@ -20,6 +20,8 @@ import { checkRateLimit, getClientId } from "./ratelimit.js";
 import { uploadEvalToolCallToWebdav, type EvalWebdavToolCallRecord } from "./eval-webdav.js";
 import {
   handleOauthAuthorize,
+  handleOauthIntrospect,
+  handleOauthJwks,
   handleOauthRegister,
   handleOauthToken,
   handleOauthWellKnownAuthorizationServer,
@@ -141,6 +143,10 @@ const handler = {
       return handleOauthWellKnownAuthorizationServer(request, env);
     }
 
+    if (path === "/.well-known/jwks.json" && request.method === "GET") {
+      return handleOauthJwks(request, env);
+    }
+
     if ((path === "/" || path === "") && request.method === "GET") {
       return new Response(getRootPageHtml(url), {
         status: 200,
@@ -162,6 +168,7 @@ const handler = {
               connect: `${url.origin}/connect`,
               verify: `${url.origin}/verify`,
               verify_redirect: `${url.origin}/verify/redirect?provider=claude`,
+              connect_redirect: `${url.origin}/connect/redirect?provider=claude`,
               oauth_authorization_server: `${url.origin}/.well-known/oauth-authorization-server`,
             },
           },
@@ -178,7 +185,12 @@ const handler = {
       );
     }
 
-    if (path === "/verify/redirect" || path === "/verify/redirect/") {
+    if (
+      path === "/verify/redirect" ||
+      path === "/verify/redirect/" ||
+      path === "/connect/redirect" ||
+      path === "/connect/redirect/"
+    ) {
       if (request.method !== "GET") {
         return new Response(JSON.stringify({ error: "method_not_allowed" }), {
           status: 405,
@@ -201,13 +213,11 @@ const handler = {
     if ((path === "/verify" || path === "/verify/") && request.method === "GET") {
       const u = new URL(request.url);
       if (!u.searchParams.has("verify")) u.searchParams.set("verify", "1");
-      return new Response(getConnectPageHtml(url.origin, u.searchParams, env), {
-        status: 200,
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-store",
-        },
+      const dest = new URL("/connect", url.origin);
+      u.searchParams.forEach((v, k) => {
+        dest.searchParams.set(k, v);
       });
+      return Response.redirect(dest.toString(), 302);
     }
 
     if ((path === "/connect" || path === "/connect/") && request.method === "GET") {
@@ -263,6 +273,11 @@ const handler = {
     if (path === "/oauth/token") {
       if (request.method === "OPTIONS") return new Response(null, { status: 204 });
       return handleOauthToken(request, env);
+    }
+
+    if (path === "/oauth/introspect") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+      return handleOauthIntrospect(request, env);
     }
 
     // ── Workflow control plane (Agents Workflows) ──────────────────────────
@@ -330,6 +345,8 @@ const handler = {
             label?: string;
             owner?: string;
             allowedTools?: string[];
+            oauthAccessLimitPerHour?: number;
+            oauthAccessTokenTtlSeconds?: number;
           };
 
           const bypass = typeof p.bypass === "boolean" ? p.bypass : false;
@@ -358,6 +375,12 @@ const handler = {
               label: typeof p.label === "string" ? p.label : undefined,
               owner: typeof p.owner === "string" ? p.owner : undefined,
               allowedTools: Array.isArray(p.allowedTools) ? p.allowedTools : undefined,
+              oauthAccessLimitPerHour:
+                typeof p.oauthAccessLimitPerHour === "number" ? p.oauthAccessLimitPerHour : undefined,
+              oauthAccessTokenTtlSeconds:
+                typeof p.oauthAccessTokenTtlSeconds === "number"
+                  ? p.oauthAccessTokenTtlSeconds
+                  : undefined,
             });
             return corsForAdmin({
               status: 200,
@@ -421,6 +444,8 @@ const handler = {
             label?: string;
             owner?: string;
             allowedTools?: string[] | null;
+            oauthAccessLimitPerHour?: number | null;
+            oauthAccessTokenTtlSeconds?: number | null;
           };
 
           const now = nowMsFromIndex();
@@ -435,7 +460,7 @@ const handler = {
           }
 
           try {
-            const updated = await patchRateLimitToken(env, {
+            const patchPayload: Parameters<typeof patchRateLimitToken>[1] = {
               jti,
               bypass: typeof p.bypass === "boolean" ? p.bypass : undefined,
               limitPerHour: typeof p.limitPerHour === "number" ? p.limitPerHour : undefined,
@@ -443,7 +468,14 @@ const handler = {
               label: typeof p.label === "string" ? p.label : undefined,
               owner: typeof p.owner === "string" ? p.owner : undefined,
               allowedTools: Array.isArray(p.allowedTools) || p.allowedTools === null ? p.allowedTools : undefined,
-            });
+            };
+            if ("oauthAccessLimitPerHour" in p) {
+              patchPayload.oauthAccessLimitPerHour = p.oauthAccessLimitPerHour ?? null;
+            }
+            if ("oauthAccessTokenTtlSeconds" in p) {
+              patchPayload.oauthAccessTokenTtlSeconds = p.oauthAccessTokenTtlSeconds ?? null;
+            }
+            const updated = await patchRateLimitToken(env, patchPayload);
             return corsForAdmin({
               status: 200,
               headers: { "Content-Type": "application/json" },
@@ -765,8 +797,7 @@ function getRootPageHtml(url: URL): string {
         <h1>${SITE_PROJECT_NAME}</h1>
         <p>Usługa działa. Wybierz punkt wejścia:</p>
         <ul>
-          <li><a href="${origin}/connect">${origin}/connect</a> — interaktywne podłączenie MCP (JWT / gość)</li>
-          <li><a href="${origin}/verify">${origin}/verify</a> — weryfikacja i linki do ChatGPT / Perplexity / Gemini / Claude</li>
+          <li><a href="${origin}/connect">${origin}/connect</a> — podłączenie MCP, JWT, weryfikacja (parametr <span class="mono">?verify=1</span>; stary URL <span class="mono">/verify</span> przekierowuje tutaj)</li>
           <li><code>${origin}/mcp</code> — endpoint serwera MCP</li>
           <li><a href="${origin}/health">${origin}/health</a> — podstawowy JSON stanu usługi</li>
         </ul>

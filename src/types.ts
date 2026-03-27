@@ -3,7 +3,24 @@ export interface Env {
   RATE_LIMIT_KV: KVNamespace;
   TOKEN_REGISTRY_KV: KVNamespace;
   RATE_LIMIT_BYPASS_JWT_SECRET?: string;
+  /**
+   * PKCS#8 PEM (`-----BEGIN PRIVATE KEY-----`) dla podpisu access_token OAuth (RS256) + JWKS.
+   * Bez tego access_token używa HS256 z `RATE_LIMIT_BYPASS_JWT_SECRET`.
+   */
+  OAUTH_RSA_PRIVATE_KEY_PKCS8_PEM?: string;
+  /** TTL refresh_token w KV (sekundy), 60–7776000. Domyślnie 30 dni. */
+  OAUTH_REFRESH_TOKEN_TTL_SECONDS?: string;
   ADMIN_PANEL_BEARER_SECRET?: string;
+
+  /**
+   * Limit `tools/call` na godzinę dla Bearer z OAuth (`/oauth/token`), wg klucza `oauth:<client_id>`.
+   * Nie dotyczy gościa bez Bearer (wtedy limit po IP z `index.ts`). Liczba całkowita ≥ 1.
+   */
+  OAUTH_ACCESS_LIMIT_PER_HOUR?: string;
+  /**
+   * TTL access_token z OAuth w sekundach (domyślnie 3600). Górne ograniczenie 7 dni — dłuższe sesje Claude bez ponownego logowania.
+   */
+  OAUTH_ACCESS_TOKEN_TTL_SECONDS?: string;
 
   // Nextcloud WebDAV eval-data upload (tool-call telemetry).
   // Enable with EVAL_WEBDAV_ENABLED=true.

@@ -51,7 +51,7 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
   const mcpUrl = `${origin}/mcp`;
   const registerUrl = `${origin}/register`;
   const authServerUrl = `${origin}/.well-known/oauth-authorization-server`;
-  const verifyRedirectBase = `${origin}/verify/redirect`;
+  const verifyRedirectBase = `${origin}/connect/redirect`;
 
   const sp = searchParams ?? new URLSearchParams();
   const verifyMode = sp.get("verify") === "1" || sp.get("verify") === "true";
@@ -61,7 +61,7 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
     : null;
   const autoRedirect = sp.get("auto") === "1" || sp.get("auto") === "true";
 
-  const pageTitle = verifyMode ? "Weryfikacja i połączenie" : "Połączenie MCP";
+  const pageTitle = "Połączenie MCP";
   const pageInitJson = JSON.stringify({
     verifyMode,
     autoRedirect,
@@ -72,7 +72,15 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
   });
 
   const verifyBannerHtml = verifyMode
-    ? `<div class="verify-banner">Weryfikacja: tryb gościa (limity wg IP) lub token Bearer — uruchom udany test, potem otwórz czat. Z parametrem <span class="mono">?auto=1&amp;provider=claude</span> strona przekieruje po udanym teście.</div>`
+    ? `<div class="verify-banner" role="region" aria-label="Weryfikacja z GenAI">
+        <strong>Weryfikacja po <span class="mono">/verify</span></strong> (przekierowuje tutaj z <span class="mono">?verify=1</span>):
+        <ol style="margin:0.5rem 0 0 1.1rem;padding:0;line-height:1.55;font-size:0.82rem;">
+          <li>Ustaw token w sekcji <strong>Sesja</strong> (Connect JWT lub OAuth access_token) — zapis w przeglądarce.</li>
+          <li>Kliknij <strong>Zapisz + test MCP</strong> lub <strong>Uruchom initialize + tools/list</strong> — to samo sprawdzają narzędzia w czacie GenAI po podłączeniu <span class="mono">${mcpUrl}</span>.</li>
+          <li>Sprawdź <strong>Status tokenu</strong> (GET <span class="mono">/connect/token-status</span>) oraz limity.</li>
+          <li>Otwórz aplikację czatu poniżej; z <span class="mono">?auto=1&amp;provider=claude</span> po udanym teście nastąpi przekierowanie.</li>
+        </ol>
+      </div>`
     : "";
 
   const providerCardsHtml = CONNECT_PROVIDER_IDS.map((id) => {
@@ -241,9 +249,11 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
     <div class="container" id="main-content">
       <h1 class="page-title">${pageTitle}</h1>
       <p class="page-desc">
-        Konektor dla <span class="mono">${mcpUrl}</span>.
-        <strong>Gość</strong> — bez nagłówka <span class="mono">Authorization</span>: tylko publiczne narzędzia, limit godzinowy wg adresu IP. <strong>Bearer</strong> — <span class="mono">OAuth access_token</span> (na klienta OAuth) lub <span class="mono">Connect JWT</span> z <span class="mono">/admin/tokens</span> (dodatkowe narzędzia i limity).
-        ${verifyMode ? " To wejście <strong>weryfikacji</strong> — użyj sekcji Sesja i testu albo przejdź do aplikacji czatu poniżej." : ""}
+        Jedyna strona konfiguracji: konektor <span class="mono">${mcpUrl}</span>.
+        <strong>Gość</strong> — bez <span class="mono">Authorization</span>: publiczne narzędzia, limit wg IP.
+        <strong>Bearer</strong> — <span class="mono">OAuth access_token</span> lub <span class="mono">Connect JWT</span> z <span class="mono">/admin/tokens</span>.
+        Adres <span class="mono">/verify</span> przekierowuje do <span class="mono">/connect?verify=1</span>.
+        Przekierowania do aplikacji: <span class="mono">/connect/redirect?provider=…</span> (stary <span class="mono">/verify/redirect</span> nadal działa).
       </p>
       ${verifyBannerHtml}
 
@@ -312,6 +322,13 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
       <div class="grid">
         <div class="card">
           <h2>Sesja</h2>
+          <p class="muted" style="margin:0 0 0.75rem;font-size:0.78rem;line-height:1.5;">
+            Token zapisany tutaj (test z tej strony) <strong>nie jest widoczny dla Claude</strong> — czat używa osobnego
+            OAuth do tego hosta. Typowy powód „ponownej weryfikacji” po wielu narzędziach to limit
+            <span class="mono">tools/call</span> (HTTP 429): gość bez Bearer dzieli niski limit po IP; OAuth ma osobny, wyższy budżet (domyślnie 60/h, ustawialny
+            <span class="mono">OAUTH_ACCESS_LIMIT_PER_HOUR</span>). Dłuższe sesje OAuth: <span class="mono">OAUTH_ACCESS_TOKEN_TTL_SECONDS</span> (do 7 dni).
+            Connect JWT z panelu admin nadal daje kontrolowany limit i dodatkowe narzędzia — wtedy Bearer musi obsługiwać klient (np. testy na /connect).
+          </p>
           <label for="jwtInput">Token Bearer (opcjonalnie — puste = gość)</label>
           <textarea id="jwtInput" placeholder="OAuth access_token lub Connect JWT — sam token; puste = gość (limity wg IP)"></textarea>
           <div class="row">
@@ -456,6 +473,16 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
             lines.push("Dodatkowe narzędzia (poza publicznymi): " + j.allowed_tools.join(", "));
           } else {
             lines.push("Dodatkowe narzędzia: (brak — tylko publiczny katalog)");
+          }
+          if (j.oauth_access_limit_per_hour_for_registered_clients != null) {
+            lines.push("OAuth (przy /register z tym JWT) limit tools/h: " + j.oauth_access_limit_per_hour_for_registered_clients);
+          } else {
+            lines.push("OAuth (przy /register z tym JWT) limit tools/h: (domyślnie jak worker)");
+          }
+          if (j.oauth_access_token_ttl_seconds_for_registered_clients != null) {
+            lines.push("OAuth TTL access_token (s): " + j.oauth_access_token_ttl_seconds_for_registered_clients);
+          } else {
+            lines.push("OAuth TTL access_token (s): (domyślnie jak worker)");
           }
           return lines.join("\\n");
         }

@@ -1,4 +1,5 @@
 import type { Env } from "./types.js";
+import { verifyMcpJwtSignature } from "./oauth-jwt.js";
 import { getRateLimitStatus } from "./ratelimit.js";
 
 export interface RateLimitTokenRecord {
@@ -23,10 +24,92 @@ export interface RateLimitTokenRecord {
   // Optional fields for panel UX.
   label?: string;
   owner?: string;
+
+  /**
+   * Przy rejestracji OAuth (`POST /register` z tym Connect JWT): limit tools/call/h
+   * dla access_token klientów zarejestrowanych z tym JWT (puste = jak env globalnie).
+   */
+  oauthAccessLimitPerHour?: number;
+  /**
+   * Przy rejestracji OAuth: TTL access_token w sekundach (puste = jak env globalnie).
+   */
+  oauthAccessTokenTtlSeconds?: number;
 }
 
-/** Hourly tools/call budget for OAuth access_token (third-party MCP client). */
-export const DEFAULT_OAUTH_ACCESS_LIMIT_PER_HOUR = 10;
+/** Hourly `tools/call` budget for OAuth access_token (third-party MCP client, e.g. Claude). */
+export const DEFAULT_OAUTH_ACCESS_LIMIT_PER_HOUR = 60;
+
+const MAX_OAUTH_ACCESS_LIMIT_PER_HOUR = 500_000;
+const DEFAULT_OAUTH_ACCESS_TOKEN_TTL_SECONDS = 3600;
+const MAX_OAUTH_ACCESS_TOKEN_TTL_SECONDS = 86400 * 7;
+
+export function getOAuthAccessLimitPerHour(env: Env): number {
+  const raw = env.OAUTH_ACCESS_LIMIT_PER_HOUR;
+  if (raw === undefined || String(raw).trim() === "") return DEFAULT_OAUTH_ACCESS_LIMIT_PER_HOUR;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_OAUTH_ACCESS_LIMIT_PER_HOUR;
+  const floored = Math.floor(n);
+  if (floored < 1) return DEFAULT_OAUTH_ACCESS_LIMIT_PER_HOUR;
+  return Math.min(floored, MAX_OAUTH_ACCESS_LIMIT_PER_HOUR);
+}
+
+/** TTL of OAuth access_token JWT (`exp` claim and `expires_in` response). */
+export function getOAuthAccessTokenTtlSeconds(env: Env): number {
+  const raw = env.OAUTH_ACCESS_TOKEN_TTL_SECONDS;
+  if (raw === undefined || String(raw).trim() === "") return DEFAULT_OAUTH_ACCESS_TOKEN_TTL_SECONDS;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_OAUTH_ACCESS_TOKEN_TTL_SECONDS;
+  const floored = Math.floor(n);
+  if (floored < 60) return DEFAULT_OAUTH_ACCESS_TOKEN_TTL_SECONDS;
+  return Math.min(floored, MAX_OAUTH_ACCESS_TOKEN_TTL_SECONDS);
+}
+
+/** Nagłówek KV — musi być zgodny z `oauth-server.ts` (`oauth_client:`). */
+const OAUTH_CLIENT_KV_PREFIX = "oauth_client:";
+
+export function clampOptionalOauthAccessLimitPerHour(
+  n: unknown,
+): number | undefined {
+  if (typeof n !== "number" || !Number.isFinite(n)) return undefined;
+  const f = Math.floor(n);
+  if (f < 1) return undefined;
+  return Math.min(f, MAX_OAUTH_ACCESS_LIMIT_PER_HOUR);
+}
+
+export function clampOptionalOauthAccessTokenTtlSeconds(n: unknown): number | undefined {
+  if (typeof n !== "number" || !Number.isFinite(n)) return undefined;
+  const f = Math.floor(n);
+  if (f < 60) return undefined;
+  return Math.min(f, MAX_OAUTH_ACCESS_TOKEN_TTL_SECONDS);
+}
+
+export async function getEffectiveOAuthAccessLimitPerHour(env: Env, clientId: string): Promise<number> {
+  const fallback = getOAuthAccessLimitPerHour(env);
+  const raw = await env.TOKEN_REGISTRY_KV.get(`${OAUTH_CLIENT_KV_PREFIX}${clientId}`);
+  if (!raw) return fallback;
+  try {
+    const c = JSON.parse(raw) as { accessLimitPerHour?: number };
+    const lim = clampOptionalOauthAccessLimitPerHour(c.accessLimitPerHour);
+    if (lim !== undefined) return lim;
+  } catch {
+    // ignore
+  }
+  return fallback;
+}
+
+export async function getEffectiveOAuthAccessTokenTtlSeconds(env: Env, clientId: string): Promise<number> {
+  const fallback = getOAuthAccessTokenTtlSeconds(env);
+  const raw = await env.TOKEN_REGISTRY_KV.get(`${OAUTH_CLIENT_KV_PREFIX}${clientId}`);
+  if (!raw) return fallback;
+  try {
+    const c = JSON.parse(raw) as { accessTokenTtlSeconds?: number };
+    const ttl = clampOptionalOauthAccessTokenTtlSeconds(c.accessTokenTtlSeconds);
+    if (ttl !== undefined) return ttl;
+  } catch {
+    // ignore
+  }
+  return fallback;
+}
 
 export interface RateLimitTokenPolicy {
   kind: "token" | "legacy_bypass" | "oauth_access" | "guest";
@@ -72,16 +155,6 @@ function base64urlEncodeBytes(bytes: Uint8Array): string {
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function base64urlDecodeToBytes(input: string): Uint8Array {
-  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
-  const b64 = normalized + padding;
-  const binary = atob(b64);
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
-  return out;
-}
-
 async function signJwtHs256(payload: Record<string, unknown>, secret: string): Promise<string> {
   const header = { alg: "HS256", typ: "JWT" };
   const encodedHeader = base64urlEncodeBytes(new TextEncoder().encode(JSON.stringify(header)));
@@ -101,32 +174,6 @@ async function signJwtHs256(payload: Record<string, unknown>, secret: string): P
   const encodedSig = base64urlEncodeBytes(sigBytes);
 
   return `${encodedHeader}.${encodedPayload}.${encodedSig}`;
-}
-
-async function verifyJwtHs256(token: string, secret: string): Promise<Record<string, unknown> | null> {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [encodedHeader, encodedPayload, encodedSig] = parts;
-
-  const headerBytes = base64urlDecodeToBytes(encodedHeader);
-  const header = JSON.parse(new TextDecoder().decode(headerBytes)) as { alg?: string };
-  if (header.alg !== "HS256") return null;
-
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["verify"],
-  );
-
-  const data = new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`);
-  const sigBytes = base64urlDecodeToBytes(encodedSig);
-  const ok = await crypto.subtle.verify("HMAC", key, sigBytes, data);
-  if (!ok) return null;
-
-  const payloadBytes = base64urlDecodeToBytes(encodedPayload);
-  return JSON.parse(new TextDecoder().decode(payloadBytes)) as Record<string, unknown>;
 }
 
 function tokenKey(jti: string): string {
@@ -206,6 +253,8 @@ export async function mintRateLimitToken(
     label?: string;
     owner?: string;
     allowedTools?: string[];
+    oauthAccessLimitPerHour?: number;
+    oauthAccessTokenTtlSeconds?: number;
   },
 ): Promise<{ token: string; record: RateLimitTokenRecord }> {
   const secret = env.RATE_LIMIT_BYPASS_JWT_SECRET;
@@ -220,6 +269,9 @@ export async function mintRateLimitToken(
   }
 
   const jti = crypto.randomUUID();
+  const oauthLim = clampOptionalOauthAccessLimitPerHour(params.oauthAccessLimitPerHour);
+  const oauthTtl = clampOptionalOauthAccessTokenTtlSeconds(params.oauthAccessTokenTtlSeconds);
+
   const record: RateLimitTokenRecord = {
     jti,
     createdAtMs: nowMs(),
@@ -230,6 +282,8 @@ export async function mintRateLimitToken(
     label: params.label,
     owner: params.owner,
     allowedTools: normalizeAllowedTools(params.allowedTools),
+    ...(oauthLim !== undefined ? { oauthAccessLimitPerHour: oauthLim } : {}),
+    ...(oauthTtl !== undefined ? { oauthAccessTokenTtlSeconds: oauthTtl } : {}),
   };
 
   const payload = {
@@ -286,11 +340,33 @@ export async function patchRateLimitToken(
     label?: string;
     owner?: string;
     allowedTools?: string[] | null;
+    oauthAccessLimitPerHour?: number | null;
+    oauthAccessTokenTtlSeconds?: number | null;
   },
 ): Promise<RateLimitTokenRecord> {
   const record = await getTokenRecord(env, params.jti);
   if (!record) throw new Error("token_not_found");
   if (record.revokedAtMs) throw new Error("token_revoked");
+
+  let oauthAccessLimitPerHour = record.oauthAccessLimitPerHour;
+  if ("oauthAccessLimitPerHour" in params) {
+    if (params.oauthAccessLimitPerHour === null) {
+      oauthAccessLimitPerHour = undefined;
+    } else {
+      const c = clampOptionalOauthAccessLimitPerHour(params.oauthAccessLimitPerHour);
+      oauthAccessLimitPerHour = c !== undefined ? c : undefined;
+    }
+  }
+
+  let oauthAccessTokenTtlSeconds = record.oauthAccessTokenTtlSeconds;
+  if ("oauthAccessTokenTtlSeconds" in params) {
+    if (params.oauthAccessTokenTtlSeconds === null) {
+      oauthAccessTokenTtlSeconds = undefined;
+    } else {
+      const c = clampOptionalOauthAccessTokenTtlSeconds(params.oauthAccessTokenTtlSeconds);
+      oauthAccessTokenTtlSeconds = c !== undefined ? c : undefined;
+    }
+  }
 
   const updated: RateLimitTokenRecord = {
     ...record,
@@ -311,6 +387,8 @@ export async function patchRateLimitToken(
         : Array.isArray(params.allowedTools)
           ? normalizeAllowedTools(params.allowedTools)
           : normalizeAllowedTools(record.allowedTools),
+    oauthAccessLimitPerHour,
+    oauthAccessTokenTtlSeconds,
   };
 
   await env.TOKEN_REGISTRY_KV.put(tokenKey(params.jti), JSON.stringify(updated), {
@@ -356,6 +434,9 @@ export type ConnectTokenIntrospection =
       reset_in_seconds: number;
       allowed: boolean;
       allowed_tools: string[];
+      /** Polityka OAuth przy rejestracji klientów z tym Connect JWT (null = globalny worker). */
+      oauth_access_limit_per_hour_for_registered_clients: number | null;
+      oauth_access_token_ttl_seconds_for_registered_clients: number | null;
     };
 
 /**
@@ -364,7 +445,9 @@ export type ConnectTokenIntrospection =
  */
 export async function introspectConnectBearer(request: Request, env: Env): Promise<ConnectTokenIntrospection> {
   const jwtSecret = env.RATE_LIMIT_BYPASS_JWT_SECRET;
-  if (!jwtSecret) {
+  const hasJwtMaterial =
+    Boolean(jwtSecret) || Boolean(env.OAUTH_RSA_PRIVATE_KEY_PKCS8_PEM?.trim());
+  if (!hasJwtMaterial) {
     return { ok: false, error: "missing_bearer" };
   }
 
@@ -373,7 +456,7 @@ export async function introspectConnectBearer(request: Request, env: Env): Promi
     return { ok: false, error: "missing_bearer" };
   }
 
-  if (token === jwtSecret) {
+  if (jwtSecret && token === jwtSecret) {
     return {
       ok: true,
       kind: "legacy_bypass",
@@ -385,7 +468,7 @@ export async function introspectConnectBearer(request: Request, env: Env): Promi
     };
   }
 
-  const payload = await verifyJwtHs256(token, jwtSecret);
+  const payload = await verifyMcpJwtSignature(token, env);
   if (!payload) {
     return { ok: false, error: "invalid_signature" };
   }
@@ -414,7 +497,7 @@ export async function introspectConnectBearer(request: Request, env: Env): Promi
       sub: subRaw,
       expired,
       expires_at_ms: expiresAtMs,
-      rate_limit_per_hour: DEFAULT_OAUTH_ACCESS_LIMIT_PER_HOUR,
+      rate_limit_per_hour: await getEffectiveOAuthAccessLimitPerHour(env, subRaw),
       identity_key: `oauth:${subRaw}`,
     };
   }
@@ -442,6 +525,8 @@ export async function introspectConnectBearer(request: Request, env: Env): Promi
       reset_in_seconds: 0,
       allowed: false,
       allowed_tools: allowedTools,
+      oauth_access_limit_per_hour_for_registered_clients: null,
+      oauth_access_token_ttl_seconds_for_registered_clients: null,
     };
   }
 
@@ -465,6 +550,10 @@ export async function introspectConnectBearer(request: Request, env: Env): Promi
       reset_in_seconds: 0,
       allowed: false,
       allowed_tools: allowedTools,
+      oauth_access_limit_per_hour_for_registered_clients:
+        record.oauthAccessLimitPerHour ?? null,
+      oauth_access_token_ttl_seconds_for_registered_clients:
+        record.oauthAccessTokenTtlSeconds ?? null,
     };
   }
 
@@ -483,6 +572,10 @@ export async function introspectConnectBearer(request: Request, env: Env): Promi
       reset_in_seconds: 0,
       allowed: false,
       allowed_tools: allowedTools,
+      oauth_access_limit_per_hour_for_registered_clients:
+        record.oauthAccessLimitPerHour ?? null,
+      oauth_access_token_ttl_seconds_for_registered_clients:
+        record.oauthAccessTokenTtlSeconds ?? null,
     };
   }
 
@@ -501,6 +594,10 @@ export async function introspectConnectBearer(request: Request, env: Env): Promi
       reset_in_seconds: 0,
       allowed: true,
       allowed_tools: allowedTools,
+      oauth_access_limit_per_hour_for_registered_clients:
+        record.oauthAccessLimitPerHour ?? null,
+      oauth_access_token_ttl_seconds_for_registered_clients:
+        record.oauthAccessTokenTtlSeconds ?? null,
     };
   }
 
@@ -519,18 +616,24 @@ export async function introspectConnectBearer(request: Request, env: Env): Promi
     reset_in_seconds: usage.resetInSeconds,
     allowed: usage.allowed,
     allowed_tools: allowedTools,
+    oauth_access_limit_per_hour_for_registered_clients:
+      record.oauthAccessLimitPerHour ?? null,
+    oauth_access_token_ttl_seconds_for_registered_clients:
+      record.oauthAccessTokenTtlSeconds ?? null,
   };
 }
 
 export async function resolveRateLimitPolicyFromRequest(request: Request, env: Env): Promise<RateLimitTokenPolicy | null> {
   const jwtSecret = env.RATE_LIMIT_BYPASS_JWT_SECRET;
-  if (!jwtSecret) return null;
+  const canVerify =
+    Boolean(jwtSecret) || Boolean(env.OAUTH_RSA_PRIVATE_KEY_PKCS8_PEM?.trim());
+  if (!canVerify) return null;
 
   const token = parseBearerToken(request);
   if (!token) return null;
 
   // Legacy/opaque bypass: bearer token equals secret.
-  if (token === jwtSecret) {
+  if (jwtSecret && token === jwtSecret) {
     return {
       kind: "legacy_bypass",
       identityKey: `legacy:${jwtSecret}`,
@@ -540,7 +643,7 @@ export async function resolveRateLimitPolicyFromRequest(request: Request, env: E
     };
   }
 
-  const payload = await verifyJwtHs256(token, jwtSecret);
+  const payload = await verifyMcpJwtSignature(token, env);
   if (!payload) return null;
 
   const jti = typeof payload.jti === "string" ? payload.jti : null;
@@ -567,15 +670,17 @@ export async function resolveRateLimitPolicyFromRequest(request: Request, env: E
  * or (b) Connect JWT minted via /admin/tokens. Raw shared secret is rejected.
  */
 export async function resolveMcpBearerPolicy(request: Request, env: Env): Promise<RateLimitTokenPolicy | null> {
-  const jwtSecret = env.RATE_LIMIT_BYPASS_JWT_SECRET;
-  if (!jwtSecret) return null;
+  const canVerify =
+    Boolean(env.RATE_LIMIT_BYPASS_JWT_SECRET) || Boolean(env.OAUTH_RSA_PRIVATE_KEY_PKCS8_PEM?.trim());
+  if (!canVerify) return null;
 
   const token = parseBearerToken(request);
   if (!token) return null;
 
-  if (token === jwtSecret) return null;
+  const jwtSecret = env.RATE_LIMIT_BYPASS_JWT_SECRET;
+  if (jwtSecret && token === jwtSecret) return null;
 
-  const payload = await verifyJwtHs256(token, jwtSecret);
+  const payload = await verifyMcpJwtSignature(token, env);
   if (!payload) return null;
 
   const origin = new URL(request.url).origin;
@@ -599,7 +704,7 @@ export async function resolveMcpBearerPolicy(request: Request, env: Env): Promis
       kind: "oauth_access",
       identityKey: `oauth:${subRaw}`,
       bypass: false,
-      limitPerHour: DEFAULT_OAUTH_ACCESS_LIMIT_PER_HOUR,
+      limitPerHour: await getEffectiveOAuthAccessLimitPerHour(env, subRaw),
       allowedTools: [],
     };
   }

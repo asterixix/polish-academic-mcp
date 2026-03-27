@@ -1,5 +1,11 @@
 import type { Env } from "./types.js";
-import { resolveRateLimitPolicyFromRequest } from "./token-registry.js";
+import { getOauthJwksBody, signOAuthAccessToken, verifyMcpJwtSignature } from "./oauth-jwt.js";
+import {
+  clampOptionalOauthAccessLimitPerHour,
+  clampOptionalOauthAccessTokenTtlSeconds,
+  getEffectiveOAuthAccessTokenTtlSeconds,
+  resolveRateLimitPolicyFromRequest,
+} from "./token-registry.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -10,6 +16,9 @@ interface OAuthClientRecord {
   redirect_uris: string[];
   createdAtMs: number;
   expiresAtMs: number;
+  /** Nadpisanie limitu tools/call/h dla access_token tego klienta (z Connect JWT przy /register). */
+  accessLimitPerHour?: number;
+  accessTokenTtlSeconds?: number;
 }
 
 interface AuthorizationCodeRecord {
@@ -25,17 +34,51 @@ interface AuthorizationCodeRecord {
   consumedAtMs?: number;
 }
 
+interface OAuthRefreshRecord {
+  client_id: string;
+  resource: string;
+  scope: string;
+  issuedAtMs: number;
+}
+
 const OAUTH_CLIENT_PREFIX = "oauth_client:";
 const OAUTH_CODE_PREFIX = "oauth_code:";
+const OAUTH_REFRESH_PREFIX = "oauth_refresh:";
 
 const DEFAULT_AUTH_CODE_TTL_SECONDS = 10 * 60; // 10m
-const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 60 * 60; // 1h
 const DEFAULT_CLIENT_TTL_SECONDS = 60 * 60 * 24 * 30; // 30d
+
+const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30; // 30d
+const MIN_REFRESH_TTL_SECONDS = 60;
+const MAX_REFRESH_TTL_SECONDS = 60 * 60 * 24 * 90; // 90d
+
+export function oauthSigningConfigured(env: Env): boolean {
+  return Boolean(env.OAUTH_RSA_PRIVATE_KEY_PKCS8_PEM?.trim()) || Boolean(env.RATE_LIMIT_BYPASS_JWT_SECRET);
+}
+
+function getRefreshTokenTtlSeconds(env: Env): number {
+  const raw = env.OAUTH_REFRESH_TOKEN_TTL_SECONDS?.trim();
+  if (raw) {
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= MIN_REFRESH_TTL_SECONDS && n <= MAX_REFRESH_TTL_SECONDS) {
+      return n;
+    }
+  }
+  return DEFAULT_REFRESH_TOKEN_TTL_SECONDS;
+}
+
+function resourcesEquivalent(a: string, b: string): boolean {
+  if (a === b) return true;
+  try {
+    return new URL(a).href === new URL(b).href;
+  } catch {
+    return false;
+  }
+}
 
 function base64urlEncode(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  // btoa expects a Latin-1 string.
   const b64 = btoa(binary);
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
@@ -83,6 +126,10 @@ function codeKey(code: string): string {
   return `${OAUTH_CODE_PREFIX}${code}`;
 }
 
+function refreshKey(token: string): string {
+  return `${OAUTH_REFRESH_PREFIX}${token}`;
+}
+
 function getRequestOrigin(request: Request): string {
   const u = new URL(request.url);
   return `${u.protocol}//${u.host}`;
@@ -115,6 +162,7 @@ async function parseTokenRequestBody(request: Request): Promise<{
   code_verifier?: string;
   scope?: string;
   resource?: string;
+  refresh_token?: string;
 }> {
   const contentType = request.headers.get("Content-Type") ?? "";
   if (contentType.includes("application/json")) {
@@ -128,10 +176,10 @@ async function parseTokenRequestBody(request: Request): Promise<{
       code_verifier: typeof body.code_verifier === "string" ? body.code_verifier : undefined,
       scope: typeof body.scope === "string" ? body.scope : undefined,
       resource: typeof body.resource === "string" ? body.resource : undefined,
+      refresh_token: typeof body.refresh_token === "string" ? body.refresh_token : undefined,
     };
   }
 
-  // Default: x-www-form-urlencoded
   const raw = await request.text();
   const params = new URLSearchParams(raw);
   const get = (k: string) => {
@@ -147,31 +195,159 @@ async function parseTokenRequestBody(request: Request): Promise<{
     code_verifier: get("code_verifier"),
     scope: get("scope"),
     resource: get("resource"),
+    refresh_token: get("refresh_token"),
   };
 }
 
-async function signJwtHs256(payload: JsonObject, secret: string): Promise<string> {
-  const header = { alg: "HS256", typ: "JWT" };
-  const encHeader = base64urlEncode(new TextEncoder().encode(JSON.stringify(header)));
-  const encPayload = base64urlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+async function parseIntrospectBody(request: Request): Promise<{
+  token?: string;
+  token_type_hint?: string;
+  client_id?: string;
+  client_secret?: string;
+}> {
+  const contentType = request.headers.get("Content-Type") ?? "";
+  if (contentType.includes("application/json")) {
+    const body = (await request.json()) as JsonObject;
+    return {
+      token: typeof body.token === "string" ? body.token : undefined,
+      token_type_hint:
+        typeof body.token_type_hint === "string" ? body.token_type_hint : undefined,
+      client_id: typeof body.client_id === "string" ? body.client_id : undefined,
+      client_secret: typeof body.client_secret === "string" ? body.client_secret : undefined,
+    };
+  }
+  const raw = await request.text();
+  const params = new URLSearchParams(raw);
+  const t = params.get("token");
+  const h = params.get("token_type_hint");
+  const cid = params.get("client_id");
+  const csec = params.get("client_secret");
+  return {
+    token: t && t.length > 0 ? t : undefined,
+    token_type_hint: h && h.length > 0 ? h : undefined,
+    client_id: cid && cid.length > 0 ? cid : undefined,
+    client_secret: csec && csec.length > 0 ? csec : undefined,
+  };
+}
 
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const data = new TextEncoder().encode(`${encHeader}.${encPayload}`);
-  const sig = await crypto.subtle.sign("HMAC", key, data);
-  const sigBytes = new Uint8Array(sig);
-  const encSig = base64urlEncode(sigBytes);
-  return `${encHeader}.${encPayload}.${encSig}`;
+async function authenticateOAuthClient(
+  request: Request,
+  body: { client_id?: string; client_secret?: string },
+  env: Env,
+): Promise<
+  | { ok: true; client: OAuthClientRecord; client_id: string }
+  | { ok: false; response: Response }
+> {
+  const basic = parseBasicAuth(request);
+  const client_id = basic?.client_id ?? body.client_id;
+  const client_secret = basic?.client_secret ?? body.client_secret;
+  if (!client_id || !client_secret) {
+    return { ok: false, response: oauthErrorResponse(401, "invalid_client", "Missing client credentials") };
+  }
+
+  const rawClient = await env.TOKEN_REGISTRY_KV.get(clientKey(client_id));
+  if (!rawClient) {
+    return { ok: false, response: oauthErrorResponse(401, "invalid_client", "Unknown client_id") };
+  }
+
+  let client: OAuthClientRecord | null = null;
+  try {
+    client = JSON.parse(rawClient) as OAuthClientRecord;
+  } catch {
+    client = null;
+  }
+
+  if (!client || client.client_secret !== client_secret || Date.now() >= client.expiresAtMs) {
+    return { ok: false, response: oauthErrorResponse(401, "invalid_client", "Invalid client credentials") };
+  }
+
+  return { ok: true, client, client_id };
 }
 
 async function computePkceS256(codeVerifier: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
   return base64urlEncode(new Uint8Array(digest));
+}
+
+async function mintRefreshAndStore(
+  env: Env,
+  client: OAuthClientRecord,
+  resource: string,
+  scope: string,
+): Promise<{ refresh_token: string; refresh_expires_in: number }> {
+  const refreshTtl = getRefreshTokenTtlSeconds(env);
+  const refreshBytes = new Uint8Array(32);
+  crypto.getRandomValues(refreshBytes);
+  const refresh_token = base64urlEncode(refreshBytes);
+  const rec: OAuthRefreshRecord = {
+    client_id: client.client_id,
+    resource,
+    scope,
+    issuedAtMs: Date.now(),
+  };
+  await env.TOKEN_REGISTRY_KV.put(refreshKey(refresh_token), JSON.stringify(rec), {
+    expirationTtl: refreshTtl,
+  });
+  return { refresh_token, refresh_expires_in: refreshTtl };
+}
+
+async function issueAccessAndRefresh(
+  env: Env,
+  request: Request,
+  client: OAuthClientRecord,
+  resource: string,
+  scope: string,
+): Promise<{
+  access_token: string;
+  expires_in: number;
+  refresh_token: string;
+  refresh_expires_in: number;
+  scope: string;
+}> {
+  const origin = getRequestOrigin(request);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const accessTtlSec = await getEffectiveOAuthAccessTokenTtlSeconds(env, client.client_id);
+  const expSec = nowSec + accessTtlSec;
+
+  const tokenPayload: JsonObject = {
+    iss: origin,
+    sub: client.client_id,
+    aud: resource,
+    iat: nowSec,
+    exp: expSec,
+    scope,
+  };
+
+  let access_token: string;
+  try {
+    access_token = await signOAuthAccessToken(env, tokenPayload);
+  } catch {
+    throw new Error("oauth_sign_failed");
+  }
+
+  const { refresh_token, refresh_expires_in } = await mintRefreshAndStore(env, client, resource, scope);
+
+  return {
+    access_token,
+    expires_in: accessTtlSec,
+    refresh_token,
+    refresh_expires_in,
+    scope,
+  };
+}
+
+export async function handleOauthJwks(_request: Request, env: Env): Promise<Response> {
+  const body = await getOauthJwksBody(env);
+  if (!body) {
+    return jsonResponse({ error: "jwks_not_configured" }, 404, { "Cache-Control": "no-store" });
+  }
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=3600",
+    },
+  });
 }
 
 export async function handleOauthWellKnownProtectedResource(request: Request, _env: Env): Promise<Response> {
@@ -186,18 +362,22 @@ export async function handleOauthWellKnownProtectedResource(request: Request, _e
   });
 }
 
-export async function handleOauthWellKnownAuthorizationServer(request: Request, _env: Env): Promise<Response> {
+export async function handleOauthWellKnownAuthorizationServer(request: Request, env: Env): Promise<Response> {
   const origin = getRequestOrigin(request);
   const issuer = origin;
+
+  const jwks = await getOauthJwksBody(env);
 
   return jsonResponse({
     issuer,
     authorization_endpoint: `${origin}/oauth/authorize`,
     token_endpoint: `${origin}/oauth/token`,
+    introspection_endpoint: `${origin}/oauth/introspect`,
     registration_endpoint: `${origin}/register`,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code"],
-    token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
+    ...(jwks ? { jwks_uri: `${origin}/.well-known/jwks.json` } : {}),
+    token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
     code_challenge_methods_supported: ["S256"],
     scopes_supported: ["mcp"],
   });
@@ -208,8 +388,6 @@ export async function handleOauthRegister(request: Request, env: Env): Promise<R
     return oauthErrorResponse(405, "invalid_request", "Method not allowed");
   }
 
-  // Dynamic registration is gated: only Bearer JWTs minted via /admin/tokens (or legacy bypass)
-  // are accepted. Anonymous registration is disabled to reduce OAuth client spam.
   const registrationAuth = await resolveRateLimitPolicyFromRequest(request, env);
   if (!registrationAuth) {
     return oauthErrorResponse(
@@ -251,6 +429,14 @@ export async function handleOauthRegister(request: Request, env: Env): Promise<R
     expiresAtMs,
   };
 
+  if (registrationAuth.kind === "token" && registrationAuth.record) {
+    const r = registrationAuth.record;
+    const lim = clampOptionalOauthAccessLimitPerHour(r.oauthAccessLimitPerHour);
+    if (lim !== undefined) record.accessLimitPerHour = lim;
+    const ttl = clampOptionalOauthAccessTokenTtlSeconds(r.oauthAccessTokenTtlSeconds);
+    if (ttl !== undefined) record.accessTokenTtlSeconds = ttl;
+  }
+
   await env.TOKEN_REGISTRY_KV.put(clientKey(client_id), JSON.stringify(record), {
     expirationTtl: computeTtlSeconds(expiresAtMs),
   });
@@ -262,7 +448,7 @@ export async function handleOauthRegister(request: Request, env: Env): Promise<R
       client_secret_expires_at: Math.floor(expiresAtMs / 1000),
       token_endpoint_auth_method: "client_secret_post",
       redirect_uris,
-      grant_types: ["authorization_code"],
+      grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
     },
     201,
@@ -315,7 +501,7 @@ export async function handleOauthAuthorize(request: Request, env: Env): Promise<
   crypto.getRandomValues(codeBytes);
   const code = base64urlEncode(codeBytes);
 
-  const record: AuthorizationCodeRecord = {
+  const rec: AuthorizationCodeRecord = {
     code,
     client_id,
     redirect_uri,
@@ -327,7 +513,7 @@ export async function handleOauthAuthorize(request: Request, env: Env): Promise<
     expiresAtMs,
   };
 
-  await env.TOKEN_REGISTRY_KV.put(codeKey(code), JSON.stringify(record), {
+  await env.TOKEN_REGISTRY_KV.put(codeKey(code), JSON.stringify(rec), {
     expirationTtl: computeTtlSeconds(expiresAtMs),
   });
 
@@ -349,15 +535,74 @@ export async function handleOauthToken(request: Request, env: Env): Promise<Resp
     return oauthErrorResponse(405, "invalid_request", "Method not allowed");
   }
 
-  const jwtSecret = env.RATE_LIMIT_BYPASS_JWT_SECRET;
-  if (!jwtSecret) {
-    return oauthErrorResponse(500, "server_error", "OAuth signing secret not configured");
+  if (!oauthSigningConfigured(env)) {
+    return oauthErrorResponse(500, "server_error", "OAuth signing not configured");
   }
 
   const body = await parseTokenRequestBody(request);
   const grant_type = body.grant_type ?? undefined;
+
+  const auth = await authenticateOAuthClient(request, body, env);
+  if (!auth.ok) return auth.response;
+  const { client } = auth;
+
+  const origin = getRequestOrigin(request);
+
+  if (grant_type === "refresh_token") {
+    const refresh_token = body.refresh_token;
+    if (!refresh_token) {
+      return oauthErrorResponse(400, "invalid_request", "Missing refresh_token");
+    }
+
+    const rawRef = await env.TOKEN_REGISTRY_KV.get(refreshKey(refresh_token));
+    if (!rawRef) {
+      return oauthErrorResponse(400, "invalid_grant", "Invalid refresh token");
+    }
+
+    let refRec: OAuthRefreshRecord | null = null;
+    try {
+      refRec = JSON.parse(rawRef) as OAuthRefreshRecord;
+    } catch {
+      refRec = null;
+    }
+    if (!refRec || refRec.client_id !== client.client_id) {
+      return oauthErrorResponse(400, "invalid_grant", "Invalid refresh token");
+    }
+
+    const canonicalResource = refRec.resource;
+    if (body.resource !== undefined && !resourcesEquivalent(body.resource, canonicalResource)) {
+      return oauthErrorResponse(
+        400,
+        "invalid_grant",
+        "resource does not match the refresh token (RFC 8707)",
+      );
+    }
+
+    await env.TOKEN_REGISTRY_KV.delete(refreshKey(refresh_token));
+
+    let issued: Awaited<ReturnType<typeof issueAccessAndRefresh>>;
+    try {
+      issued = await issueAccessAndRefresh(env, request, client, canonicalResource, refRec.scope);
+    } catch {
+      return oauthErrorResponse(500, "server_error", "OAuth signing failed");
+    }
+
+    return jsonResponse(
+      {
+        access_token: issued.access_token,
+        token_type: "Bearer",
+        expires_in: issued.expires_in,
+        refresh_token: issued.refresh_token,
+        refresh_expires_in: issued.refresh_expires_in,
+        scope: issued.scope,
+      },
+      200,
+      { "Cache-Control": "no-store" },
+    );
+  }
+
   if (grant_type !== "authorization_code") {
-    return oauthErrorResponse(400, "unsupported_grant_type", "Only authorization_code supported");
+    return oauthErrorResponse(400, "unsupported_grant_type", "Unsupported grant_type");
   }
 
   const code = body.code;
@@ -366,27 +611,6 @@ export async function handleOauthToken(request: Request, env: Env): Promise<Resp
   if (!code) return oauthErrorResponse(400, "invalid_request", "Missing code");
   if (!redirect_uri) return oauthErrorResponse(400, "invalid_request", "Missing redirect_uri");
   if (!code_verifier) return oauthErrorResponse(400, "invalid_request", "Missing code_verifier");
-
-  const basic = parseBasicAuth(request);
-  const client_id = basic?.client_id ?? body.client_id;
-  const client_secret = basic?.client_secret ?? body.client_secret;
-  if (!client_id || !client_secret) {
-    return oauthErrorResponse(401, "invalid_client", "Missing client credentials");
-  }
-
-  const rawClient = await env.TOKEN_REGISTRY_KV.get(clientKey(client_id));
-  if (!rawClient) return oauthErrorResponse(401, "invalid_client", "Unknown client_id");
-
-  let client: OAuthClientRecord | null = null;
-  try {
-    client = JSON.parse(rawClient) as OAuthClientRecord;
-  } catch {
-    client = null;
-  }
-
-  if (!client || client.client_secret !== client_secret || Date.now() >= client.expiresAtMs) {
-    return oauthErrorResponse(401, "invalid_client", "Invalid client credentials");
-  }
 
   const rawCode = await env.TOKEN_REGISTRY_KV.get(codeKey(code));
   if (!rawCode) return oauthErrorResponse(400, "invalid_grant", "Invalid authorization code");
@@ -400,7 +624,7 @@ export async function handleOauthToken(request: Request, env: Env): Promise<Resp
 
   if (
     !codeRecord ||
-    codeRecord.client_id !== client_id ||
+    codeRecord.client_id !== client.client_id ||
     codeRecord.redirect_uri !== redirect_uri ||
     Date.now() >= codeRecord.expiresAtMs ||
     codeRecord.consumedAtMs
@@ -408,7 +632,6 @@ export async function handleOauthToken(request: Request, env: Env): Promise<Resp
     return oauthErrorResponse(400, "invalid_grant", "Expired/invalid authorization code");
   }
 
-  // Mark code as consumed (best-effort; if races happen, it's still short-lived).
   await env.TOKEN_REGISTRY_KV.put(
     codeKey(code),
     JSON.stringify({ ...codeRecord, consumedAtMs: Date.now() }),
@@ -424,35 +647,99 @@ export async function handleOauthToken(request: Request, env: Env): Promise<Resp
     return oauthErrorResponse(400, "invalid_grant", "PKCE code_verifier mismatch");
   }
 
-  const origin = getRequestOrigin(request);
-  const nowSec = Math.floor(Date.now() / 1000);
-  const expSec = nowSec + DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
+  const canonicalResource =
+    codeRecord.resource ?? `${origin}/mcp`;
+  if (body.resource !== undefined && !resourcesEquivalent(body.resource, canonicalResource)) {
+    return oauthErrorResponse(
+      400,
+      "invalid_grant",
+      "resource does not match authorization request (RFC 8707)",
+    );
+  }
 
-  const resource = body.resource ?? codeRecord.resource ?? `${origin}/mcp`;
   const scope = codeRecord.scope ?? body.scope ?? "mcp";
 
-  const tokenPayload: JsonObject = {
-    iss: origin,
-    sub: client_id,
-    aud: resource,
-    iat: nowSec,
-    exp: expSec,
-    scope,
-  };
-
-  const access_token = await signJwtHs256(tokenPayload, jwtSecret);
+  let issuedCode: Awaited<ReturnType<typeof issueAccessAndRefresh>>;
+  try {
+    issuedCode = await issueAccessAndRefresh(env, request, client, canonicalResource, scope);
+  } catch {
+    return oauthErrorResponse(500, "server_error", "OAuth signing failed");
+  }
 
   return jsonResponse(
     {
-      access_token,
+      access_token: issuedCode.access_token,
       token_type: "Bearer",
-      expires_in: DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
-      scope,
+      expires_in: issuedCode.expires_in,
+      refresh_token: issuedCode.refresh_token,
+      refresh_expires_in: issuedCode.refresh_expires_in,
+      scope: issuedCode.scope,
     },
     200,
-    {
-      "Cache-Control": "no-store",
-    },
+    { "Cache-Control": "no-store" },
   );
 }
 
+/**
+ * RFC 7662 — authenticated with the same client credentials as the token endpoint.
+ */
+export async function handleOauthIntrospect(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") {
+    return oauthErrorResponse(405, "invalid_request", "Method not allowed");
+  }
+
+  const body = await parseIntrospectBody(request);
+  const auth = await authenticateOAuthClient(request, body, env);
+  if (!auth.ok) return auth.response;
+
+  if (!body.token) {
+    return jsonResponse({ active: false }, 200, { "Cache-Control": "no-store" });
+  }
+
+  const payload = await verifyMcpJwtSignature(body.token, env);
+  if (!payload) {
+    return jsonResponse({ active: false }, 200, { "Cache-Control": "no-store" });
+  }
+
+  const origin = getRequestOrigin(request);
+  const issRaw = payload["iss"];
+  const iss = typeof issRaw === "string" ? issRaw : null;
+  const subRaw = payload["sub"];
+  const audRaw = payload["aud"];
+  const expRaw = payload["exp"];
+  const scopeRaw = payload["scope"];
+  const iatRaw = payload["iat"];
+
+  if (
+    iss !== origin ||
+    typeof audRaw !== "string" ||
+    typeof subRaw !== "string" ||
+    subRaw.length === 0
+  ) {
+    return jsonResponse({ active: false }, 200, { "Cache-Control": "no-store" });
+  }
+
+  const expSec = typeof expRaw === "number" && Number.isFinite(expRaw) ? Math.floor(expRaw) : 0;
+  if (Math.floor(Date.now() / 1000) >= expSec) {
+    return jsonResponse({ active: false }, 200, { "Cache-Control": "no-store" });
+  }
+
+  const scope = typeof scopeRaw === "string" ? scopeRaw : undefined;
+  const iat = typeof iatRaw === "number" && Number.isFinite(iatRaw) ? iatRaw : undefined;
+
+  return jsonResponse(
+    {
+      active: true,
+      iss,
+      sub: subRaw,
+      aud: audRaw,
+      exp: expSec,
+      ...(iat !== undefined ? { iat } : {}),
+      token_type: "Bearer",
+      client_id: subRaw,
+      ...(scope ? { scope } : {}),
+    },
+    200,
+    { "Cache-Control": "no-store" },
+  );
+}

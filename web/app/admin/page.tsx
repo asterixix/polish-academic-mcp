@@ -18,6 +18,8 @@ type TokenRecord = {
 	revokeReason?: string;
 	label?: string;
 	owner?: string;
+	oauthAccessLimitPerHour?: number;
+	oauthAccessTokenTtlSeconds?: number;
 	usage: TokenUsagePreview;
 };
 
@@ -80,6 +82,8 @@ export default function AdminTokensPage() {
 	const [mintExpiresInDays, setMintExpiresInDays] = useState<number>(30);
 	const [mintLabel, setMintLabel] = useState<string>("");
 	const [mintOwner, setMintOwner] = useState<string>("");
+	const [mintOAuthLimit, setMintOAuthLimit] = useState<string>("");
+	const [mintOAuthTtl, setMintOAuthTtl] = useState<string>("");
 
 	async function callAdmin<T>(path: string, init?: RequestInit): Promise<T> {
 		if (!adminBearer) throw new Error("Brak tokena administratora (Bearer)");
@@ -137,17 +141,30 @@ export default function AdminTokensPage() {
 				60,
 				Math.floor(mintExpiresInDays * 24 * 60 * 60),
 			);
+			const mintBody: Record<string, unknown> = {
+				bypass: mintBypass,
+				limitPerHour: mintLimitPerHour,
+				expiresInSeconds,
+				label: mintLabel.trim() || undefined,
+				owner: mintOwner.trim() || undefined,
+			};
+			if (mintOAuthLimit.trim() !== "") {
+				mintBody.oauthAccessLimitPerHour = Math.max(
+					1,
+					Math.floor(Number(mintOAuthLimit) || 0),
+				);
+			}
+			if (mintOAuthTtl.trim() !== "") {
+				mintBody.oauthAccessTokenTtlSeconds = Math.max(
+					60,
+					Math.floor(Number(mintOAuthTtl) || 0),
+				);
+			}
 			const data = await callAdmin<{ token: string; record: TokenRecord }>(
 				"/admin/tokens",
 				{
 					method: "POST",
-					body: JSON.stringify({
-						bypass: mintBypass,
-						limitPerHour: mintLimitPerHour,
-						expiresInSeconds,
-						label: mintLabel.trim() || undefined,
-						owner: mintOwner.trim() || undefined,
-					}),
+					body: JSON.stringify(mintBody),
 				},
 			);
 
@@ -184,30 +201,44 @@ export default function AdminTokensPage() {
 		}
 	}
 
-	async function updateToken(jti: string, patch: Partial<TokenRecord>) {
+	async function updateToken(
+		jti: string,
+		patch: Partial<TokenRecord> & {
+			oauthAccessLimitPerHour?: number | null;
+			oauthAccessTokenTtlSeconds?: number | null;
+		},
+	) {
 		setLoading(true);
 		setStatus("");
 		try {
+			const patchJson: Record<string, unknown> = {
+				bypass: typeof patch.bypass === "boolean" ? patch.bypass : undefined,
+				limitPerHour:
+					typeof patch.limitPerHour === "number"
+						? patch.limitPerHour
+						: undefined,
+				label: typeof patch.label === "string" ? patch.label : undefined,
+				owner: typeof patch.owner === "string" ? patch.owner : undefined,
+				expiresInSeconds:
+					typeof patch.expiresAtMs === "number" &&
+					Number.isFinite(patch.expiresAtMs)
+						? Math.max(
+								60,
+								Math.floor((patch.expiresAtMs - Date.now()) / 1000),
+							)
+						: undefined,
+			};
+			if ("oauthAccessLimitPerHour" in patch) {
+				patchJson.oauthAccessLimitPerHour =
+					patch.oauthAccessLimitPerHour ?? null;
+			}
+			if ("oauthAccessTokenTtlSeconds" in patch) {
+				patchJson.oauthAccessTokenTtlSeconds =
+					patch.oauthAccessTokenTtlSeconds ?? null;
+			}
 			await callAdmin(`/admin/tokens/${encodeURIComponent(jti)}`, {
 				method: "PATCH",
-				body: JSON.stringify({
-					bypass: typeof patch.bypass === "boolean" ? patch.bypass : undefined,
-					limitPerHour:
-						typeof patch.limitPerHour === "number"
-							? patch.limitPerHour
-							: undefined,
-					label: typeof patch.label === "string" ? patch.label : undefined,
-					owner: typeof patch.owner === "string" ? patch.owner : undefined,
-					// Update expiry by days: easiest UX.
-					expiresInSeconds:
-						typeof patch.expiresAtMs === "number" &&
-						Number.isFinite(patch.expiresAtMs)
-							? Math.max(
-									60,
-									Math.floor((patch.expiresAtMs - Date.now()) / 1000),
-								)
-							: undefined,
-				}),
+				body: JSON.stringify(patchJson),
 			});
 			await loadTokens();
 		} catch (e) {
@@ -339,6 +370,29 @@ export default function AdminTokensPage() {
 							placeholder="np. Alice"
 						/>
 					</label>
+
+					<label className="flex flex-col gap-1">
+						<span className="text-sm text-muted-foreground">
+							OAuth limit tools/h (opcjonalnie, /register)
+						</span>
+						<input
+							className="rounded border px-3 py-2"
+							value={mintOAuthLimit}
+							onChange={(e) => setMintOAuthLimit(e.target.value)}
+							placeholder="global workera jeśli puste"
+						/>
+					</label>
+					<label className="flex flex-col gap-1">
+						<span className="text-sm text-muted-foreground">
+							OAuth TTL access_token (s)
+						</span>
+						<input
+							className="rounded border px-3 py-2"
+							value={mintOAuthTtl}
+							onChange={(e) => setMintOAuthTtl(e.target.value)}
+							placeholder="global jeśli puste"
+						/>
+					</label>
 				</div>
 
 				<div className="mt-4 flex gap-2">
@@ -401,12 +455,28 @@ function TokenCard(props: {
 	token: TokenRecord;
 	loading: boolean;
 	onRevoke: (jti: string, reason?: string) => Promise<void>;
-	onUpdate: (jti: string, patch: Partial<TokenRecord>) => Promise<void>;
+	onUpdate: (
+		jti: string,
+		patch: Partial<TokenRecord> & {
+			oauthAccessLimitPerHour?: number | null;
+			oauthAccessTokenTtlSeconds?: number | null;
+		},
+	) => Promise<void>;
 }) {
 	const { token, loading, onRevoke, onUpdate } = props;
 
 	const [bypass, setBypass] = useState<boolean>(token.bypass);
 	const [limitPerHour, setLimitPerHour] = useState<number>(token.limitPerHour);
+	const [oauthLimitStr, setOauthLimitStr] = useState<string>(() =>
+		token.oauthAccessLimitPerHour != null
+			? String(token.oauthAccessLimitPerHour)
+			: "",
+	);
+	const [oauthTtlStr, setOauthTtlStr] = useState<string>(() =>
+		token.oauthAccessTokenTtlSeconds != null
+			? String(token.oauthAccessTokenTtlSeconds)
+			: "",
+	);
 	const [expiresInDays, setExpiresInDays] = useState<number>(() => {
 		const days = Math.ceil(
 			(token.expiresAtMs - Date.now()) / (24 * 60 * 60 * 1000),
@@ -426,6 +496,16 @@ function TokenCard(props: {
 		setExpiresInDays(Number.isFinite(days) && days > 0 ? days : 1);
 		setLabel(token.label ?? "");
 		setOwner(token.owner ?? "");
+		setOauthLimitStr(
+			token.oauthAccessLimitPerHour != null
+				? String(token.oauthAccessLimitPerHour)
+				: "",
+		);
+		setOauthTtlStr(
+			token.oauthAccessTokenTtlSeconds != null
+				? String(token.oauthAccessTokenTtlSeconds)
+				: "",
+		);
 		setRevokeReason("");
 	}, [token]);
 
@@ -435,12 +515,32 @@ function TokenCard(props: {
 	async function apply() {
 		const newExpiresAtMs =
 			Date.now() + Math.max(1, Math.floor(expiresInDays)) * 24 * 60 * 60 * 1000;
+		let oauthAccessLimitPerHour: number | null | undefined = undefined;
+		if (oauthLimitStr.trim() === "") oauthAccessLimitPerHour = null;
+		else {
+			const n = Math.floor(Number(oauthLimitStr));
+			if (!Number.isFinite(n) || n < 1) {
+				return;
+			}
+			oauthAccessLimitPerHour = n;
+		}
+		let oauthAccessTokenTtlSeconds: number | null | undefined = undefined;
+		if (oauthTtlStr.trim() === "") oauthAccessTokenTtlSeconds = null;
+		else {
+			const n = Math.floor(Number(oauthTtlStr));
+			if (!Number.isFinite(n) || n < 60) {
+				return;
+			}
+			oauthAccessTokenTtlSeconds = n;
+		}
 		await onUpdate(token.jti, {
 			bypass,
 			limitPerHour: bypass ? token.limitPerHour : limitPerHour,
 			expiresAtMs: newExpiresAtMs,
 			label: label.trim() || undefined,
 			owner: owner.trim() || undefined,
+			oauthAccessLimitPerHour,
+			oauthAccessTokenTtlSeconds,
 		});
 	}
 
@@ -460,6 +560,11 @@ function TokenCard(props: {
 					</div>
 					<div className="mt-1 text-sm text-muted-foreground">
 						wygasa: {msToIso(token.expiresAtMs)}
+					</div>
+					<div className="mt-1 text-sm text-muted-foreground">
+						OAuth /register: limit{" "}
+						{token.oauthAccessLimitPerHour ?? "—"} / h · TTL access{" "}
+						{token.oauthAccessTokenTtlSeconds ?? "—"} s
 					</div>
 					{token.revokedAtMs ? (
 						<div className="mt-1 text-sm text-red-600">
@@ -535,6 +640,27 @@ function TokenCard(props: {
 						className="rounded border px-2 py-1"
 						value={owner}
 						onChange={(e) => setOwner(e.target.value)}
+						disabled={revoked}
+					/>
+				</label>
+
+				<label className="flex flex-col gap-1 text-sm">
+					<span className="text-muted-foreground">
+						OAuth limit / h (puste = worker)
+					</span>
+					<input
+						className="rounded border px-2 py-1"
+						value={oauthLimitStr}
+						onChange={(e) => setOauthLimitStr(e.target.value)}
+						disabled={revoked}
+					/>
+				</label>
+				<label className="flex flex-col gap-1 text-sm">
+					<span className="text-muted-foreground">OAuth TTL (s)</span>
+					<input
+						className="rounded border px-2 py-1"
+						value={oauthTtlStr}
+						onChange={(e) => setOauthTtlStr(e.target.value)}
 						disabled={revoked}
 					/>
 				</label>
