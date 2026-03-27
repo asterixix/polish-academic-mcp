@@ -72,6 +72,39 @@ const handler = {
 
     const url = new URL(request.url);
     const path = url.pathname;
+    const acceptHeader = request.headers.get("Accept") ?? "";
+    const isBrowserNavigation =
+      (request.method === "GET" || request.method === "HEAD") &&
+      acceptHeader.includes("text/html");
+
+    // If a separate frontend app is configured, serve it for browser navigations.
+    // API endpoints remain handled by this worker.
+    if (env.CHAT_UI_URL && isBrowserNavigation) {
+      const frontendBase = new URL(env.CHAT_UI_URL);
+      const sameOrigin = frontendBase.origin === url.origin;
+      const isBackendApiPath =
+        path.startsWith("/admin/tokens") ||
+        path === "/chat/health" ||
+        path === "/oauth/authorize" ||
+        path === "/oauth/token" ||
+        path === "/register" ||
+        path === "/.well-known/oauth-authorization-server" ||
+        path === "/.well-known/oauth-protected-resource";
+
+      if (!sameOrigin && !isBackendApiPath) {
+        const frontendTarget = new URL(`${path}${url.search}`, frontendBase);
+        const proxyResponse = await fetch(frontendTarget.toString(), {
+          method: request.method,
+          headers: request.headers,
+        });
+        return proxyResponse;
+      }
+    }
+
+    // Convenience redirect so opening the worker root URL works.
+    if ((path === "/" || path === "") && (request.method === "GET" || request.method === "HEAD")) {
+      return Response.redirect(`${url.origin}/mcp`, 302);
+    }
 
     const corsForAdmin = (init?: { status?: number; headers?: HeadersInit; body?: BodyInit }): Response => {
       const origin = request.headers.get("Origin") ?? "*";
@@ -97,6 +130,42 @@ const handler = {
 
     if (path === "/.well-known/oauth-authorization-server" && request.method === "GET") {
       return handleOauthWellKnownAuthorizationServer(request, env);
+    }
+
+    if ((path === "/" || path === "") && request.method === "GET") {
+      return new Response(getRootPageHtml(url), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
+    if (path === "/health" && request.method === "GET") {
+      return new Response(
+        JSON.stringify(
+          {
+            ok: true,
+            service: "polish-academic-mcp",
+            endpoints: {
+              chat_ui: `${url.origin}/chat`,
+              chat_health: `${url.origin}/chat/health`,
+              mcp: `${url.origin}/mcp`,
+              oauth_authorization_server: `${url.origin}/.well-known/oauth-authorization-server`,
+            },
+          },
+          null,
+          2,
+        ),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+          },
+        },
+      );
     }
 
     if (path === "/register") {
@@ -127,7 +196,7 @@ const handler = {
       });
     }
 
-    if (path === "/chat" && request.method === "OPTIONS") {
+    if ((path === "/chat" || path === "/api/chat") && request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
         headers: {
@@ -162,7 +231,7 @@ const handler = {
       });
     }
 
-    if (request.method === "POST" && path === "/chat") {
+    if (request.method === "POST" && (path === "/chat" || path === "/api/chat")) {
       const chatResponse = await handleChatRequest(request, env, url);
       const headers = new Headers(chatResponse.headers);
       headers.set("Access-Control-Allow-Origin", request.headers.get("Origin") ?? "*");
@@ -394,6 +463,7 @@ const handler = {
     }
 
     let isToolCall = false;
+    let isMcpJsonRpcRequest = false;
     let toolCallName: string | undefined;
     let toolCallArguments: unknown = undefined;
     let toolCallId: string | number | undefined;
@@ -408,6 +478,8 @@ const handler = {
         if (body && typeof body === "object") {
           const b = body as Record<string, unknown>;
           const method = typeof b["method"] === "string" ? b["method"] : undefined;
+          const jsonrpc = typeof b["jsonrpc"] === "string" ? b["jsonrpc"] : undefined;
+          isMcpJsonRpcRequest = Boolean(method && (jsonrpc === "2.0" || jsonrpc === undefined));
           isToolCall = method === "tools/call";
           if (isToolCall) {
             const params = b["params"] as Record<string, unknown> | undefined;
@@ -463,7 +535,9 @@ const handler = {
     // ── MCP handler ────────────────────────────────────────────────────────
     // A fresh server instance is mandatory per request — see server.ts.
     const server = createServer(env);
-    const mcpHandler = createMcpHandler(server, { enableJsonResponse: isToolCall });
+    // Compatibility: some MCP clients enumerate tools only when JSON responses
+    // are enabled for list/initialize requests too (not just tools/call).
+    const mcpHandler = createMcpHandler(server, { enableJsonResponse: isMcpJsonRpcRequest });
     const response = await mcpHandler(request, env, ctx);
 
     // ── WebDAV eval-data upload ───────────────────────────────────────────
@@ -618,6 +692,43 @@ function getChatPageHtml(chatUiUrl: string | undefined, diagnostics: ChatDiagnos
         });
       })();
     </script>
+  </body>
+</html>`;
+}
+
+function getRootPageHtml(url: URL): string {
+  const origin = url.origin;
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Polish Academic MCP</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; background: #0b1220; color: #e6edf7; }
+      .wrap { max-width: 920px; margin: 48px auto; padding: 0 16px; }
+      .card { border: 1px solid #263248; border-radius: 12px; background: #121b2b; padding: 20px; }
+      h1 { margin-top: 0; }
+      a { color: #9ec5ff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      code { background: #1c2940; padding: 2px 6px; border-radius: 6px; }
+      ul { line-height: 1.9; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Polish Academic MCP</h1>
+        <p>Service is running. Use one of the endpoints below:</p>
+        <ul>
+          <li><a href="${origin}/chat">${origin}/chat</a> — interactive chat entry page</li>
+          <li><a href="${origin}/chat/health">${origin}/chat/health</a> — chat diagnostics</li>
+          <li><code>${origin}/chat</code> (POST) — assistant-ui chat API</li>
+          <li><code>${origin}/mcp</code> — MCP server endpoint</li>
+          <li><a href="${origin}/health">${origin}/health</a> — basic service health JSON</li>
+        </ul>
+      </div>
+    </div>
   </body>
 </html>`;
 }
