@@ -37,7 +37,7 @@ import {
   resolveRateLimitPolicyFromRequest,
 } from "./token-registry.js";
 import { getAdminPanelHtml } from "./admin-panel.js";
-import { getConnectPageHtml } from "./connect-page.js";
+import { getConnectPageHtml, getVerifyRedirectTarget, listVerifyProviderIds } from "./connect-page.js";
 
 const RATE_LIMIT = 10; // tool calls per hour per IP
 const PUBLIC_TOOL_NAMES = new Set<string>([
@@ -139,6 +139,9 @@ const handler = {
             service: "polish-academic-mcp",
             endpoints: {
               mcp: `${url.origin}/mcp`,
+              connect: `${url.origin}/connect`,
+              verify: `${url.origin}/verify`,
+              verify_redirect: `${url.origin}/verify/redirect?provider=claude`,
               oauth_authorization_server: `${url.origin}/.well-known/oauth-authorization-server`,
             },
           },
@@ -155,8 +158,40 @@ const handler = {
       );
     }
 
+    if (path === "/verify/redirect" || path === "/verify/redirect/") {
+      if (request.method !== "GET") {
+        return new Response(JSON.stringify({ error: "method_not_allowed" }), {
+          status: 405,
+          headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+        });
+      }
+      const target = getVerifyRedirectTarget(url.searchParams.get("provider") ?? "");
+      if (!target) {
+        return new Response(
+          JSON.stringify({ error: "unknown_provider", allowed: listVerifyProviderIds() }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+          },
+        );
+      }
+      return Response.redirect(target, 302);
+    }
+
+    if ((path === "/verify" || path === "/verify/") && request.method === "GET") {
+      const u = new URL(request.url);
+      if (!u.searchParams.has("verify")) u.searchParams.set("verify", "1");
+      return new Response(getConnectPageHtml(url.origin, u.searchParams), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     if ((path === "/connect" || path === "/connect/") && request.method === "GET") {
-      return new Response(getConnectPageHtml(url.origin), {
+      return new Response(getConnectPageHtml(url.origin, url.searchParams), {
         status: 200,
         headers: {
           "Content-Type": "text/html; charset=utf-8",
@@ -687,6 +722,7 @@ function getRootPageHtml(url: URL): string {
         <p>Service is running. Use one of the endpoints below:</p>
         <ul>
           <li><a href="${origin}/connect">${origin}/connect</a> — interactive MCP connect (JWT/guest)</li>
+          <li><a href="${origin}/verify">${origin}/verify</a> — verify flow + links to ChatGPT / Perplexity / Gemini / Claude</li>
           <li><code>${origin}/mcp</code> — MCP server endpoint</li>
           <li><a href="${origin}/health">${origin}/health</a> — basic service health JSON</li>
         </ul>

@@ -1,7 +1,82 @@
-export function getConnectPageHtml(origin: string): string {
+const CONNECT_PROVIDER_IDS = ["chatgpt", "perplexity", "gemini", "claude"] as const;
+type ConnectProviderId = (typeof CONNECT_PROVIDER_IDS)[number];
+
+const CONNECT_PROVIDERS: Record<
+  ConnectProviderId,
+  { label: string; landingUrl: string; hint: string }
+> = {
+  chatgpt: {
+    label: "ChatGPT",
+    landingUrl: "https://chatgpt.com",
+    hint:
+      "Plus/Pro (and plans with connectors): enable Developer mode (Settings → Apps & Connectors → Advanced), then Create connector and paste the MCP URL (Streamable HTTP). UI names may say “Apps” or “Connectors”.",
+  },
+  perplexity: {
+    label: "Perplexity",
+    landingUrl: "https://docs.perplexity.ai/guides/mcp-server",
+    hint:
+      "Official guide covers Perplexity as MCP server and remote MCP with OAuth. Connecting a third-party MCP to Perplexity depends on their client; use /.well-known + /register on this worker when the client supports OAuth/DCR.",
+  },
+  gemini: {
+    label: "Gemini",
+    landingUrl: "https://aistudio.google.com",
+    hint: "AI Studio: Tools → Add MCP server. CLI: ~/.gemini/settings.json httpUrl.",
+  },
+  claude: {
+    label: "Claude",
+    landingUrl: "https://claude.ai/settings/connectors",
+    hint: "Web: Connectors → Add custom connector. Desktop: mcp-remote + this server URL.",
+  },
+};
+
+export function getVerifyRedirectTarget(provider: string): string | null {
+  const id = provider.trim().toLowerCase();
+  if (!CONNECT_PROVIDER_IDS.includes(id as ConnectProviderId)) return null;
+  return CONNECT_PROVIDERS[id as ConnectProviderId].landingUrl;
+}
+
+export function listVerifyProviderIds(): string[] {
+  return [...CONNECT_PROVIDER_IDS];
+}
+
+export function getConnectPageHtml(origin: string, searchParams?: URLSearchParams): string {
   const mcpUrl = `${origin}/mcp`;
   const registerUrl = `${origin}/register`;
   const authServerUrl = `${origin}/.well-known/oauth-authorization-server`;
+  const verifyRedirectBase = `${origin}/verify/redirect`;
+
+  const sp = searchParams ?? new URLSearchParams();
+  const verifyMode = sp.get("verify") === "1" || sp.get("verify") === "true";
+  const rawProvider = (sp.get("provider") || "").trim().toLowerCase();
+  const providerParam = CONNECT_PROVIDER_IDS.includes(rawProvider as ConnectProviderId)
+    ? (rawProvider as ConnectProviderId)
+    : null;
+  const autoRedirect = sp.get("auto") === "1" || sp.get("auto") === "true";
+
+  const pageTitle = verifyMode ? "Verify & connect" : "MCP Connect";
+  const pageInitJson = JSON.stringify({
+    verifyMode,
+    autoRedirect,
+    providerParam,
+    providers: CONNECT_PROVIDERS,
+    verifyRedirectBase,
+  });
+
+  const verifyBannerHtml = verifyMode
+    ? `<div class="verify-banner">Verify flow: choose guest or JWT, run a successful probe, then open your chat app. With <span class="mono">?auto=1&amp;provider=claude</span> the page redirects to that app after a good probe.</div>`
+    : "";
+
+  const providerCardsHtml = CONNECT_PROVIDER_IDS.map((id) => {
+    const p = CONNECT_PROVIDERS[id];
+    const rUrl = `${verifyRedirectBase}?provider=${encodeURIComponent(id)}`;
+    return `<div class="provider-card">
+      <div class="provider-card-head">
+        <button type="button" class="btn btn-primary provider-open" data-provider="${id}">Open ${p.label}</button>
+        <a class="provider-302 mono" href="${rUrl}">302 redirect</a>
+      </div>
+      <p class="muted provider-hint">${p.hint}</p>
+    </div>`;
+  }).join("");
 
   return `<!doctype html>
 <html lang="en" class="dark">
@@ -9,7 +84,7 @@ export function getConnectPageHtml(origin: string): string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>MCP Connect — Polish Academic MCP</title>
+    <title>${pageTitle} — Polish Academic MCP</title>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
       :root {
@@ -84,15 +159,49 @@ export function getConnectPageHtml(origin: string): string {
       pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
       .split { display: grid; gap: 1rem; grid-template-columns: 1fr; }
       @media (min-width: 900px) { .split { grid-template-columns: 1fr 1fr; } }
+      .verify-banner {
+        border: 1px solid oklch(0.45 0.12 250);
+        background: oklch(0.22 0.04 250);
+        border-radius: var(--radius);
+        padding: 0.65rem 0.85rem;
+        font-size: 0.82rem;
+        margin-bottom: 1rem;
+        color: var(--foreground);
+      }
+      .provider-grid { display: grid; gap: 0.75rem; grid-template-columns: 1fr; }
+      @media (min-width: 720px) { .provider-grid { grid-template-columns: 1fr 1fr; } }
+      .provider-card {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 0.65rem 0.75rem;
+        background: oklch(0.17 0 0);
+      }
+      .provider-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; }
+      .provider-hint { margin: 0; font-size: 0.75rem; line-height: 1.45; }
+      .provider-302 { font-size: 0.7rem; color: #9ec5ff; }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1 class="page-title">MCP Connect</h1>
+      <h1 class="page-title">${pageTitle}</h1>
       <p class="page-desc">
         Interactive connector for <span class="mono">${mcpUrl}</span>.
         Continue as guest (public tools) or provide JWT bearer token (extended tools/limits).
+        ${verifyMode ? " This is the <strong>verify</strong> entry — use Session then probe, or jump to your chat app below." : ""}
       </p>
+      ${verifyBannerHtml}
+
+      <div class="card" style="margin-bottom:1rem;">
+        <h2>Open in your app</h2>
+        <p class="muted" style="margin:0 0 0.75rem;font-size:0.82rem;">
+          After you confirm guest or JWT (probe OK), add this MCP URL in the app. Buttons open the vendor site in a new tab.
+          Backend <span class="mono">GET /verify/redirect?provider=…</span> returns <strong>302</strong> to the same landing pages (shareable links).
+        </p>
+        <p class="mono" style="margin:0 0 0.75rem;font-size:0.8rem;word-break:break-all;">${mcpUrl}</p>
+        <div class="provider-grid">
+          ${providerCardsHtml}
+        </div>
+      </div>
 
       <div class="grid">
         <div class="card">
@@ -167,6 +276,7 @@ export function getConnectPageHtml(origin: string): string {
 
     <script>
       (function () {
+        var PAGE = ${pageInitJson};
         var STORAGE_KEY = "polish_academic_mcp_connect_jwt";
         var mcpUrl = ${JSON.stringify(mcpUrl)};
         var registerUrl = ${JSON.stringify(registerUrl)};
@@ -276,6 +386,16 @@ export function getConnectPageHtml(origin: string): string {
           return { status: res.status, json: json };
         }
 
+        function tryAutoRedirect() {
+          if (!PAGE.autoRedirect || !PAGE.providerParam) return;
+          var p = PAGE.providers[PAGE.providerParam];
+          if (!p || !p.landingUrl) return;
+          setStatus("probeStatus", "OK — redirecting to " + p.label + "…", false);
+          setTimeout(function () {
+            window.location.href = p.landingUrl;
+          }, 500);
+        }
+
         async function runProbe(token) {
           setStatus("probeStatus", "Running initialize...", false);
           var init = await rpc({
@@ -293,7 +413,7 @@ export function getConnectPageHtml(origin: string): string {
             if (init.json && init.json.error) msg += "\\n" + JSON.stringify(init.json.error);
             setStatus("probeStatus", msg, true);
             $("toolList").style.display = "none";
-            return;
+            return false;
           }
 
           setStatus("probeStatus", "initialize OK. Listing tools...", false);
@@ -308,7 +428,7 @@ export function getConnectPageHtml(origin: string): string {
             if (list.json && list.json.error) msg2 += "\\n" + JSON.stringify(list.json.error);
             setStatus("probeStatus", msg2, true);
             $("toolList").style.display = "none";
-            return;
+            return false;
           }
 
           var tools = (list.json && list.json.result && list.json.result.tools) || [];
@@ -317,6 +437,8 @@ export function getConnectPageHtml(origin: string): string {
           wrap.innerHTML = names.map(function (n) { return "<div class=\\"tool-item mono\\">" + n + "</div>"; }).join("");
           wrap.style.display = "block";
           setStatus("probeStatus", "tools/list OK. Detected tools: " + names.length, false);
+          tryAutoRedirect();
+          return true;
         }
 
         $("btnUseJwt").addEventListener("click", async function () {
@@ -428,6 +550,14 @@ export function getConnectPageHtml(origin: string): string {
           } catch (e) {
             setStatus("authStatus", "Copy failed: " + String(e && e.message ? e.message : e), true);
           }
+        });
+
+        document.querySelectorAll(".provider-open").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var id = btn.getAttribute("data-provider");
+            if (!id || !PAGE.providers[id]) return;
+            window.open(PAGE.providers[id].landingUrl, "_blank", "noopener,noreferrer");
+          });
         });
 
         applySavedToken();
