@@ -1,3 +1,5 @@
+import type { Env } from "./types.js";
+
 const CONNECT_PROVIDER_IDS = ["chatgpt", "perplexity", "gemini", "claude"] as const;
 type ConnectProviderId = (typeof CONNECT_PROVIDER_IDS)[number];
 
@@ -39,7 +41,7 @@ export function listVerifyProviderIds(): string[] {
   return [...CONNECT_PROVIDER_IDS];
 }
 
-export function getConnectPageHtml(origin: string, searchParams?: URLSearchParams): string {
+export function getConnectPageHtml(origin: string, searchParams?: URLSearchParams, env?: Env): string {
   const mcpUrl = `${origin}/mcp`;
   const registerUrl = `${origin}/register`;
   const authServerUrl = `${origin}/.well-known/oauth-authorization-server`;
@@ -60,6 +62,7 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
     providerParam,
     providers: CONNECT_PROVIDERS,
     verifyRedirectBase,
+    web3formsAccessKey: typeof env?.WEB3FORMS_ACCESS_KEY === "string" ? env.WEB3FORMS_ACCESS_KEY.trim() : "",
   });
 
   const verifyBannerHtml = verifyMode
@@ -118,6 +121,46 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
       .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.125rem; }
       .card h2 { font-size: 0.9rem; font-weight: 600; margin: 0 0 0.75rem; }
       label { display: block; font-size: 0.75rem; font-weight: 500; color: var(--muted-foreground); margin: 0.75rem 0 0.375rem; }
+      label.inline-check {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        font-size: 0.8rem;
+        color: var(--foreground);
+        margin: 0.65rem 0 0;
+        cursor: pointer;
+      }
+      label.inline-check input { margin: 0.2rem 0 0; width: auto; flex-shrink: 0; }
+      .form-grid-2 {
+        display: grid;
+        gap: 0 0.75rem;
+        grid-template-columns: 1fr;
+      }
+      @media (min-width: 480px) { .form-grid-2 { grid-template-columns: 1fr 1fr; } }
+      dialog.research-dialog {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--card);
+        color: var(--foreground);
+        padding: 0;
+        max-width: 32rem;
+        width: calc(100vw - 2rem);
+        box-shadow: 0 1rem 2.5rem oklch(0 0 0 / 0.45);
+      }
+      dialog.research-dialog::backdrop { background: oklch(0 0 0 / 0.65); }
+      .research-dialog-inner { padding: 1rem 1.125rem 1.125rem; }
+      .research-dialog-inner h3 {
+        margin: 0 0 0.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      .research-dialog-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: flex-end;
+        margin-top: 1rem;
+      }
       input, textarea {
         width: 100%;
         background: oklch(0.145 0 0);
@@ -190,6 +233,56 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
         ${verifyMode ? " To wejście <strong>weryfikacji</strong> — użyj sekcji Sesja i testu albo przejdź do aplikacji czatu poniżej." : ""}
       </p>
       ${verifyBannerHtml}
+
+      <div class="card" style="margin-bottom:1rem;">
+        <h2>Wniosek o token JWT (badania naukowe)</h2>
+        <p class="muted" style="margin:0 0 0.75rem;font-size:0.82rem;">
+          Zgłoś potrzebę Connect JWT z wyższymi limitami na badania. Formularz wysyła wiadomość przez Web3Forms (bezpłatny plan —
+          wysyłka z przeglądarki). <strong>Odbiorcę</strong> (np. artur@sendyka.dev) ustawiasz w panelu Web3Forms przy kluczu dostępu;
+          na workerze ustaw zmienną <span class="mono">WEB3FORMS_ACCESS_KEY</span>.
+        </p>
+        <button type="button" class="btn btn-primary" id="btnOpenResearchDialog">Otwórz formularz wniosku</button>
+      </div>
+
+      <dialog id="researchJwtDialog" class="research-dialog" aria-labelledby="researchDialogTitle">
+        <div class="research-dialog-inner">
+          <h3 id="researchDialogTitle">Wniosek o JWT na badania</h3>
+          <p class="muted" style="margin:0 0 0.75rem;font-size:0.78rem;line-height:1.45;">
+            Pola obowiązkowe oznaczone są kontekstem formularza. Zgoda RODO jest wymagana do kontaktu zwrotnego.
+          </p>
+          <form id="researchJwtForm" novalidate>
+            <div class="form-grid-2">
+              <div>
+                <label for="researchFirstName">Imię</label>
+                <input type="text" id="researchFirstName" name="first_name" required autocomplete="given-name" />
+              </div>
+              <div>
+                <label for="researchLastName">Nazwisko</label>
+                <input type="text" id="researchLastName" name="last_name" required autocomplete="family-name" />
+              </div>
+            </div>
+            <label for="researchUnit">Jednostka badawcza</label>
+            <input type="text" id="researchUnit" name="institution" required autocomplete="organization" />
+            <label for="researchPurpose">Cel (opis badania / użycia MCP)</label>
+            <textarea id="researchPurpose" name="purpose" required placeholder="Krótki opis projektu i spodziewanego wykorzystania API"></textarea>
+            <label for="researchLimits">Potrzebne limity</label>
+            <textarea id="researchLimits" name="limits" required placeholder="Np. liczba zapytań na godzinę, okres ważności tokenu, lista narzędzi"></textarea>
+            <label class="inline-check">
+              <input type="checkbox" id="researchPaymentOk" name="payment_ok" />
+              <span>Jestem gotowa/y na <strong>opcjonalne</strong> opłacenie dostępu powyżej 1000 zapytań na godzinę (warunki ustalane indywidualnie).</span>
+            </label>
+            <label class="inline-check">
+              <input type="checkbox" id="researchGdpr" name="gdpr_consent" required />
+              <span>Wyrażam zgodę na przetwarzanie danych osobowych w celu kontaktu zwrotnego w sprawie wniosku (RODO).</span>
+            </label>
+            <div class="research-dialog-actions">
+              <button type="button" class="btn" id="researchDialogClose">Anuluj</button>
+              <button type="submit" class="btn btn-primary" id="researchDialogSubmit">Wyślij wniosek</button>
+            </div>
+          </form>
+          <div id="researchFormStatus" class="status" style="margin-top:0.75rem;"></div>
+        </div>
+      </dialog>
 
       <div class="card" style="margin-bottom:1rem;">
         <h2>Otwórz w aplikacji</h2>
@@ -572,6 +665,99 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
             if (!id || !PAGE.providers[id]) return;
             window.open(PAGE.providers[id].landingUrl, "_blank", "noopener,noreferrer");
           });
+        });
+
+        var researchDialog = $("researchJwtDialog");
+        var researchForm = $("researchJwtForm");
+        function setResearchStatus(msg, isErr) {
+          var el = $("researchFormStatus");
+          el.className = isErr ? "status err" : "status";
+          el.textContent = msg || "";
+        }
+        $("btnOpenResearchDialog").addEventListener("click", function () {
+          setResearchStatus("", false);
+          if (researchDialog && typeof researchDialog.showModal === "function") {
+            researchDialog.showModal();
+          }
+        });
+        $("researchDialogClose").addEventListener("click", function () {
+          if (researchDialog && typeof researchDialog.close === "function") researchDialog.close();
+        });
+        researchForm.addEventListener("submit", async function (ev) {
+          ev.preventDefault();
+          setResearchStatus("", false);
+          if (!PAGE.web3formsAccessKey) {
+            setResearchStatus(
+              "Brak klucza Web3Forms — ustaw WEB3FORMS_ACCESS_KEY w workerze (Wrangler / panel Cloudflare) i odśwież stronę. Odbiorcę wiadomości ustaw w panelu web3forms.com.",
+              true
+            );
+            return;
+          }
+          var first = $("researchFirstName").value.trim();
+          var last = $("researchLastName").value.trim();
+          var unit = $("researchUnit").value.trim();
+          var purpose = $("researchPurpose").value.trim();
+          var limits = $("researchLimits").value.trim();
+          var paymentOk = $("researchPaymentOk").checked;
+          var gdpr = $("researchGdpr").checked;
+          if (!first || !last || !unit || !purpose || !limits) {
+            setResearchStatus("Uzupełnij wszystkie wymagane pola tekstowe.", true);
+            return;
+          }
+          if (!gdpr) {
+            setResearchStatus("Wymagana jest zgoda RODO na kontakt.", true);
+            return;
+          }
+          var body = {
+            access_key: PAGE.web3formsAccessKey,
+            subject: "Polish Academic MCP — wniosek JWT (badania): " + last,
+            from_name: first + " " + last,
+            botcheck: "",
+            imie: first,
+            nazwisko: last,
+            jednostka_badawcza: unit,
+            cel: purpose,
+            potrzebne_limity: limits,
+            oplata_powyzej_1000_req_h: paymentOk ? "tak" : "nie",
+            zgoda_rodo_kontakt: gdpr ? "tak" : "nie",
+            message: [
+              "Wniosek o Connect JWT (badania)",
+              "Imię: " + first,
+              "Nazwisko: " + last,
+              "Jednostka: " + unit,
+              "Cel: " + purpose,
+              "Potrzebne limity: " + limits,
+              "Opcjonalna opłata >1000 req/h: " + (paymentOk ? "tak" : "nie"),
+              "Zgoda RODO kontakt: tak"
+            ].join("\\n")
+          };
+          $("researchDialogSubmit").disabled = true;
+          setResearchStatus("Wysyłanie…", false);
+          try {
+            var res = await fetch("https://api.web3forms.com/submit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify(body)
+            });
+            var data = {};
+            try { data = await res.json(); } catch (e2) {}
+            if (!res.ok || data.success !== true) {
+              setResearchStatus(
+                "Błąd wysyłki" + (data.message ? ": " + data.message : "") + " (HTTP " + res.status + ")",
+                true
+              );
+              return;
+            }
+            setResearchStatus("Wysłano. Dziękujemy — odpowiemy na kontakt zgodnie z ustaleniami.", false);
+            researchForm.reset();
+            setTimeout(function () {
+              if (researchDialog && typeof researchDialog.close === "function") researchDialog.close();
+            }, 1400);
+          } catch (e) {
+            setResearchStatus(String(e && e.message ? e.message : e), true);
+          } finally {
+            $("researchDialogSubmit").disabled = false;
+          }
         });
 
         applySavedToken();

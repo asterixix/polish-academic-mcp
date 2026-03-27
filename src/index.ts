@@ -195,7 +195,7 @@ const handler = {
     if ((path === "/verify" || path === "/verify/") && request.method === "GET") {
       const u = new URL(request.url);
       if (!u.searchParams.has("verify")) u.searchParams.set("verify", "1");
-      return new Response(getConnectPageHtml(url.origin, u.searchParams), {
+      return new Response(getConnectPageHtml(url.origin, u.searchParams, env), {
         status: 200,
         headers: {
           "Content-Type": "text/html; charset=utf-8",
@@ -205,7 +205,7 @@ const handler = {
     }
 
     if ((path === "/connect" || path === "/connect/") && request.method === "GET") {
-      return new Response(getConnectPageHtml(url.origin, url.searchParams), {
+      return new Response(getConnectPageHtml(url.origin, url.searchParams, env), {
         status: 200,
         headers: {
           "Content-Type": "text/html; charset=utf-8",
