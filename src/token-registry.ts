@@ -222,6 +222,13 @@ export async function mintRateLimitToken(
   await env.TOKEN_REGISTRY_KV.put(tokenKey(jti), JSON.stringify(record), {
     expirationTtl: computeTtlSeconds(record.expiresAtMs),
   });
+
+  // Fail loudly if the write is not observable immediately in this execution.
+  const written = await getTokenRecord(env, jti);
+  if (!written) {
+    throw new Error("storage_write_verification_failed");
+  }
+
   return { token, record };
 }
 

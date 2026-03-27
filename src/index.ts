@@ -28,6 +28,7 @@ import {
 import { extractToolResultAndSpan, computeRqEvalForToolCall } from "./eval-rq-scorer.js";
 import {
   authorizeAdmin,
+  getTokenRecord,
   listTokenRecordsWithUsagePreview,
   mintRateLimitToken,
   patchRateLimitToken,
@@ -44,91 +45,129 @@ const ADMIN_PANEL_HTML = `<!doctype html>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rate-limit bypass admin</title>
     <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
       :root {
-        color-scheme: light dark;
-        --bg: #0b0d14;
-        --panel: rgba(255,255,255,0.06);
-        --text: rgba(255,255,255,0.92);
-        --muted: rgba(255,255,255,0.65);
-        --border: rgba(255,255,255,0.14);
-        --danger: #ff4d4d;
-        --ok: #32d583;
+        --bg: #f8fafc;
+        --bg2: #eef2ff;
+        --surface: #ffffff;
+        --text: #0f172a;
+        --muted: #475569;
+        --border: #e2e8f0;
+        --ring: #6366f1;
+        --primary: #4f46e5;
+        --primary-hover: #4338ca;
+        --danger: #dc2626;
+        --danger-bg: #fee2e2;
       }
+      * { box-sizing: border-box; }
       body {
         margin: 0;
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-        background: radial-gradient(1200px circle at 10% 0%, rgba(120, 88, 255, 0.22), transparent 55%),
-                    radial-gradient(1000px circle at 100% 30%, rgba(0, 210, 255, 0.18), transparent 60%),
-                    var(--bg);
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
         color: var(--text);
+        background:
+          radial-gradient(1200px 500px at -10% -20%, rgba(79, 70, 229, 0.10), transparent 60%),
+          radial-gradient(1200px 500px at 120% -10%, rgba(14, 165, 233, 0.10), transparent 60%),
+          linear-gradient(180deg, var(--bg2) 0, var(--bg) 220px);
       }
-      .wrap { max-width: 1100px; margin: 0 auto; padding: 22px; }
-      h1 { margin: 0 0 8px; font-size: 20px; }
-      .sub { margin: 0 0 18px; color: var(--muted); font-size: 13px; line-height: 1.4; }
-      .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+      .wrap { max-width: 1160px; margin: 0 auto; padding: 26px 18px 32px; }
+      h1 {
+        margin: 0;
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .sub {
+        margin: 10px 0 22px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.55;
+        max-width: 860px;
+      }
+      .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
       @media (min-width: 980px) { .grid { grid-template-columns: 420px 1fr; } }
       .card {
-        background: var(--panel);
+        background: var(--surface);
         border: 1px solid var(--border);
-        border-radius: 14px;
-        padding: 14px;
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 16px 40px rgba(15, 23, 42, 0.04);
       }
-      label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 6px; }
-      input, textarea, select, button {
-        font: inherit;
-        border-radius: 10px;
+      h2 {
+        margin: 0 0 8px;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
       }
-      input[type="text"], input[type="number"] {
+      label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 6px; font-weight: 500; }
+      input, textarea, select, button { font: inherit; border-radius: 10px; }
+      input[type="text"], input[type="number"], textarea {
         width: 100%;
-        background: rgba(0,0,0,0.18);
+        background: #fff;
         border: 1px solid var(--border);
         color: var(--text);
-        padding: 9px 10px;
+        padding: 10px 11px;
         outline: none;
+        transition: border-color .15s ease, box-shadow .15s ease;
       }
-      input[type="checkbox"] { transform: translateY(1px); }
-      .row { display: flex; gap: 10px; align-items: center; }
+      input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
+        border-color: var(--ring);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.14);
+      }
+      input[type="checkbox"] { transform: translateY(1px); accent-color: var(--primary); }
+      .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
       button {
         border: 1px solid var(--border);
-        background: rgba(255,255,255,0.06);
+        background: #fff;
         color: var(--text);
         padding: 9px 12px;
+        font-weight: 500;
         cursor: pointer;
+        transition: all .15s ease;
       }
-      button.primary { background: rgba(120, 88, 255, 0.28); border-color: rgba(120, 88, 255, 0.55); }
-      button.danger { background: rgba(255, 77, 77, 0.18); border-color: rgba(255, 77, 77, 0.55); }
-      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      button:hover { border-color: #cbd5e1; background: #f8fafc; }
+      button.primary {
+        color: #fff;
+        background: var(--primary);
+        border-color: var(--primary);
+      }
+      button.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+      button.danger {
+        color: var(--danger);
+        background: var(--danger-bg);
+        border-color: #fecaca;
+      }
+      button.danger:hover { background: #fecaca; border-color: #fca5a5; }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
       .status { margin-top: 10px; font-size: 13px; color: var(--muted); white-space: pre-wrap; }
-      .status.err { color: var(--danger); }
+      .status.err { color: var(--danger); font-weight: 600; }
       .tokenList { display: grid; gap: 10px; }
       .token {
-        padding: 12px;
+        padding: 13px;
         border: 1px solid var(--border);
-        background: rgba(0,0,0,0.12);
+        background: #fff;
         border-radius: 12px;
       }
       .tokenTop { display: flex; justify-content: space-between; gap: 10px; }
-      .tokenMeta { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.4; }
-      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .tokenMeta { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.5; }
+      .mono {
+        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+      }
       .tokenActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
       .muted { color: var(--muted); }
       textarea {
-        width: 100%;
-        background: rgba(0,0,0,0.18);
-        border: 1px solid var(--border);
-        color: var(--text);
-        border-radius: 10px;
-        padding: 10px;
         min-height: 80px;
         resize: vertical;
       }
       .pill {
         display: inline-block;
         font-size: 11px;
-        padding: 3px 8px;
-        border: 1px solid var(--border);
+        font-weight: 600;
+        padding: 4px 10px;
+        border: 1px solid #c7d2fe;
+        background: #eef2ff;
         border-radius: 999px;
-        color: var(--muted);
+        color: #4338ca;
       }
     </style>
   </head>
@@ -143,7 +182,7 @@ const ADMIN_PANEL_HTML = `<!doctype html>
 
       <div class="grid">
         <div class="card">
-          <h2 style="margin:0 0 6px; font-size:15px;">Mint token</h2>
+          <h2>Mint token</h2>
           <label>
             <span style="display:flex;align-items:center;gap:10px;">
               <input id="mintBypass" type="checkbox" />
@@ -180,7 +219,7 @@ const ADMIN_PANEL_HTML = `<!doctype html>
         </div>
 
         <div class="card">
-          <h2 style="margin:0 0 10px; font-size:15px;">Tokens</h2>
+          <h2>Tokens</h2>
           <div id="tokenList" class="tokenList">Loading…</div>
         </div>
       </div>
@@ -541,6 +580,22 @@ const handler = {
 
       if (parts.length === 3 && parts[0] === "admin" && parts[1] === "tokens") {
         const jti = parts[2];
+        if (request.method === "GET") {
+          const record = await getTokenRecord(env, jti);
+          if (!record) {
+            return corsForAdmin({
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "token_not_found" }, null, 2),
+            });
+          }
+          return corsForAdmin({
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ record }, null, 2),
+          });
+        }
+
         if (request.method === "PATCH") {
           let payload: unknown;
           try {
