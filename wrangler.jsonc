@@ -26,8 +26,4 @@
     "enabled": true,
     "head_sampling_rate": 1,
   },
-  "vars": {
-    // Web3Forms: odbiorcę ustaw w panelu (np. artur@sendyka.dev); tu wklej access_key z web3forms.com
-    "WEB3FORMS_ACCESS_KEY": "",
-  },
 }

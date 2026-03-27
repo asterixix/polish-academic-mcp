@@ -3,6 +3,13 @@
  * Not bundled with React — avoids a separate build step for the Worker.
  */
 
+import {
+  SITE_PROJECT_NAME,
+  siteBrandingFooterHtml,
+  siteBrandingStyles,
+  siteBrandingTopBarHtml,
+} from "./site-branding.js";
+
 export function getAdminPanelHtml(defaultLimitPerHour: number): string {
   const L = String(defaultLimitPerHour);
   return `<!doctype html>
@@ -11,7 +18,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>Administracja tokenami — limity</title>
+    <title>${SITE_PROJECT_NAME} — Administracja tokenami</title>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
       :root {
@@ -34,6 +41,11 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
         --input: oklch(1 0 0 / 15%);
         --ring: oklch(0.556 0 0);
         --radius: 0.625rem;
+        --site-brand-border: var(--border);
+        --site-brand-bg: oklch(0.17 0 0);
+        --site-brand-bg-footer: oklch(0.12 0 0);
+        --site-footer-muted: var(--muted-foreground);
+        --site-footer-strong: var(--foreground);
       }
       * { box-sizing: border-box; }
       body {
@@ -138,10 +150,12 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
       .dl { display: grid; gap: 0.5rem; font-size: 0.8125rem; }
       .dl dt { color: var(--muted-foreground); font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; }
       .dl dd { margin: 0 0 0.75rem; word-break: break-all; }
+      ${siteBrandingStyles()}
     </style>
   </head>
   <body>
-    <div class="container">
+    ${siteBrandingTopBarHtml("/")}
+    <div class="container" id="main-content">
       <h1 class="page-title">Administracja tokenami</h1>
       <p class="page-desc">
         Zarządzanie JWT do limitów wywołań narzędzi. Logowanie do panelu:
@@ -204,6 +218,7 @@ export function getAdminPanelHtml(defaultLimitPerHour: number): string {
         </div>
       </div>
     </div>
+    ${siteBrandingFooterHtml()}
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 

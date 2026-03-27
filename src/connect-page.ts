@@ -1,4 +1,10 @@
 import type { Env } from "./types.js";
+import {
+  SITE_PROJECT_NAME,
+  siteBrandingFooterHtml,
+  siteBrandingStyles,
+  siteBrandingTopBarHtml,
+} from "./site-branding.js";
 
 const CONNECT_PROVIDER_IDS = ["chatgpt", "perplexity", "gemini", "claude"] as const;
 type ConnectProviderId = (typeof CONNECT_PROVIDER_IDS)[number];
@@ -87,7 +93,7 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>${pageTitle} — Polish Academic MCP</title>
+    <title>${pageTitle} — ${SITE_PROJECT_NAME}</title>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
       :root {
@@ -95,6 +101,11 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
         --foreground: oklch(0.985 0 0);
         --card: oklch(0.205 0 0);
         --muted-foreground: oklch(0.708 0 0);
+        --site-brand-border: var(--border);
+        --site-brand-bg: oklch(0.17 0 0);
+        --site-brand-bg-footer: oklch(0.12 0 0);
+        --site-footer-muted: var(--muted-foreground);
+        --site-footer-strong: var(--foreground);
         --border: oklch(1 0 0 / 10%);
         --input: oklch(1 0 0 / 15%);
         --ring: oklch(0.556 0 0);
@@ -222,10 +233,12 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
       .provider-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; }
       .provider-hint { margin: 0; font-size: 0.75rem; line-height: 1.45; }
       .provider-302 { font-size: 0.7rem; color: #9ec5ff; }
+      ${siteBrandingStyles()}
     </style>
   </head>
   <body>
-    <div class="container">
+    ${siteBrandingTopBarHtml(`${origin}/`)}
+    <div class="container" id="main-content">
       <h1 class="page-title">${pageTitle}</h1>
       <p class="page-desc">
         Konektor dla <span class="mono">${mcpUrl}</span>.
@@ -366,6 +379,7 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
         <div id="toolList" class="tool-list" style="display:none;"></div>
       </div>
     </div>
+    ${siteBrandingFooterHtml()}
 
     <script>
       (function () {

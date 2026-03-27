@@ -41,6 +41,12 @@ import {
 } from "./token-registry.js";
 import { getAdminPanelHtml } from "./admin-panel.js";
 import { getConnectPageHtml, getVerifyRedirectTarget, listVerifyProviderIds } from "./connect-page.js";
+import {
+  SITE_PROJECT_NAME,
+  siteBrandingFooterHtml,
+  siteBrandingStyles,
+  siteBrandingTopBarHtml,
+} from "./site-branding.js";
 
 const RATE_LIMIT = 10; // tool calls per hour per IP
 const PUBLIC_TOOL_NAMES = new Set<string>([
@@ -731,22 +737,32 @@ function getRootPageHtml(url: URL): string {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Polish Academic MCP</title>
+    <title>${SITE_PROJECT_NAME}</title>
     <style>
+      :root {
+        --site-brand-border: #263248;
+        --site-brand-bg: #121b2b;
+        --site-brand-bg-footer: #0b1220;
+        --site-footer-muted: #8b9cb8;
+        --site-footer-strong: #e6edf7;
+        --site-footer-link: #9ec5ff;
+      }
       body { margin: 0; font-family: system-ui, sans-serif; background: #0b1220; color: #e6edf7; }
-      .wrap { max-width: 920px; margin: 48px auto; padding: 0 16px; }
+      .wrap { max-width: 920px; margin: 0 auto; padding: 2rem 16px 3rem; }
       .card { border: 1px solid #263248; border-radius: 12px; background: #121b2b; padding: 20px; }
       h1 { margin-top: 0; }
       a { color: #9ec5ff; text-decoration: none; }
       a:hover { text-decoration: underline; }
       code { background: #1c2940; padding: 2px 6px; border-radius: 6px; }
       ul { line-height: 1.9; }
+      ${siteBrandingStyles()}
     </style>
   </head>
   <body>
-    <div class="wrap">
+    ${siteBrandingTopBarHtml(`${origin}/`)}
+    <div class="wrap" id="main-content">
       <div class="card">
-        <h1>Polish Academic MCP</h1>
+        <h1>${SITE_PROJECT_NAME}</h1>
         <p>Usługa działa. Wybierz punkt wejścia:</p>
         <ul>
           <li><a href="${origin}/connect">${origin}/connect</a> — interaktywne podłączenie MCP (JWT / gość)</li>
@@ -756,6 +772,7 @@ function getRootPageHtml(url: URL): string {
         </ul>
       </div>
     </div>
+    ${siteBrandingFooterHtml()}
   </body>
 </html>`;
 }
