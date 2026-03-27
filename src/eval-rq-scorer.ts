@@ -4,7 +4,11 @@ import {
   type CompositeScore,
   type ToolResponse,
 } from "../scripts/eval/metrics.js";
-import { getCasesByTool } from "../scripts/eval/test-cases.js";
+import {
+  getCasesByTool,
+  getTestCaseById,
+  toolForEvalResponseCompositeScore,
+} from "../scripts/eval/test-cases.js";
 
 type JsonPrimitive = string | number | boolean | null;
 
@@ -156,10 +160,37 @@ export function computeRqEvalForToolCall(params: {
     error,
   };
 
+  const actualArgs = isPlainObject(toolArgs) ? (toolArgs as Record<string, unknown>) : {};
+  if (toolName === "eval_response" && typeof actualArgs["generated_text"] === "string") {
+    toolResponse.text = actualArgs["generated_text"];
+  }
+
+  const explicitCaseId = actualArgs["eval_test_case_id"];
+  if (typeof explicitCaseId === "string") {
+    const tcExplicit = getTestCaseById(explicitCaseId);
+    if (tcExplicit) {
+      const toolMatchesThisCall = tcExplicit.tool === toolName;
+      const evalAlignsToCatalogBenchmark =
+        toolName === "eval_response" && tcExplicit.tool !== "eval_response";
+      if (toolMatchesThisCall || evalAlignsToCatalogBenchmark) {
+        const selectedForScore = toolForEvalResponseCompositeScore(tcExplicit);
+        const composite = computeCompositeScore(toolResponse, tcExplicit, selectedForScore);
+        return {
+          match: {
+            matched: true,
+            testCaseId: tcExplicit.id,
+            matchStrategy: "exact",
+            matchRatio: 1,
+            matchRqs: tcExplicit.rq,
+          },
+          composite,
+        };
+      }
+    }
+  }
+
   const candidates = getCasesByTool(toolName);
   if (!candidates || candidates.length === 0) return null;
-
-  const actualArgs = isPlainObject(toolArgs) ? (toolArgs as Record<string, unknown>) : {};
 
   let best: { tc: EvalTestCase; ratio: number; strategy: RqEvalMatch["matchStrategy"] } | null = null;
   let exact: EvalTestCase | null = null;

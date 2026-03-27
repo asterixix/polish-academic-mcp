@@ -875,6 +875,19 @@ export function getCasesByTool(tool: string): EvalTestCase[] {
   return ALL_TEST_CASES.filter((c) => c.tool === tool);
 }
 
+export function getTestCaseById(id: string): EvalTestCase | undefined {
+  return ALL_TEST_CASES.find((c) => c.id === id);
+}
+
+/**
+ * For post-hoc `eval_response` scoring: pass this as `selectedTool` in
+ * `computeCompositeScore` (metrics.ts), so RQ1-M3 uses the benchmark catalog tool
+ * (e.g. `bn_search_articles`) rather than the literal `eval_response`.
+ */
+export function toolForEvalResponseCompositeScore(testCase: EvalTestCase): string {
+  return testCase.tool === "eval_response" ? "eval_response" : testCase.tool;
+}
+
 export function getCasesBySchema(schema: MetadataSchema): EvalTestCase[] {
   return ALL_TEST_CASES.filter((c) => c.metadataSchema === schema);
 }

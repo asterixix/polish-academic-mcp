@@ -45,4 +45,16 @@ export interface Env {
   PBN_APP_ID?: string;
   PBN_APP_TOKEN?: string;
   PBN_USER_TOKEN?: string;
+
+  /**
+   * D1 binding for POST `/internal/eval-log` (LLM eval ingest).
+   * Create DB and apply `migrations/eval-log/*.sql`, then set `database_id` in wrangler.jsonc.
+   */
+  EVAL_LOG_DB?: D1Database;
+  /**
+   * Bearer secret for `/internal/eval-log`. When unset or empty, the route returns 503.
+   */
+  EVAL_LOG_INGEST_SECRET?: string;
+  /** Max chars per stored text field (prompt, generated_text, metadata, export); default 200000. */
+  EVAL_LOG_MAX_FIELD_CHARS?: string;
 }

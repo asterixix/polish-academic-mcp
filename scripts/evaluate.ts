@@ -1,18 +1,21 @@
 /**
  * Evaluation framework for Polish Academic MCP Server
- * 
+ *
  * Provides metrics for scoring:
  * - Tool selection accuracy
  * - Response latency
  * - Error rates
  * - Query understanding
  * - Token efficiency
+ *
+ * Offline replay of chat eval exports (from `eval_response`):
+ *   npx tsx scripts/evaluate.ts --replay path/to/chat-eval-export.json
  */
 
+import { readFileSync, existsSync } from "fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { spawn, type ChildProcess } from "child_process";
-import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -439,6 +442,40 @@ export class McpEvaluator {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main() {
+  const argv = process.argv.slice(2);
+  const replayIdx = argv.indexOf("--replay");
+  if (replayIdx !== -1 && argv[replayIdx + 1]) {
+    const { replayChatEvalExportFile } = await import("./eval/chat-eval-export.js");
+    const filePath = argv[replayIdx + 1];
+    if (!existsSync(filePath)) {
+      console.error(`File not found: ${filePath}`);
+      process.exit(1);
+    }
+    const raw = readFileSync(filePath, "utf-8");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch (e) {
+      console.error("Invalid JSON:", e);
+      process.exit(1);
+    }
+    const { ok, errors, recomputed, testCase } = replayChatEvalExportFile(parsed);
+    console.log("Chat eval export replay");
+    console.log("=======================");
+    console.log(`OK: ${ok}`);
+    if (errors.length > 0) console.log(`Issues: ${errors.join("; ")}`);
+    if (testCase) console.log(`Test case: ${testCase.id} — ${testCase.name}`);
+    if (recomputed) {
+      console.log("\nRecomputed composite score:", recomputed.compositeScore.toFixed(4));
+      console.log("Failed metrics:", recomputed.failedMetrics.join(", ") || "(none)");
+      console.log("\nFull recompute JSON:");
+      console.log(JSON.stringify(recomputed, null, 2));
+    } else {
+      console.log("\nNo composite recompute (set inputs.eval_test_case_id to a valid eval_response case).");
+    }
+    process.exit(ok ? 0 : 1);
+  }
+
   const serverUrl = process.env.MCP_SERVER_URL || "http://localhost:8787/mcp";
   
   console.log("🎯 Polish Academic MCP Evaluator");

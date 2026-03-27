@@ -41,6 +41,7 @@ import {
   resolveRateLimitPolicyFromRequest,
   type RateLimitTokenPolicy,
 } from "./token-registry.js";
+import { handleEvalLogOptions, handleEvalLogPost } from "./eval-log-http.js";
 import { getAdminPanelHtml } from "./admin-panel.js";
 import { getConnectPageHtml, getVerifyRedirectTarget, listVerifyProviderIds } from "./connect-page.js";
 import {
@@ -211,6 +212,20 @@ const handler = {
       });
     }
 
+    if (
+      (path === "/internal/eval-log" || path === "/internal/eval-log/") &&
+      request.method === "OPTIONS"
+    ) {
+      return handleEvalLogOptions(request);
+    }
+
+    if (
+      (path === "/internal/eval-log" || path === "/internal/eval-log/") &&
+      request.method === "POST"
+    ) {
+      return handleEvalLogPost(request, env);
+    }
+
     if (path === "/health" && request.method === "GET") {
       return new Response(
         JSON.stringify(
@@ -224,7 +239,11 @@ const handler = {
               verify_redirect: `${url.origin}/verify/redirect?provider=claude`,
               connect_redirect: `${url.origin}/connect/redirect?provider=claude`,
               oauth_authorization_server: `${url.origin}/.well-known/oauth-authorization-server`,
+              eval_log_ingest: `${url.origin}/internal/eval-log`,
             },
+            eval_log_ingest_configured: Boolean(
+              env.EVAL_LOG_DB && env.EVAL_LOG_INGEST_SECRET?.trim(),
+            ),
           },
           null,
           2,

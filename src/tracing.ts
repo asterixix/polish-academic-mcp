@@ -350,6 +350,8 @@ export async function withToolExecutionSpan<T>(
 export interface ResponseMeta {
   tokensGenerated: number;
   responseBytes: number;
+  /** Session id for research exports / audit alignment (defaults to "unknown" in span attributes). */
+  agentSessionId?: string;
   hallucinationDetected: boolean;
   hallucinationType: "none" | "factual" | "classification" | "semantic_shift";
   fidelityScore: number;
@@ -382,6 +384,78 @@ export interface ResponseMeta {
   abstractExpanded?: boolean;
 }
 
+/**
+ * Flat attribute map aligned with `llm.response` OTel span and with
+ * `scripts/eval/metrics.ts` (RQ1–RQ4). Safe to embed in JSON exports.
+ */
+export function buildResponseGenerationSpanAttributes(meta: ResponseMeta): Record<string, unknown> {
+  const attrs: Record<string, unknown> = {
+    "span.kind": "llm.response",
+    "agent.session_id": meta.agentSessionId ?? "unknown",
+    "llm.tokens_generated": meta.tokensGenerated,
+    "llm.response_bytes": meta.responseBytes,
+    "hallucination.detected": meta.hallucinationDetected,
+    "hallucination.type": meta.hallucinationType,
+    "hallucination.fidelity_score": meta.fidelityScore,
+    "response.fields_cited": meta.fieldsCited.join(","),
+    "response.fields_cited_n": meta.fieldsCited.length,
+    "response.fields_added": meta.fieldsAdded.join(","),
+    "response.fields_added_n": meta.fieldsAdded.length,
+    "response.amplification_rate":
+      meta.fieldsCited.length > 0 ? meta.fieldsAdded.length / meta.fieldsCited.length : 0,
+    "classification.original": meta.originalClassification,
+    "classification.generated": meta.generatedClassification,
+    "classification.match": meta.classificationMatch,
+    "classification.drifted": !meta.classificationMatch,
+    "language.response_lang": meta.languageDetectedResponse,
+    "language.transliteration_error": meta.hasTransliterationError,
+    "language.code_switching": meta.hasCodeSwitching,
+  };
+
+  if (meta.diacriticErrorsCount !== undefined) {
+    attrs["language.diacritic_errors_count"] = meta.diacriticErrorsCount;
+  }
+  if (meta.codeSwitchSentenceCount !== undefined) {
+    attrs["language.code_switch_sentence_count"] = meta.codeSwitchSentenceCount;
+  }
+  if (meta.schemaType !== undefined) attrs["source.schema_type"] = meta.schemaType;
+  if (meta.sourceFieldCount !== undefined) attrs["source.field_count"] = meta.sourceFieldCount;
+  if (meta.sourceHasUkd !== undefined) attrs["classification.source_has_ukd"] = meta.sourceHasUkd;
+  if (meta.sourceHasKaba !== undefined) attrs["classification.source_has_kaba"] = meta.sourceHasKaba;
+  if (meta.ukdDigitsMatch !== undefined) attrs["classification.ukd_digits_match"] = meta.ukdDigitsMatch;
+  if (meta.ukdDepthOriginal !== undefined) {
+    attrs["classification.ukd_depth_original"] = meta.ukdDepthOriginal;
+  }
+  if (meta.ukdDepthGenerated !== undefined) {
+    attrs["classification.ukd_depth_generated"] = meta.ukdDepthGenerated;
+  }
+  if (meta.driftDirection !== undefined) attrs["classification.drift_direction"] = meta.driftDirection;
+  if (meta.titlePreserved !== undefined) attrs["semantic.title_preserved"] = meta.titlePreserved;
+  if (meta.subjectGeneralized !== undefined) {
+    attrs["semantic.subject_generalized"] = meta.subjectGeneralized;
+  }
+  if (meta.subjectShiftScore !== undefined) {
+    attrs["semantic.subject_shift_score"] = meta.subjectShiftScore;
+  }
+  if (meta.abstractTruncated !== undefined) attrs["semantic.abstract_truncated"] = meta.abstractTruncated;
+  if (meta.abstractExpanded !== undefined) attrs["semantic.abstract_expanded"] = meta.abstractExpanded;
+
+  return attrs;
+}
+
+function applySpanAttributes(span: Span, attrs: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === undefined) continue;
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      span.setAttribute(key, value);
+    }
+  }
+}
+
 export async function withResponseGenerationSpan<T>(
   meta: ResponseMeta,
   fn: (span: Span) => Promise<T>,
@@ -396,73 +470,7 @@ export async function withResponseGenerationSpan<T>(
       originalSetAttribute(key, value);
     };
     try {
-      span.setAttribute("span.kind", "llm.response");
-      span.setAttribute("agent.session_id", "unknown");
-      span.setAttribute("llm.tokens_generated", meta.tokensGenerated);
-      span.setAttribute("llm.response_bytes", meta.responseBytes);
-
-      // Hallucination markers
-      span.setAttribute("hallucination.detected", meta.hallucinationDetected);
-      span.setAttribute("hallucination.type", meta.hallucinationType);
-      span.setAttribute("hallucination.fidelity_score", meta.fidelityScore);
-
-      // Fragment attribution
-      span.setAttribute("response.fields_cited", meta.fieldsCited.join(","));
-      span.setAttribute("response.fields_cited_n", meta.fieldsCited.length);
-      span.setAttribute("response.fields_added", meta.fieldsAdded.join(","));
-      span.setAttribute("response.fields_added_n", meta.fieldsAdded.length);
-      span.setAttribute(
-        "response.amplification_rate",
-        meta.fieldsCited.length > 0 ? meta.fieldsAdded.length / meta.fieldsCited.length : 0,
-      );
-
-      // Classification drift
-      span.setAttribute("classification.original", meta.originalClassification);
-      span.setAttribute("classification.generated", meta.generatedClassification);
-      span.setAttribute("classification.match", meta.classificationMatch);
-      span.setAttribute("classification.drifted", !meta.classificationMatch);
-
-      // Language quality
-      span.setAttribute("language.response_lang", meta.languageDetectedResponse);
-      span.setAttribute("language.transliteration_error", meta.hasTransliterationError);
-      span.setAttribute("language.code_switching", meta.hasCodeSwitching);
-
-      // Extended language flags (I-12)
-      if (meta.diacriticErrorsCount !== undefined)
-        span.setAttribute("language.diacritic_errors_count", meta.diacriticErrorsCount);
-      if (meta.codeSwitchSentenceCount !== undefined)
-        span.setAttribute("language.code_switch_sentence_count", meta.codeSwitchSentenceCount);
-
-      // Schema type (I-10)
-      if (meta.schemaType !== undefined) span.setAttribute("source.schema_type", meta.schemaType);
-      if (meta.sourceFieldCount !== undefined)
-        span.setAttribute("source.field_count", meta.sourceFieldCount);
-
-      // Extended classification (I-13)
-      if (meta.sourceHasUkd !== undefined)
-        span.setAttribute("classification.source_has_ukd", meta.sourceHasUkd);
-      if (meta.sourceHasKaba !== undefined)
-        span.setAttribute("classification.source_has_kaba", meta.sourceHasKaba);
-      if (meta.ukdDigitsMatch !== undefined)
-        span.setAttribute("classification.ukd_digits_match", meta.ukdDigitsMatch);
-      if (meta.ukdDepthOriginal !== undefined)
-        span.setAttribute("classification.ukd_depth_original", meta.ukdDepthOriginal);
-      if (meta.ukdDepthGenerated !== undefined)
-        span.setAttribute("classification.ukd_depth_generated", meta.ukdDepthGenerated);
-      if (meta.driftDirection !== undefined)
-        span.setAttribute("classification.drift_direction", meta.driftDirection);
-
-      // Semantic shift (I-11)
-      if (meta.titlePreserved !== undefined)
-        span.setAttribute("semantic.title_preserved", meta.titlePreserved);
-      if (meta.subjectGeneralized !== undefined)
-        span.setAttribute("semantic.subject_generalized", meta.subjectGeneralized);
-      if (meta.subjectShiftScore !== undefined)
-        span.setAttribute("semantic.subject_shift_score", meta.subjectShiftScore);
-      if (meta.abstractTruncated !== undefined)
-        span.setAttribute("semantic.abstract_truncated", meta.abstractTruncated);
-      if (meta.abstractExpanded !== undefined)
-        span.setAttribute("semantic.abstract_expanded", meta.abstractExpanded);
+      applySpanAttributes(span, buildResponseGenerationSpanAttributes(meta));
 
       const result = await fn(span);
       if (result !== null && typeof result === "object") {
