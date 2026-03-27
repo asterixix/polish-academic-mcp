@@ -1,5 +1,7 @@
 import type { Env } from "./types.js";
+import { expandKnownMcpRedirectUris } from "./oauth-dcr-known-clients.js";
 import { getOauthJwksBody, signOAuthAccessToken, verifyMcpJwtSignature } from "./oauth-jwt.js";
+import { checkRateLimit, getClientId } from "./ratelimit.js";
 import {
   clampOptionalOauthAccessLimitPerHour,
   clampOptionalOauthAccessTokenTtlSeconds,
@@ -52,6 +54,9 @@ const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30; // 30d
 const MIN_REFRESH_TTL_SECONDS = 60;
 const MAX_REFRESH_TTL_SECONDS = 60 * 60 * 24 * 90; // 90d
 
+/** Limit publicznego POST /register (DCR) na godzinę / IP — ochrona KV przed spamem. */
+const DCR_REGISTRATIONS_PER_HOUR_PER_IP = 60;
+
 export function oauthSigningConfigured(env: Env): boolean {
   return Boolean(env.OAUTH_RSA_PRIVATE_KEY_PKCS8_PEM?.trim()) || Boolean(env.RATE_LIMIT_BYPASS_JWT_SECRET);
 }
@@ -74,6 +79,35 @@ function resourcesEquivalent(a: string, b: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** RFC 6749 redirect URI: registered value must match request; allow URL-canonical equality (host casing, etc.). */
+function normalizeRedirectUri(uri: string): string | null {
+  try {
+    return new URL(uri.trim()).href;
+  } catch {
+    return null;
+  }
+}
+
+function redirectUriRegistered(requested: string, registered: string[]): boolean {
+  if (!requested || registered.length === 0) return false;
+  if (registered.includes(requested)) return true;
+  const reqNorm = normalizeRedirectUri(requested);
+  if (!reqNorm) return false;
+  for (const r of registered) {
+    const rNorm = normalizeRedirectUri(r);
+    if (rNorm && rNorm === reqNorm) return true;
+  }
+  return false;
+}
+
+function redirectUrisEqual(a: string, b: string): boolean {
+  if (a === b) return true;
+  const na = normalizeRedirectUri(a);
+  const nb = normalizeRedirectUri(b);
+  if (na && nb) return na === nb;
+  return false;
 }
 
 function base64urlEncode(bytes: Uint8Array): string {
@@ -380,6 +414,8 @@ export async function handleOauthWellKnownAuthorizationServer(request: Request, 
     token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
     code_challenge_methods_supported: ["S256"],
     scopes_supported: ["mcp"],
+    // RFC 7591 / RFC 8414: anonimowa DCR; opcjonalny Bearer (Connect JWT) tylko dla nadpisań limitów przy rejestracji.
+    registration_endpoint_auth_methods_supported: ["none"],
   });
 }
 
@@ -388,12 +424,16 @@ export async function handleOauthRegister(request: Request, env: Env): Promise<R
     return oauthErrorResponse(405, "invalid_request", "Method not allowed");
   }
 
-  const registrationAuth = await resolveRateLimitPolicyFromRequest(request, env);
-  if (!registrationAuth) {
+  const dcrRl = await checkRateLimit(
+    env.RATE_LIMIT_KV,
+    `dcr_reg:${getClientId(request)}`,
+    DCR_REGISTRATIONS_PER_HOUR_PER_IP,
+  );
+  if (!dcrRl.allowed) {
     return oauthErrorResponse(
-      401,
-      "invalid_client",
-      "Bearer JWT required for dynamic client registration (mint a token in the admin panel, or use legacy bypass secret).",
+      429,
+      "slow_down",
+      `Too many client registrations from this network; retry after ${dcrRl.resetInSeconds} seconds`,
     );
   }
 
@@ -405,14 +445,29 @@ export async function handleOauthRegister(request: Request, env: Env): Promise<R
   }
 
   const client_name = typeof body.client_name === "string" ? body.client_name : undefined;
-  const redirect_uris =
+  const software_id = typeof body.software_id === "string" ? body.software_id : undefined;
+  const rawRedirectUris =
     Array.isArray(body.redirect_uris) && body.redirect_uris.every((x) => typeof x === "string")
       ? (body.redirect_uris as string[])
       : [];
 
-  if (redirect_uris.length === 0) {
-    return oauthErrorResponse(400, "invalid_redirect_uris", "redirect_uris is required");
+  const { redirect_uris: expandedUris } = expandKnownMcpRedirectUris({
+    client_name,
+    software_id,
+    redirect_uris: rawRedirectUris,
+  });
+
+  if (expandedUris.length === 0) {
+    return oauthErrorResponse(
+      400,
+      "invalid_redirect_uris",
+      "redirect_uris is required (or provide client_name / software_id recognized for known MCP clients)",
+    );
   }
+
+  const redirect_uris = expandedUris;
+
+  const registrationAuth = await resolveRateLimitPolicyFromRequest(request, env);
 
   const expiresAtMs = Date.now() + DEFAULT_CLIENT_TTL_SECONDS * 1000;
   const client_id = `mcp_${crypto.randomUUID()}`;
@@ -429,7 +484,7 @@ export async function handleOauthRegister(request: Request, env: Env): Promise<R
     expiresAtMs,
   };
 
-  if (registrationAuth.kind === "token" && registrationAuth.record) {
+  if (registrationAuth?.kind === "token" && registrationAuth.record) {
     const r = registrationAuth.record;
     const lim = clampOptionalOauthAccessLimitPerHour(r.oauthAccessLimitPerHour);
     if (lim !== undefined) record.accessLimitPerHour = lim;
@@ -486,7 +541,7 @@ export async function handleOauthAuthorize(request: Request, env: Env): Promise<
     client = null;
   }
 
-  if (!client || !Array.isArray(client.redirect_uris) || !client.redirect_uris.includes(redirect_uri)) {
+  if (!client || !Array.isArray(client.redirect_uris) || !redirectUriRegistered(redirect_uri, client.redirect_uris)) {
     return oauthErrorResponse(400, "invalid_request", "redirect_uri not registered for this client");
   }
   if (Date.now() >= client.expiresAtMs) {
@@ -501,10 +556,12 @@ export async function handleOauthAuthorize(request: Request, env: Env): Promise<
   crypto.getRandomValues(codeBytes);
   const code = base64urlEncode(codeBytes);
 
+  const storedRedirectUri = normalizeRedirectUri(redirect_uri) ?? redirect_uri.trim();
+
   const rec: AuthorizationCodeRecord = {
     code,
     client_id,
-    redirect_uri,
+    redirect_uri: storedRedirectUri,
     scope,
     resource: effectiveResource,
     code_challenge,
@@ -517,7 +574,7 @@ export async function handleOauthAuthorize(request: Request, env: Env): Promise<
     expirationTtl: computeTtlSeconds(expiresAtMs),
   });
 
-  const target = new URL(redirect_uri);
+  const target = new URL(storedRedirectUri);
   target.searchParams.set("code", code);
   if (state) target.searchParams.set("state", state);
 
@@ -625,7 +682,7 @@ export async function handleOauthToken(request: Request, env: Env): Promise<Resp
   if (
     !codeRecord ||
     codeRecord.client_id !== client.client_id ||
-    codeRecord.redirect_uri !== redirect_uri ||
+    !redirectUrisEqual(codeRecord.redirect_uri, redirect_uri) ||
     Date.now() >= codeRecord.expiresAtMs ||
     codeRecord.consumedAtMs
   ) {

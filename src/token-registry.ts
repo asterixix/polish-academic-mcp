@@ -26,7 +26,7 @@ export interface RateLimitTokenRecord {
   owner?: string;
 
   /**
-   * Przy rejestracji OAuth (`POST /register` z tym Connect JWT): limit tools/call/h
+   * Przy opcjonalnym `POST /register` z Connect JWT w Bearer: limit tools/call/h
    * dla access_token klientów zarejestrowanych z tym JWT (puste = jak env globalnie).
    */
   oauthAccessLimitPerHour?: number;

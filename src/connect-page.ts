@@ -33,7 +33,8 @@ const CONNECT_PROVIDERS: Record<
   claude: {
     label: "Claude",
     landingUrl: "https://claude.ai/settings/connectors",
-    hint: "Sieć: Konektory → Dodaj niestandardowy konektor. Desktop: mcp-remote + URL tego serwera.",
+    hint:
+      "Sieć: Konektory → Dodaj niestandardowy konektor; DCR na tym workerze dopisuje oficjalne callbacki Claude (.ai / .com). Desktop: mcp-remote + URL tego serwera.",
   },
 };
 
@@ -363,7 +364,7 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
           </div>
           <p class="muted" style="margin-top:0.75rem;">
             Metadane OAuth: <a href="${authServerUrl}" target="_blank" rel="noreferrer">${authServerUrl}</a><br/>
-            Rejestracja dynamiczna: <span class="mono">${registerUrl}</span> (POST — wymaga JWT poniżej)
+            Rejestracja dynamiczna (RFC 7591): <span class="mono">${registerUrl}</span> — POST bez logowania; opcjonalny JWT z sekcji Sesja nadaje limity OAuth dla zarejestrowanego klienta.
           </p>
         </div>
       </div>
@@ -371,18 +372,18 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
       <div class="card" style="margin-top:1rem;">
         <h2>Rejestracja klienta OAuth (RFC 7591)</h2>
         <p class="muted" style="margin:0 0 0.75rem; font-size:0.82rem;">
-          Utwórz <strong>Client ID</strong> i <strong>Client Secret</strong> dla klientów MCP z OAuth (PKCE + kod autoryzacji).
-          Ten sam JWT co w Sesji — <span class="mono">POST /register</span> akceptuje tokeny z panelu admin (lub legacy bypass).
+          Publiczne <strong>DCR</strong> — Claude / ChatGPT itd. rejestrują się same. Możesz podać tylko <strong>nazwę</strong> (np. „Claude”) —
+          worker dopisze oficjalne <span class="mono">redirect_uri</span>. Opcjonalnie wklej JWT w Sesji, by na tym klientcie zastosować limity z Connect JWT (panel admin).
         </p>
-        <label for="oauthClientName">Nazwa klienta (opcjonalnie)</label>
-        <input type="text" id="oauthClientName" placeholder="np. Claude Desktop / Perplexity" autocomplete="off" />
+        <label for="oauthClientName">Nazwa klienta (opcjonalnie — rozpoznawanie znanych hostów MCP)</label>
+        <input type="text" id="oauthClientName" placeholder="np. Claude, ChatGPT — albo zostaw puste jeśli podajesz URLe poniżej" autocomplete="off" />
         <label for="oauthRedirectUris">Adresy przekierowania (redirect URIs)</label>
-        <textarea id="oauthRedirectUris" placeholder="Jeden URI w linii, np.&#10;http://127.0.0.1:1234/callback&#10;https://twoja-aplikacja/oauth/callback"></textarea>
+        <textarea id="oauthRedirectUris" placeholder="Opcjonalnie: jeden URI w linii. Pusta + nazwa „Claude” = automatyczne callbacki Anthropic.&#10;Lub localhost / własna aplikacja:&#10;http://127.0.0.1:1234/callback"></textarea>
         <div class="row">
           <button class="btn btn-primary" id="btnRegisterOAuth" type="button">Zarejestruj klienta OAuth</button>
           <button class="btn" id="btnCopyOAuthJson" type="button">Kopiuj JSON odpowiedzi</button>
         </div>
-        <div id="oauthRegStatus" class="status">Wklej JWT powyżej, dodaj redirect URI, potem zarejestruj.</div>
+        <div id="oauthRegStatus" class="status">Podaj nazwę (np. Claude) lub co najmniej jeden redirect URI — rejestracja bez JWT.</div>
         <pre id="oauthRegResult" class="mono" style="display:none;margin-top:0.75rem;padding:0.65rem 0.75rem;background:oklch(0.145 0 0);border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);font-size:0.75rem;max-height:14rem;overflow:auto;"></pre>
       </div>
 
@@ -628,26 +629,21 @@ export function getConnectPageHtml(origin: string, searchParams?: URLSearchParam
 
         $("btnRegisterOAuth").addEventListener("click", async function () {
           var token = getToken();
-          if (!token) {
-            setStatus("oauthRegStatus", "Najpierw wklej JWT administratora w Sesji.", true);
-            return;
-          }
           var name = $("oauthClientName").value.trim();
           var urisRaw = $("oauthRedirectUris").value.trim();
           var redirect_uris = urisRaw.split(/[\\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
-          if (redirect_uris.length === 0) {
-            setStatus("oauthRegStatus", "Dodaj co najmniej jeden redirect URI (jedna linia lub po przecinku).", true);
+          if (redirect_uris.length === 0 && !name) {
+            setStatus("oauthRegStatus", "Podaj nazwę klienta (np. Claude) albo co najmniej jeden redirect URI.", true);
             return;
           }
           setStatus("oauthRegStatus", "Rejestrowanie…", false);
           $("oauthRegResult").style.display = "none";
           try {
+            var headers = { "Content-Type": "application/json" };
+            if (token) headers["Authorization"] = "Bearer " + token;
             var res = await fetch(registerUrl, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + token
-              },
+              headers: headers,
               body: JSON.stringify({
                 client_name: name || undefined,
                 redirect_uris: redirect_uris
