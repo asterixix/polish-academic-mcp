@@ -36,6 +36,9 @@
     "head_sampling_rate": 1,
   },
   "vars": {
+    "CF_AIG_MODEL_CHEAPEST": "dynamic/academic-cheapest",
+    "CF_AIG_MODEL_BALANCED": "dynamic/academic-balanced",
+    "CF_AIG_MODEL_QUALITY": "dynamic/academic-quality",
     // Upload MCP tool-call evaluation data to Nextcloud via WebDAV.
     // Set EVAL_WEBDAV_ENABLED=true and provide WebDAV credentials.
     "NEXTCLOUD_WEBDAV_BASE_URL": "https://nx85370.your-storageshare.de/f/1028079",

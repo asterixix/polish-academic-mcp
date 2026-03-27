@@ -1,12 +1,23 @@
-This is the [assistant-ui](https://github.com/assistant-ui/assistant-ui) starter project.
+This is the frontend chat app for `polish-academic-mcp`, scaffolded with [assistant-ui](https://www.assistant-ui.com/).
 
 ## Getting Started
 
-First, add your OpenAI API key to `.env.local` file:
+First, copy `.env.example` to `.env.local` and configure:
 
 ```
-OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+CF_ACCOUNT_ID=...
+CF_GATEWAY_ID=...
+CF_AIG_TOKEN=...
+MCP_SERVER_URL=http://localhost:8788/mcp
 ```
+
+Optional:
+
+```
+NEXT_PUBLIC_WORKER_CHAT_URL=https://<your-worker-domain>/chat
+```
+
+When `NEXT_PUBLIC_WORKER_CHAT_URL` is not set, the UI calls local `web/app/api/chat/route.ts`.
 
 Then, run the development server:
 
@@ -22,4 +33,8 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The header model selector controls three AI Gateway dynamic route aliases:
+
+- `cheapest` -> `CF_AIG_MODEL_CHEAPEST`
+- `balanced` -> `CF_AIG_MODEL_BALANCED`
+- `quality` -> `CF_AIG_MODEL_QUALITY`

@@ -14,6 +14,9 @@
  */
 
 import { createMcpHandler } from "agents/mcp";
+import { createOpenAI } from "@ai-sdk/openai";
+import { experimental_createMCPClient as createMCPClient } from "@ai-sdk/mcp";
+import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import type { Env } from "./types.js";
 import { createServer } from "./server.js";
 import { checkRateLimit, getClientId } from "./ratelimit.js";
@@ -35,385 +38,12 @@ import {
   revokeRateLimitToken,
   resolveRateLimitPolicyFromRequest,
 } from "./token-registry.js";
+import { getAdminPanelHtml } from "./admin-panel.js";
 
 const RATE_LIMIT = 10; // tool calls per hour per IP
 
-const ADMIN_PANEL_HTML = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Rate-limit bypass admin</title>
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-      :root {
-        --bg: #f8fafc;
-        --bg2: #eef2ff;
-        --surface: #ffffff;
-        --text: #0f172a;
-        --muted: #475569;
-        --border: #e2e8f0;
-        --ring: #6366f1;
-        --primary: #4f46e5;
-        --primary-hover: #4338ca;
-        --danger: #dc2626;
-        --danger-bg: #fee2e2;
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-        color: var(--text);
-        background:
-          radial-gradient(1200px 500px at -10% -20%, rgba(79, 70, 229, 0.10), transparent 60%),
-          radial-gradient(1200px 500px at 120% -10%, rgba(14, 165, 233, 0.10), transparent 60%),
-          linear-gradient(180deg, var(--bg2) 0, var(--bg) 220px);
-      }
-      .wrap { max-width: 1160px; margin: 0 auto; padding: 26px 18px 32px; }
-      h1 {
-        margin: 0;
-        font-size: 26px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-      }
-      .sub {
-        margin: 10px 0 22px;
-        color: var(--muted);
-        font-size: 14px;
-        line-height: 1.55;
-        max-width: 860px;
-      }
-      .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
-      @media (min-width: 980px) { .grid { grid-template-columns: 420px 1fr; } }
-      .card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 16px;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 16px 40px rgba(15, 23, 42, 0.04);
-      }
-      h2 {
-        margin: 0 0 8px;
-        font-size: 15px;
-        font-weight: 600;
-        letter-spacing: -0.01em;
-      }
-      label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 6px; font-weight: 500; }
-      input, textarea, select, button { font: inherit; border-radius: 10px; }
-      input[type="text"], input[type="number"], textarea {
-        width: 100%;
-        background: #fff;
-        border: 1px solid var(--border);
-        color: var(--text);
-        padding: 10px 11px;
-        outline: none;
-        transition: border-color .15s ease, box-shadow .15s ease;
-      }
-      input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
-        border-color: var(--ring);
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.14);
-      }
-      input[type="checkbox"] { transform: translateY(1px); accent-color: var(--primary); }
-      .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-      button {
-        border: 1px solid var(--border);
-        background: #fff;
-        color: var(--text);
-        padding: 9px 12px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all .15s ease;
-      }
-      button:hover { border-color: #cbd5e1; background: #f8fafc; }
-      button.primary {
-        color: #fff;
-        background: var(--primary);
-        border-color: var(--primary);
-      }
-      button.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-      button.danger {
-        color: var(--danger);
-        background: var(--danger-bg);
-        border-color: #fecaca;
-      }
-      button.danger:hover { background: #fecaca; border-color: #fca5a5; }
-      button:disabled { opacity: 0.55; cursor: not-allowed; }
-      .status { margin-top: 10px; font-size: 13px; color: var(--muted); white-space: pre-wrap; }
-      .status.err { color: var(--danger); font-weight: 600; }
-      .tokenList { display: grid; gap: 10px; }
-      .token {
-        padding: 13px;
-        border: 1px solid var(--border);
-        background: #fff;
-        border-radius: 12px;
-      }
-      .tokenTop { display: flex; justify-content: space-between; gap: 10px; }
-      .tokenMeta { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.5; }
-      .mono {
-        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-        font-size: 12px;
-      }
-      .tokenActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-      .muted { color: var(--muted); }
-      textarea {
-        min-height: 80px;
-        resize: vertical;
-      }
-      .pill {
-        display: inline-block;
-        font-size: 11px;
-        font-weight: 600;
-        padding: 4px 10px;
-        border: 1px solid #c7d2fe;
-        background: #eef2ff;
-        border-radius: 999px;
-        color: #4338ca;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <h1>Rate-limit bypass admin</h1>
-      <div class="sub">
-        This panel manages rate-limit bypass tokens. You must provide panel auth token:
-        <span class="mono">Authorization: Bearer &lt;ADMIN_PANEL_BEARER_SECRET&gt;</span>.
-        It is stored in <span class="mono">localStorage</span> for convenience.
-      </div>
-
-      <div class="grid">
-        <div class="card">
-          <h2>Mint token</h2>
-          <label>
-            <span style="display:flex;align-items:center;gap:10px;">
-              <input id="mintBypass" type="checkbox" />
-              <span>Bypass rate limit completely</span>
-            </span>
-          </label>
-
-          <label for="mintLimit">Limit per hour (used when bypass = false)</label>
-          <input id="mintLimit" type="number" min="1" step="1" value="${RATE_LIMIT}" />
-
-          <label for="mintExpiresInDays">Expires in days</label>
-          <input id="mintExpiresInDays" type="number" min="1" step="1" value="30" />
-
-          <label for="mintLabel">Label (optional)</label>
-          <input id="mintLabel" type="text" placeholder="e.g. alice-prod" />
-
-          <label for="mintOwner">Owner (optional)</label>
-          <input id="mintOwner" type="text" placeholder="e.g. Alice" />
-
-          <div style="margin-top: 12px;" class="row">
-            <button id="btnMint" class="primary" type="button">Mint</button>
-            <button id="btnReload" type="button">Reload</button>
-          </div>
-
-          <div id="status" class="status"></div>
-
-          <div style="margin-top: 12px;">
-            <label>Minted token (copy now)</label>
-            <textarea id="mintedToken" class="mono" readonly></textarea>
-            <div class="row" style="margin-top:10px;">
-              <button id="btnCopy" type="button" disabled>Copy</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h2>Tokens</h2>
-          <div id="tokenList" class="tokenList">Loading…</div>
-        </div>
-      </div>
-    </div>
-
-    <script>
-      const LOCAL_KEY = "polish_academic_mcp_admin_bearer";
-
-      function setStatus(msg, isErr) {
-        const el = document.getElementById("status");
-        el.className = isErr ? "status err" : "status";
-        el.textContent = msg || "";
-      }
-
-      function nowIso(ms) {
-        try { return new Date(ms).toISOString(); } catch { return "—"; }
-      }
-
-      function escapeJtiInText(s) {
-        // we set via textContent, so this is just a noop helper
-        return s ?? "";
-      }
-
-      function getAdminBearer() {
-        const saved = window.localStorage.getItem(LOCAL_KEY);
-        if (saved && typeof saved === "string" && saved.trim()) return saved.trim();
-        const entered = window.prompt(
-          "Enter admin bearer token for this panel.\\n\\nAuthorization header value should be:\\nBearer <token>\\n\\nPaste only <token>."
-        );
-        if (entered === null) return "";
-        const token = entered.trim();
-        if (!token) return "";
-        window.localStorage.setItem(LOCAL_KEY, token);
-        return token;
-      }
-
-      const adminBearer = getAdminBearer();
-      if (!adminBearer) {
-        setStatus("Admin token missing. Reload and enter a bearer token.", true);
-      }
-
-      async function callAdmin(path, init) {
-        const headers = Object.assign({}, (init && init.headers) || {}, { Authorization: "Bearer " + adminBearer });
-        const res = await fetch(path, Object.assign({}, init || {}, { headers }));
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          throw new Error("HTTP " + res.status + ": " + text.slice(0, 300));
-        }
-        return res.json();
-      }
-
-      async function loadTokens() {
-        const list = document.getElementById("tokenList");
-        list.textContent = "Loading…";
-        try {
-          const data = await callAdmin("/admin/tokens?limit=200", { method: "GET" });
-          const tokens = data.tokens || [];
-          if (!tokens.length) {
-            list.textContent = "No tokens yet.";
-            return;
-          }
-
-          list.innerHTML = "";
-          for (const t of tokens) {
-            const el = document.createElement("div");
-            el.className = "token";
-
-            const revoked = !!t.revokedAtMs;
-            const expired = !revoked && t.expiresAtMs && Date.now() >= t.expiresAtMs;
-
-            el.innerHTML = \`
-              <div class="tokenTop">
-                <div>
-                  <div class="mono">jti: \${escapeJtiInText(t.jti)}</div>
-                  <div class="tokenMeta">
-                    label: \${t.label || "—"} · owner: \${t.owner || "—"}<br/>
-                    bypass: \${t.bypass ? "true" : "false"} · limit: \${t.bypass ? "∞" : t.limitPerHour}/h<br/>
-                    expiresAt: \${t.expiresAtMs ? nowIso(t.expiresAtMs) : "—"}
-                    \${revoked ? "<br/><span style='color:#ff4d4d'>revokedAt: " + nowIso(t.revokedAtMs) + "</span>" : ""}
-                    \${expired ? "<br/><span class='muted'>expired</span>" : ""}
-                  </div>
-                </div>
-              </div>
-              <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                <span class="pill">remaining: \${t.usage?.remaining ?? 0} · resetIn: \${t.usage?.resetInSeconds ?? 0}s</span>
-              </div>
-              <div class="tokenActions">
-                <button class="danger" type="button" \${revoked ? "disabled" : ""} data-action="revoke">Revoke</button>
-                <button type="button" \${revoked ? "disabled" : ""} data-action="update">Update</button>
-              </div>
-            \`;
-
-            el.querySelector('[data-action="revoke"]').addEventListener("click", async () => {
-              const reason = window.prompt("Revoke reason (optional):") || "";
-              try {
-                await callAdmin("/admin/tokens/" + encodeURIComponent(t.jti) + "/revoke", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ reason: reason.trim() || undefined }),
-                });
-                await loadTokens();
-              } catch (e) {
-                setStatus(String(e && e.message ? e.message : e), true);
-              }
-            });
-
-            el.querySelector('[data-action="update"]').addEventListener("click", async () => {
-              const bypass = window.confirm("Toggle bypass for this token?\\n\\nOK = set bypass = " + (!t.bypass ? "true" : "false"));
-              if (!bypass) return;
-              const newDaysStr = window.prompt("Set new expiry in days:", "30");
-              const days = Math.max(1, Math.floor(Number(newDaysStr) || 30));
-              const limitStr = window.prompt("Set limitPerHour (only when bypass=false):", String(t.limitPerHour || ${RATE_LIMIT}));
-              const limit = Math.max(1, Math.floor(Number(limitStr) || ${RATE_LIMIT}));
-              const newExpiresAtMs = Date.now() + days * 24 * 60 * 60 * 1000;
-
-              try {
-                await callAdmin("/admin/tokens/" + encodeURIComponent(t.jti), {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    bypass: !t.bypass,
-                    limitPerHour: !t.bypass ? limit : limit, // backend keeps limit; bypass=true ignores enforcement
-                    expiresAtMs: newExpiresAtMs,
-                  }),
-                });
-                await loadTokens();
-              } catch (e) {
-                setStatus(String(e && e.message ? e.message : e), true);
-              }
-            });
-
-            list.appendChild(el);
-          }
-        } catch (e) {
-          list.textContent = "Failed to load tokens.";
-          setStatus(String(e && e.message ? e.message : e), true);
-        }
-      }
-
-      document.getElementById("btnReload").addEventListener("click", loadTokens);
-
-      document.getElementById("btnMint").addEventListener("click", async () => {
-        if (!adminBearer) return;
-        const bypass = document.getElementById("mintBypass").checked;
-        const limitPerHour = Math.max(1, Math.floor(Number(document.getElementById("mintLimit").value) || ${RATE_LIMIT}));
-        const expiresInDays = Math.max(1, Math.floor(Number(document.getElementById("mintExpiresInDays").value) || 30));
-        const label = document.getElementById("mintLabel").value.trim() || undefined;
-        const owner = document.getElementById("mintOwner").value.trim() || undefined;
-        const expiresAtMs = Date.now() + expiresInDays * 24 * 60 * 60 * 1000;
-
-        try {
-          setStatus("Minting…");
-          const data = await callAdmin("/admin/tokens", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              bypass,
-              limitPerHour,
-              expiresAtMs,
-              label,
-              owner
-            }),
-          });
-
-          const token = data.token || "";
-          document.getElementById("mintedToken").value = token;
-          document.getElementById("btnCopy").disabled = !token;
-          setStatus("Minted. Copy the token below.");
-        } catch (e) {
-          setStatus(String(e && e.message ? e.message : e), true);
-        }
-      });
-
-      document.getElementById("btnCopy").addEventListener("click", async () => {
-        const token = document.getElementById("mintedToken").value;
-        if (!token) return;
-        try {
-          await navigator.clipboard.writeText(token);
-          setStatus("Copied to clipboard.");
-        } catch (e) {
-          setStatus("Copy failed: " + String(e && e.message ? e.message : e), true);
-        }
-      });
-
-      document.getElementById("mintBypass").addEventListener("change", (e) => {
-        const disabled = e.target.checked;
-        document.getElementById("mintLimit").disabled = disabled;
-      });
-
-      // Initial load
-      loadTokens();
-    </script>
-  </body>
-</html>`;
+const ADMIN_PANEL_HTML = getAdminPanelHtml(RATE_LIMIT);
+type ModelProfile = "cheapest" | "balanced" | "quality";
 
 const handler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -474,6 +104,10 @@ const handler = {
       return new Response(ADMIN_PANEL_HTML, {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
       });
+    }
+
+    if (request.method === "POST" && path === "/chat") {
+      return handleChatRequest(request, env, url);
     }
 
     // ── Admin: rate-limit token registry ──────────────────────────────────
@@ -851,3 +485,92 @@ function nowMsFromIndex(): number {
 // CF native Workers Logs + Traces (configured in wrangler.jsonc) handle
 // observability automatically — no code-level wrapper needed.
 export default handler;
+
+type ChatRequestBody = {
+  messages: UIMessage[];
+  system?: string;
+  config?: {
+    modelProfile?: ModelProfile;
+  };
+};
+
+function resolveChatModelAlias(env: Env, profile: ModelProfile): string {
+  switch (profile) {
+    case "balanced":
+      return env.CF_AIG_MODEL_BALANCED ?? "dynamic/academic-balanced";
+    case "quality":
+      return env.CF_AIG_MODEL_QUALITY ?? "dynamic/academic-quality";
+    default:
+      return env.CF_AIG_MODEL_CHEAPEST ?? "dynamic/academic-cheapest";
+  }
+}
+
+async function handleChatRequest(request: Request, env: Env, url: URL): Promise<Response> {
+  if (!env.CF_ACCOUNT_ID || !env.CF_GATEWAY_ID || !env.CF_AIG_TOKEN) {
+    return new Response(
+      JSON.stringify(
+        {
+          error: "missing_ai_gateway_config",
+          message:
+            "Missing required vars: CF_ACCOUNT_ID, CF_GATEWAY_ID, CF_AIG_TOKEN",
+        },
+        null,
+        2,
+      ),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  let body: ChatRequestBody;
+  try {
+    body = (await request.json()) as ChatRequestBody;
+  } catch {
+    return new Response(JSON.stringify({ error: "invalid_json" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const modelProfile = body.config?.modelProfile ?? "cheapest";
+  const modelAlias = resolveChatModelAlias(env, modelProfile);
+  const mcpUrl = env.MCP_SERVER_URL ?? `${url.origin}/mcp`;
+
+  const mcpClient = await createMCPClient({
+    transport: {
+      type: "http",
+      url: mcpUrl,
+      headers: request.headers.get("authorization")
+        ? { Authorization: request.headers.get("authorization") ?? "" }
+        : undefined,
+    },
+  });
+
+  try {
+    const mcpTools = await mcpClient.tools();
+    const gateway = createOpenAI({
+      apiKey: env.CF_AIG_TOKEN,
+      baseURL: `https://gateway.ai.cloudflare.com/v1/${env.CF_ACCOUNT_ID}/${env.CF_GATEWAY_ID}/compat`,
+    });
+
+    const result = streamText({
+      model: gateway(modelAlias),
+      messages: await convertToModelMessages(body.messages ?? []),
+      system: body.system,
+      tools: mcpTools,
+      onFinish: async () => {
+        await mcpClient.close();
+      },
+    });
+
+    return result.toUIMessageStreamResponse({
+      sendReasoning: true,
+    });
+  } catch (err) {
+    await mcpClient.close().catch(() => {});
+    const msg = err instanceof Error ? err.message : String(err);
+    return new Response(JSON.stringify({ error: "chat_failed", message: msg }, null, 2), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}

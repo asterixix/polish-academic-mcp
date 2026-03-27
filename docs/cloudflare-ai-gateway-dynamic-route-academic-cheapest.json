@@ -1,0 +1,142 @@
+{
+  "id": "route_academic_cheapest_v1",
+  "name": "academic-cheapest",
+  "elements": [
+    {
+      "id": "start",
+      "type": "start",
+      "outputs": {
+        "next": {
+          "elementId": "guard_free_budget"
+        }
+      }
+    },
+    {
+      "id": "guard_free_budget",
+      "type": "rate_limit",
+      "properties": {
+        "limitType": "cost",
+        "key": "metadata.user_id",
+        "limit": 0.03,
+        "interval": 86400,
+        "technique": "sliding"
+      },
+      "outputs": {
+        "success": {
+          "elementId": "segment_plan"
+        },
+        "fallback": {
+          "elementId": "model_floor_tier"
+        }
+      }
+    },
+    {
+      "id": "segment_plan",
+      "type": "conditional",
+      "properties": {
+        "condition": {
+          "metadata.plan": {
+            "$eq": "free"
+          }
+        }
+      },
+      "outputs": {
+        "true": {
+          "elementId": "free_rate_limit"
+        },
+        "false": {
+          "elementId": "paid_weighted_split"
+        }
+      }
+    },
+    {
+      "id": "free_rate_limit",
+      "type": "rate_limit",
+      "properties": {
+        "limitType": "count",
+        "key": "metadata.user_id",
+        "limit": 80,
+        "interval": 3600,
+        "technique": "sliding"
+      },
+      "outputs": {
+        "success": {
+          "elementId": "model_primary_cheap"
+        },
+        "fallback": {
+          "elementId": "model_floor_tier"
+        }
+      }
+    },
+    {
+      "id": "paid_weighted_split",
+      "type": "percentage",
+      "outputs": {
+        "70%": {
+          "elementId": "model_primary_cheap"
+        },
+        "20%": {
+          "elementId": "model_secondary_cheap"
+        },
+        "10%": {
+          "elementId": "model_floor_tier"
+        }
+      }
+    },
+    {
+      "id": "model_primary_cheap",
+      "type": "model",
+      "properties": {
+        "provider": "workers-ai",
+        "model": "@cf/meta/llama-3.1-8b-instruct",
+        "timeout": 30000,
+        "retries": 2
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "model_secondary_cheap"
+        }
+      }
+    },
+    {
+      "id": "model_secondary_cheap",
+      "type": "model",
+      "properties": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "timeout": 35000,
+        "retries": 2
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "model_floor_tier"
+        }
+      }
+    },
+    {
+      "id": "model_floor_tier",
+      "type": "model",
+      "properties": {
+        "provider": "google",
+        "model": "gemini-2.0-flash-lite",
+        "timeout": 25000,
+        "retries": 1
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        }
+      }
+    },
+    {
+      "id": "end",
+      "type": "end"
+    }
+  ]
+}
