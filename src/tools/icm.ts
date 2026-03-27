@@ -1,6 +1,7 @@
 /**
  * ICM — Interdisciplinary Centre for Mathematical and Computational Modelling,
  * University of Warsaw — Open Research Data Repository (open.icm.edu.pl).
+ * Public UI: https://open.icm.edu.pl/home — REST API: /server/api (same host returns JSON).
  * Runs DSpace 7, responds with HAL+JSON.  Anonymous read access for all public items.
  *
  * Tools:
@@ -240,23 +241,28 @@ export function registerIcmTools(server: McpServer, env: Env): void {
         async (span) => {
           span.setAttribute("mcp.source", "icm");
           try {
-            const searchParams = new URLSearchParams({
-              query,
-              page: String(page),
-              size: String(size),
-              sort,
-            });
-            if (author) addFilter(searchParams, "author", author, "contains");
-            if (title) addFilter(searchParams, "title", title, "contains");
-            if (subject) addFilter(searchParams, "subject", subject, "equals");
-            if (publisher) addFilter(searchParams, "publisher", publisher, "contains");
-            if (affiliation) addFilter(searchParams, "affiliation", affiliation, "contains");
-            if (license) addFilter(searchParams, "license", license, "contains");
-            if (date_issued) addFilter(searchParams, "dateIssued", date_issued, "equals");
-            if (has_full_text !== undefined) {
-              searchParams.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
-            }
+            const buildParams = (useAllFilters: boolean): URLSearchParams => {
+              const params = new URLSearchParams({
+                query,
+                page: String(page),
+                size: String(size),
+                sort,
+              });
+              if (!useAllFilters) return params;
+              if (author) addFilter(params, "author", author, "contains");
+              if (title) addFilter(params, "title", title, "contains");
+              if (subject) addFilter(params, "subject", subject, "equals");
+              if (publisher) addFilter(params, "publisher", publisher, "contains");
+              if (affiliation) addFilter(params, "affiliation", affiliation, "contains");
+              if (license) addFilter(params, "license", license, "contains");
+              if (date_issued) addFilter(params, "dateIssued", date_issued, "equals");
+              if (has_full_text !== undefined) {
+                params.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
+              }
+              return params;
+            };
 
+            const searchParams = buildParams(true);
             const url = `${API_BASE}/discover/search/objects?${searchParams}`;
             const cacheKey = makeCacheKey("icm_search", {
               query,
@@ -272,14 +278,38 @@ export function registerIcmTools(server: McpServer, env: Env): void {
               date_issued,
               has_full_text,
             });
-            const data = await cachedFetch(
-              env.CACHE_KV,
-              cacheKey,
-              url,
-              { headers: JSON_HEADERS },
-              CACHE_TTL,
-            );
-            return { content: [{ type: "text", text: summarizeSearch(data) }] };
+            try {
+              const data = await cachedFetch(
+                env.CACHE_KV,
+                cacheKey,
+                url,
+                { headers: JSON_HEADERS },
+                CACHE_TTL,
+              );
+              return { content: [{ type: "text", text: summarizeSearch(data) }] };
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              if (/HTTP 404/i.test(msg) || /HTTP 400/i.test(msg)) {
+                span.setAttribute("mcp.fallback", "icm_search_core_query_only");
+                const fallbackParams = buildParams(false);
+                const fallbackUrl = `${API_BASE}/discover/search/objects?${fallbackParams}`;
+                const fallbackKey = makeCacheKey("icm_search_fallback", {
+                  query,
+                  page,
+                  size,
+                  sort,
+                });
+                const data = await cachedFetch(
+                  env.CACHE_KV,
+                  fallbackKey,
+                  fallbackUrl,
+                  { headers: JSON_HEADERS },
+                  CACHE_TTL,
+                );
+                return { content: [{ type: "text", text: summarizeSearch(data) }] };
+              }
+              throw err;
+            }
           } catch (e) {
             return {
               content: [

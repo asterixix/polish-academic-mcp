@@ -19,7 +19,8 @@ import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
 import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
-const API_BASE = "https://repo.agh.edu.pl/server/api";
+/** JSON HAL API lives on api.* — repo.agh.edu.pl/server/api serves the SPA (HTML), not REST. */
+const API_BASE = "https://api.repo.agh.edu.pl/server/api";
 const HANDLE_BASE = "https://repo.agh.edu.pl/handle";
 const JSON_HEADERS = { Accept: "application/json" };
 const CACHE_TTL = 86_400; // 24 h

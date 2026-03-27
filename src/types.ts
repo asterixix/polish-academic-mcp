@@ -14,4 +14,12 @@ export interface Env {
   NEXTCLOUD_WEBDAV_PATH_PREFIX?: string;
   // Best-effort cap to keep uploaded JSON payload bounded.
   EVAL_WEBDAV_MAX_JSON_BYTES?: string;
+
+  /** GUS BDL API — optional client id (higher rate limits). Sent as X-ClientId. */
+  BDL_CLIENT_ID?: string;
+
+  /** Polska Bibliografia Naukowa (PBN) API — institutional credentials. */
+  PBN_APP_ID?: string;
+  PBN_APP_TOKEN?: string;
+  PBN_USER_TOKEN?: string;
 }

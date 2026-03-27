@@ -41,6 +41,7 @@ import { getConnectPageHtml, getVerifyRedirectTarget, listVerifyProviderIds } fr
 
 const RATE_LIMIT = 10; // tool calls per hour per IP
 const PUBLIC_TOOL_NAMES = new Set<string>([
+  "bn_search_publications",
   "bn_search_articles",
   "bn_get_article",
   "ruj_search",
@@ -62,6 +63,15 @@ const PUBLIC_TOOL_NAMES = new Set<string>([
   "imgw_hydro",
   "imgw_meteo",
   "imgw_warnings",
+  "ludzie_search",
+  "ludzie_semantic_search",
+  "ludzie_get_scientist",
+  "pauart_search",
+  "pauart_get_artwork",
+  "filmpolski_search",
+  "filmpolski_get_item",
+  "fototekaslaska_search",
+  "fototekaslaska_get_photo",
   "eval_response",
 ]);
 

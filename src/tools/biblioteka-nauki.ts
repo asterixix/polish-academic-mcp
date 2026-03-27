@@ -3,11 +3,11 @@
  * Public API: OAI-PMH (no authentication required).
  *
  * Tools:
- *   bn_search_articles  — ListRecords with optional date range / set filter.
- *   bn_get_article      — GetRecord for a single article by numeric ID.
+ *   bn_search_publications — POST /api/search (JSON): full-text keyword search.
+ *   bn_search_articles     — OAI-PMH ListRecords (harvest by date/set; no keywords).
+ *   bn_get_article           — OAI-PMH GetRecord by numeric ID.
  *
- * Responses are raw XML.  LLMs handle OAI-PMH/JATS XML well and returning
- * raw text avoids expensive DOM parsing within the 10 ms CPU budget.
+ * OAI responses are raw XML. Search API returns raw JSON. Avoids heavy parsing on the Worker.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -17,7 +17,10 @@ import { cachedFetch, makeCacheKey } from "../cache.js";
 import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const OAI_BASE = "https://bibliotekanauki.pl/api/oai/articles";
+/** Public website search API (JSON). Supports full-text `generalSearchString`; not documented on OAI-PMH page. */
+const SEARCH_API = "https://bibliotekanauki.pl/api/search";
 const CACHE_TTL = 86_400; // 24 h — academic records rarely change
+const SEARCH_CACHE_TTL = 3_600; // 1 h — search index may shift
 
 const API_FIELDS = [
   "title",
@@ -29,6 +32,14 @@ const API_FIELDS = [
   "doi",
   "publisher",
 ];
+
+const PUBLICATION_TYPES = [
+  "ARTICLE",
+  "SIMPLE_BOOK",
+  "COLLECTIVE_WORK",
+  "CHAPTER",
+] as const;
+type BnPublicationType = (typeof PUBLICATION_TYPES)[number];
 
 function hasNoRecordsMatch(xml: string): boolean {
   return /<error[^>]*code=["']noRecordsMatch["'][^>]*>/i.test(xml);
@@ -42,15 +53,187 @@ function scrubPiiXml(xml: string): string {
     .replace(/\+?[\d\s\-()]{9,}/g, "[REDACTED_PHONE]");
 }
 
+/** POST body for `/api/search` (same shape as the public Biblioteka Nauki web UI). */
+function buildPublicationSearchBody(params: {
+  query: string;
+  page: number;
+  page_size: number;
+  sort_field: "score" | "publishedDate";
+  sort_direction: "ASC" | "DESC";
+  publication_types?: BnPublicationType[];
+  published_date_from?: string;
+  published_date_to?: string;
+  open_resources?: boolean;
+}): Record<string, unknown> {
+  const {
+    query,
+    page,
+    page_size,
+    sort_field,
+    sort_direction,
+    publication_types,
+    published_date_from,
+    published_date_to,
+    open_resources,
+  } = params;
+  return {
+    searchCriteria: {
+      generalSearchString: query,
+      ...(publication_types && publication_types.length > 0
+        ? { publicationTypes: publication_types }
+        : {}),
+      ...(published_date_from ? { publishedDateFrom: published_date_from } : {}),
+      ...(published_date_to ? { publishedDateTo: published_date_to } : {}),
+      ...(open_resources === true ? { openResources: true } : {}),
+    },
+    paginationCriteria: {
+      pageNumber: page,
+      pageSize: page_size,
+      sortingCriteria: {
+        fieldName: sort_field,
+        direction: sort_direction,
+      },
+    },
+  };
+}
+
 export function registerBibliotekaTools(server: McpServer, env: Env): void {
+  // ── bn_search_publications ────────────────────────────────────────────────
+  server.tool(
+    "bn_search_publications",
+    [
+      "Full-text search in Biblioteka Nauki (Polish open-access articles, books, chapters).",
+      "Uses the public JSON search API (same as the website). Prefer this tool when the user gives keywords,",
+      "topics, author names, or titles. For harvesting by date range or OAI journal set without keywords,",
+      "use bn_search_articles (OAI-PMH XML) instead.",
+      "Returns JSON with hits, snippets (mainTitleSnippets, fullTextSnippets), and totalResults.",
+    ].join(" "),
+    {
+      query: z
+        .string()
+        .min(1)
+        .describe(
+          "Search phrase (Polish or English). Maps to the portal field generalSearchString — titles, abstracts, full text where indexed.",
+        ),
+      page: z.number().int().min(1).default(1).describe("Page number (1-based)."),
+      page_size: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .default(10)
+        .describe("Results per page (max 50)."),
+      sort_field: z
+        .enum(["score", "publishedDate"])
+        .default("score")
+        .describe("score — relevance; publishedDate — publication date."),
+      sort_direction: z
+        .enum(["ASC", "DESC"])
+        .default("DESC")
+        .describe("Sort direction."),
+      publication_types: z
+        .array(z.enum(PUBLICATION_TYPES))
+        .optional()
+        .describe(
+          "Restrict to publication kinds: ARTICLE (journals), SIMPLE_BOOK / COLLECTIVE_WORK / CHAPTER (books). Omit to search all.",
+        ),
+      published_date_from: z
+        .string()
+        .optional()
+        .describe("Optional lower bound YYYY-MM-DD (inclusive)."),
+      published_date_to: z
+        .string()
+        .optional()
+        .describe("Optional upper bound YYYY-MM-DD (inclusive)."),
+      open_resources: z
+        .boolean()
+        .optional()
+        .describe("When true, prefer diamond-open / openly licensed resources (portal flag)."),
+    },
+    async ({
+      query,
+      page,
+      page_size,
+      sort_field,
+      sort_direction,
+      publication_types,
+      published_date_from,
+      published_date_to,
+      open_resources,
+    }) => {
+      return withToolExecutionSpan(
+        {
+          toolName: "bn_search_publications",
+          params: {
+            query,
+            page,
+            page_size,
+            sort_field,
+            sort_direction,
+            publication_types,
+            published_date_from,
+            published_date_to,
+            open_resources,
+          } as Record<string, unknown>,
+          fieldsRequested: API_FIELDS,
+          fieldsReturned: API_FIELDS,
+          tokensByField: {},
+          queryTokens: estimateTokens(query),
+        },
+        async (span) => {
+          span.setAttribute("mcp.source", "biblioteka-nauki");
+          try {
+            const body = buildPublicationSearchBody({
+              query,
+              page,
+              page_size,
+              sort_field,
+              sort_direction,
+              publication_types,
+              published_date_from,
+              published_date_to,
+              open_resources,
+            });
+            const cacheKey = makeCacheKey("bn_search_publications", body as Record<string, unknown>);
+            const text = await cachedFetch(
+              env.CACHE_KV,
+              cacheKey,
+              SEARCH_API,
+              {
+                method: "POST",
+                headers: {
+                  Accept: "application/json",
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(body),
+              },
+              SEARCH_CACHE_TTL,
+            );
+            return { content: [{ type: "text", text }] };
+          } catch (e) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error calling bn_search_publications: ${e instanceof Error ? e.message : String(e)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        },
+      );
+    },
+  );
+
   // ── bn_search_articles ────────────────────────────────────────────────────
   server.tool(
     "bn_search_articles",
     [
-      "Search Polish scientific articles in Biblioteka Nauki via the OAI-PMH ListRecords verb.",
-      "Returns raw XML.  Use metadata_format=oai_dc for smaller Dublin Core responses,",
-      "or jats for rich JATS XML with abstracts, keywords, ORCIDs, and references.",
-      "Use resumption_token from a previous response to fetch the next page.",
+      "OAI-PMH ListRecords harvest for Biblioteka Nauki — NOT full-text keyword search.",
+      "Use this to list records by optional date range (from_date/until_date) and/or OAI set (journal id from ListSets),",
+      "or to page with resumption_token. There is no query string in OAI-PMH; for keyword/topic search use bn_search_publications.",
+      "Returns raw XML. metadata_format=oai_dc (Dublin Core) or jats (abstracts, keywords, references).",
     ].join(" "),
     {
       from_date: z.string().optional().describe("Earliest publication date, format YYYY-MM-DD"),
