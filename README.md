@@ -1,5 +1,7 @@
 # Polish Academic MCP
 
+[![SafeSkill 82/100](https://img.shields.io/badge/SafeSkill-82%2F100_Passes%20with%20Notes-yellow)](https://safeskill.dev/scan/asterixix-polish-academic-mcp)
+
 Zdalny serwer MCP działający na Cloudflare Workers, który udostępnia wiele polskich baz danych i serwisów publicznych jako narzędzia wywoływane przez AI.
 
 > **MCP** (Model Context Protocol) to otwarty standard pozwalający modelom językowym (Claude, GPT, Bielik.AI itp.) na wywoływanie zewnętrznych narzędzi i API w ustandaryzowany sposób.
