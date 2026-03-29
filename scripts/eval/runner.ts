@@ -1,15 +1,31 @@
 /**
  * Evaluation Runner
  * =================
- * Connects to the MCP server via SSE, executes each test case,
+ * Connects to the MCP server via SSE or Streamable HTTP, executes each test case,
  * collects span attributes, and computes RQ-aligned scores.
  *
- * Usage:
- *   npx tsx scripts/eval/runner.ts [--rq RQ1] [--url http://localhost:8787/mcp] [--jwt "$MCP_BEARER_TOKEN"]  # omit --jwt for guest
+ * Usage (direct tool mode — no LLM):
+ *   npx tsx scripts/eval/runner.ts [--rq RQ1] [--url http://localhost:8787/mcp] [--jwt "$MCP_BEARER_TOKEN"]
  *   npx tsx scripts/eval/runner.ts --transport sse   # legacy MCP servers (SSE-only)
+ *
+ * Usage (LLM-in-the-loop mode via OpenRouter):
+ *   npx tsx scripts/eval/runner.ts --model openrouter/anthropic/claude-3.5-sonnet \
+ *       --openrouter-key sk-or-... [--rq RQ2]
+ *   # or set OPENROUTER_MODEL + OPENROUTER_API_KEY in .env
+ *   npx tsx scripts/eval/runner.ts [--rq RQ2]
+ *
+ *   In LLM mode the runner sends each test case's description as a natural-language prompt
+ *   to the chosen model (via OpenRouter), which then calls MCP tools autonomously.
+ *   The final tool response is scored with the same metrics as direct mode.
+ *   Set OPENROUTER_API_KEY env var instead of --openrouter-key if preferred.
  *
  * The deployed Cloudflare Worker uses Streamable HTTP (POST + SSE); use default transport.
  */
+
+// Load .env before anything else so OPENROUTER_API_KEY / MCP_BEARER_TOKEN are available
+// when running via `npx tsx` (which does not auto-load .env unlike some frameworks).
+import { config as loadDotenv } from "dotenv";
+loadDotenv(); // reads .env from cwd; silently no-ops if file is absent
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
@@ -34,28 +50,224 @@ import {
 
 type McpTransportName = "streamable" | "sse";
 
-function parseArgs(): {
+/**
+ * Parsed CLI configuration.
+ * When `model` is set the runner operates in LLM-in-the-loop mode:
+ * each test case description is sent as a natural-language prompt to the
+ * specified OpenRouter model, which calls MCP tools autonomously.
+ */
+interface RunnerConfig {
   url: string;
   rq: ResearchQuestion | "ALL";
   outputDir: string;
   transport: McpTransportName;
   jwt?: string;
-} {
+  /** OpenRouter model id, e.g. "openrouter/anthropic/claude-3.5-sonnet" */
+  model?: string;
+  /** OpenRouter API key (falls back to OPENROUTER_API_KEY env var) */
+  openrouterKey?: string;
+}
+
+function parseArgs(): RunnerConfig {
   const args = process.argv.slice(2);
   const get = (flag: string, def: string) => {
     const i = args.indexOf(flag);
     return i !== -1 && args[i + 1] ? args[i + 1] : def;
   };
+  const getBool = (flag: string) => args.includes(flag);
   const transportRaw = get("--transport", "streamable").toLowerCase();
   const transport: McpTransportName =
     transportRaw === "sse" ? "sse" : "streamable";
+
+  const modelRaw = get("--model", process.env["OPENROUTER_MODEL"] ?? "");
+  // Strip leading "openrouter/" prefix if user typed it — OpenRouter SDK expects just the model id
+  const model = modelRaw
+    ? modelRaw.replace(/^openrouter\//i, "")
+    : undefined;
+
+  const openrouterKey =
+    get("--openrouter-key", process.env["OPENROUTER_API_KEY"] ?? "") || undefined;
+
+  void getBool; // suppress unused-var lint for future flags
+
   return {
     url: get("--url", process.env["MCP_SERVER_URL"] ?? "http://localhost:8787/mcp"),
     rq: get("--rq", "ALL") as ResearchQuestion | "ALL",
     outputDir: get("--out", "./eval-results"),
     transport,
     jwt: get("--jwt", process.env["MCP_BEARER_TOKEN"] ?? process.env["MCP_BYPASS_JWT"] ?? ""),
+    model,
+    openrouterKey,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OpenRouter LLM client (LLM-in-the-loop mode)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface OpenRouterMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_call_id?: string;
+  name?: string;
+}
+
+interface OpenRouterToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+interface OpenRouterChoice {
+  message: {
+    role: string;
+    content: string | null;
+    tool_calls?: OpenRouterToolCall[];
+  };
+  finish_reason: string;
+}
+
+interface OpenRouterResponse {
+  choices: OpenRouterChoice[];
+  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+}
+
+interface McpToolDef {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+/**
+ * Run one test case in LLM-in-the-loop mode.
+ * Sends the test case description as a user prompt to the OpenRouter model.
+ * The model may call MCP tools autonomously (agentic loop, max 8 turns).
+ * Returns the last tool response text and accumulated latency.
+ */
+async function runWithLlm(
+  mcpClient: EvalClient,
+  testCase: EvalTestCase,
+  availableToolDefs: McpToolDef[],
+  model: string,
+  apiKey: string,
+): Promise<{ text: string; latencyMs: number; toolsCalled: string[]; raw: unknown }> {
+  const OR_BASE = "https://openrouter.ai/api/v1/chat/completions";
+
+  // Build OpenAI-compatible tool definitions from MCP tool list
+  const tools = availableToolDefs.map((t) => ({
+    type: "function" as const,
+    function: {
+      name: t.name,
+      description: t.description ?? t.name,
+      parameters: t.inputSchema ?? { type: "object", properties: {} },
+    },
+  }));
+
+  const systemPrompt =
+    "You are a research assistant with access to Polish academic database tools. " +
+    "Use the available tools to answer the user's research query. " +
+    "Always call at least one tool. Return a concise, factual answer citing the source.";
+
+  const userPrompt =
+    `Research task: ${testCase.description}\n\n` +
+    `Expected tool: ${testCase.tool}\n` +
+    `Required fields in response: ${testCase.requiredFields.join(", ") || "none specified"}`;
+
+  const messages: OpenRouterMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
+
+  const toolsCalled: string[] = [];
+  let lastToolRaw: unknown = null;
+  let lastToolText = "";
+  const start = Date.now();
+  const MAX_TURNS = 8;
+
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    const body = JSON.stringify({
+      model,
+      messages,
+      tools,
+      tool_choice: turn === 0 ? "required" : "auto",
+      max_tokens: 2048,
+    });
+
+    const res = await fetch(OR_BASE, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://github.com/asterixix/polish-academic-mcp",
+        "X-Title": "polish-academic-mcp-eval",
+      },
+      body,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`OpenRouter API error ${res.status}: ${errText}`);
+    }
+
+    const data = (await res.json()) as OpenRouterResponse;
+    const choice = data.choices[0];
+    if (!choice) throw new Error("OpenRouter returned no choices");
+
+    const assistantMsg = choice.message;
+    messages.push({
+      role: "assistant",
+      content: assistantMsg.content ?? null,
+      ...(assistantMsg.tool_calls ? {} : {}),
+    } as OpenRouterMessage);
+
+    // If the model wants to call tools, execute them
+    if (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0) {
+      // Push assistant message with tool_calls (raw, cast to any for flexibility)
+      messages[messages.length - 1] = {
+        role: "assistant",
+        content: assistantMsg.content ?? null,
+        // OpenRouter expects tool_calls on the assistant message
+        ...(assistantMsg.tool_calls
+          ? { tool_calls: assistantMsg.tool_calls }
+          : {}),
+      } as OpenRouterMessage & { tool_calls?: OpenRouterToolCall[] };
+
+      for (const tc of assistantMsg.tool_calls) {
+        const toolName = tc.function.name;
+        toolsCalled.push(toolName);
+        let toolArgs: Record<string, unknown> = {};
+        try {
+          toolArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+        } catch {
+          toolArgs = {};
+        }
+
+        let toolResultText = "";
+        try {
+          const result = await mcpClient.callTool(toolName, toolArgs);
+          toolResultText = responseToText(result.content);
+          lastToolRaw = result.content;
+          lastToolText = toolResultText;
+        } catch (e) {
+          toolResultText = `Error: ${e instanceof Error ? e.message : String(e)}`;
+        }
+
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          name: toolName,
+          content: toolResultText.slice(0, 8000), // truncate to avoid context overflow
+        });
+      }
+      continue; // next turn — let model process tool results
+    }
+
+    // Model finished (no more tool calls)
+    break;
+  }
+
+  const latencyMs = Date.now() - start;
+  return { text: lastToolText, latencyMs, toolsCalled, raw: lastToolRaw };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +303,15 @@ class EvalClient {
   async listTools(): Promise<string[]> {
     const res = await this.client.listTools();
     return res.tools.map((t) => t.name);
+  }
+
+  async listToolDefs(): Promise<McpToolDef[]> {
+    const res = await this.client.listTools();
+    return res.tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema as Record<string, unknown> | undefined,
+    }));
   }
 
   async callTool(
@@ -633,13 +854,28 @@ function printSummary(report: EvalReport): void {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const { url, rq, outputDir, transport, jwt } = parseArgs();
+  const { url, rq, outputDir, transport, jwt, model, openrouterKey } = parseArgs();
+
+  const llmMode = !!model;
 
   console.log("🎯 Polish Academic MCP — Research Evaluator");
-  console.log(`   Server: ${url}`);
+  console.log(`   Server:    ${url}`);
   console.log(`   Transport: ${transport}`);
-  console.log(`   Bearer: ${jwt?.trim() ? `set (${jwt.slice(0, 12)}…)` : "guest (no header)"}`);
-  console.log(`   RQ filter: ${rq}\n`);
+  console.log(`   Bearer:    ${jwt?.trim() ? `set (${jwt.slice(0, 12)}…)` : "guest (no header)"}`);
+  console.log(`   RQ filter: ${rq}`);
+  if (llmMode) {
+    console.log(`   Mode:      LLM-in-the-loop  (model: ${model})`);
+    if (!openrouterKey) {
+      console.error(
+        "❌ --model requires an OpenRouter API key. " +
+        "Pass --openrouter-key sk-or-... or set OPENROUTER_API_KEY env var.",
+      );
+      process.exit(1);
+    }
+  } else {
+    console.log(`   Mode:      direct tool calls (no LLM)`);
+  }
+  console.log();
 
   const client = new EvalClient();
 
@@ -647,6 +883,7 @@ async function main(): Promise<void> {
   await client.connect(url, transport, jwt);
 
   const availableTools = await client.listTools();
+  const availableToolDefs = llmMode ? await client.listToolDefs() : [];
   console.log(`📋 Available tools (${availableTools.length}): ${availableTools.join(", ")}\n`);
 
   const testCases: EvalTestCase[] =
@@ -654,7 +891,7 @@ async function main(): Promise<void> {
       ? ALL_TEST_CASES
       : getCasesByRQ(rq as ResearchQuestion);
 
-  console.log(`🧪 Running ${testCases.length} test cases (filter: ${rq})...\n`);
+  console.log(`🧪 Running ${testCases.length} test cases (filter: ${rq}, mode: ${llmMode ? "llm" : "direct"})...\n`);
 
   const results: Array<{
     testCase: EvalTestCase;
@@ -664,7 +901,50 @@ async function main(): Promise<void> {
 
   for (const testCase of testCases) {
     process.stdout.write(`  ${testCase.id.padEnd(12)} ${testCase.name.slice(0, 45).padEnd(47)} `);
-    const { response, score } = await runTestCase(client, testCase, availableTools);
+
+    let response: ToolResponse;
+    let score: CompositeScore;
+
+    if (llmMode && model && openrouterKey) {
+      // ── LLM-in-the-loop mode ──────────────────────────────────────────────
+      try {
+        const llmResult = await runWithLlm(
+          client,
+          testCase,
+          availableToolDefs,
+          model,
+          openrouterKey,
+        );
+        response = {
+          raw: llmResult.raw,
+          text: llmResult.text,
+          latencyMs: llmResult.latencyMs,
+          statusCode: llmResult.text ? 200 : 500,
+          spanAttributes: extractSpanAttributes(llmResult.raw),
+          error: llmResult.text ? undefined : "LLM produced no tool output",
+        };
+        // For RQ1-M3 tool selection accuracy: check if expected tool was called
+        const selectedTool = llmResult.toolsCalled.includes(testCase.tool)
+          ? testCase.tool
+          : llmResult.toolsCalled[0] ?? testCase.tool;
+        score = computeCompositeScore(response, testCase, selectedTool);
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        response = {
+          raw: { error: errMsg },
+          text: `Error: ${errMsg}`,
+          latencyMs: 0,
+          statusCode: 500,
+          spanAttributes: {},
+          error: errMsg,
+        };
+        score = computeCompositeScore(response, testCase, testCase.tool);
+      }
+    } else {
+      // ── Direct tool call mode ─────────────────────────────────────────────
+      ({ response, score } = await runTestCase(client, testCase, availableTools));
+    }
+
     const icon = score.passed ? "✅" : "❌";
     const pct = (score.compositeScore * 100).toFixed(1);
     console.log(`${icon} ${pct}%  ${response.latencyMs}ms`);
@@ -674,11 +954,17 @@ async function main(): Promise<void> {
   await client.close();
 
   const report = buildReport(results, url, rq, availableTools);
+
+  // Attach run metadata
+  (report as EvalReport & { model?: string; evalMode: string }).model = model;
+  (report as EvalReport & { model?: string; evalMode: string }).evalMode = llmMode ? "llm" : "direct";
+
   printSummary(report);
 
   // Save results
   mkdirSync(outputDir, { recursive: true });
-  const outPath = resolve(outputDir, `eval-${rq}-${Date.now()}.json`);
+  const suffix = llmMode ? `${rq}-llm-${model!.replace(/\//g, "_")}` : rq;
+  const outPath = resolve(outputDir, `eval-${suffix}-${Date.now()}.json`);
   writeFileSync(outPath, JSON.stringify(report, null, 2), "utf-8");
   console.log(`💾 Results saved to: ${outPath}\n`);
 }

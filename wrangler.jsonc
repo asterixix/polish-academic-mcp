@@ -28,6 +28,9 @@
 		"enabled": true,
 		"head_sampling_rate": 1,
 	},
+	"vars": {
+		"BDL_CLIENT_ID": "b73ca2b3-5546-49ee-f13c-08de8cb1a98a"
+	},
 	// Replace database_id with output of: npx wrangler d1 create polish-academic-eval-log
 	// Then: npx wrangler d1 migrations apply polish-academic-eval-log --remote
 	"d1_databases": [
