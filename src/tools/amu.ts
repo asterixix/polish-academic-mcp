@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * AMU — Adam Mickiewicz University Repository (repozytorium.amu.edu.pl).
  * Runs DSpace 7, responds with HAL+JSON.  Anonymous read access for all public items.
@@ -264,7 +265,7 @@ export function registerAmuTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error searching AMU repository: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error searching AMU repository: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -315,7 +316,7 @@ export function registerAmuTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error fetching AMU item ${uuid}: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error fetching AMU item ${uuid}: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

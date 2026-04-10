@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Response evaluation tool — wires src/eval.ts into the live request pipeline.
  *
@@ -103,7 +104,7 @@ export function registerEvalTools(server: McpServer, _env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error emitting eval span: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error emitting eval span: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

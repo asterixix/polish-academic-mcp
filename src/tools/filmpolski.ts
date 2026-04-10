@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * FilmPolski.pl — Internetowa Baza Filmu Polskiego (PWSFTviT Łódź).
  *
@@ -165,7 +166,7 @@ export function registerFilmpolskiTools(server: McpServer, env: Env): void {
             };
             return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling filmpolski_search: ${msg}` }],
               isError: true,
@@ -243,7 +244,7 @@ export function registerFilmpolskiTools(server: McpServer, env: Env): void {
             };
             return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling filmpolski_get_item: ${msg}` }],
               isError: true,

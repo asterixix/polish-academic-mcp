@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * UAFM — University of Applied Sciences in Nowy Sącz Repository (repozytorium.uafm.edu.pl).
  * Runs DSpace 7, responds with HAL+JSON.  Anonymous read access for all public items.
@@ -290,7 +291,7 @@ export function registerUafmTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error searching UAFM repository: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error searching UAFM repository: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -341,7 +342,7 @@ export function registerUafmTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error fetching UAFM item ${uuid}: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error fetching UAFM item ${uuid}: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

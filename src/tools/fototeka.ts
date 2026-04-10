@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Fototeka (Filmoteka Narodowa — INA) — https://fototeka.fn.org.pl/
  * Portal fotosów i zdjęć z historii kina polskiego (~300k+ rekordów).
@@ -79,7 +80,7 @@ export function registerFototekaTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: HTML_HEADERS }, CACHE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling fototeka_search: ${msg}` }],
               isError: true,
@@ -122,7 +123,7 @@ export function registerFototekaTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: HTML_HEADERS }, CACHE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling fototeka_get_photo: ${msg}` }],
               isError: true,

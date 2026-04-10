@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * NAC — Narodowe Archiwum Cyfrowe (www.nac.gov.pl).
  *
@@ -59,7 +60,7 @@ export function registerNacTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, RSS_URL, { headers: RSS_HEADERS }, FEED_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling nac_news_rss: ${msg}` }],
               isError: true,
@@ -109,7 +110,7 @@ export function registerNacTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling nac_site_search: ${msg}` }],
               isError: true,
@@ -145,7 +146,7 @@ export function registerNacTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling nac_get_post: ${msg}` }],
               isError: true,
@@ -181,7 +182,7 @@ export function registerNacTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling nac_get_page: ${msg}` }],
               isError: true,

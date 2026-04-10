@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * AGH University of Krakow Repository (repo.agh.edu.pl).
  * 100 000+ records (theses, articles, technical reports, dissertations).
@@ -312,7 +313,7 @@ export function registerAghTools(server: McpServer, env: Env): void {
               );
               return { content: [{ type: "text", text: summarizeSearch(data) }] };
             } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
+              const msg = toToolErrorText(err);
               // Robustness fallback: some AGH discovery filter combos can return 404.
               // Retry with only core query/page/size/sort to keep the tool usable.
               if (/HTTP 404/i.test(msg) || /HTTP 400/i.test(msg)) {
@@ -341,7 +342,7 @@ export function registerAghTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error searching AGH repository: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error searching AGH repository: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -393,7 +394,7 @@ export function registerAghTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error fetching AGH item ${uuid}: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error fetching AGH item ${uuid}: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

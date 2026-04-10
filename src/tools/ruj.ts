@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * RUJ — Jagiellonian University Repository.
  * 300 000+ records (articles, monographs, dissertations, chapters).
@@ -377,7 +378,7 @@ export function registerRujTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error searching RUJ: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error searching RUJ: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -428,7 +429,7 @@ export function registerRujTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error fetching RUJ item ${uuid}: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error fetching RUJ item ${uuid}: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

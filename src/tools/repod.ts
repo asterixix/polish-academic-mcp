@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * RePOD — ICM University of Warsaw open research data repository.
  * Runs a CeON fork of Dataverse (branched from v4.11).
@@ -130,7 +131,7 @@ export function registerRepodTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error searching RePOD: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error searching RePOD: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -178,7 +179,7 @@ export function registerRepodTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error fetching RePOD dataset ${doi}: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error fetching RePOD dataset ${doi}: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

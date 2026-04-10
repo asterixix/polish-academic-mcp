@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Baza Legalnych Źródeł — Legalna Kultura (bazalegalnychzrodel.pl).
  * WordPress + CPT `listing` („Źródła”); publiczny REST bez klucza API.
@@ -89,7 +90,7 @@ export function registerBlzTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, CACHE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling blz_search: ${msg}` }],
               isError: true,
@@ -124,7 +125,7 @@ export function registerBlzTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, CACHE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling blz_get_listing: ${msg}` }],
               isError: true,
@@ -180,7 +181,7 @@ export function registerBlzTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, CACHE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling blz_listing_categories: ${msg}` }],
               isError: true,

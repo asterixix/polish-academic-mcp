@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * dane.gov.pl — Poland's national open data portal.
  * 43 000+ datasets from 500+ public institutions.
@@ -92,7 +93,7 @@ export function registerDaneTools(server: McpServer, env: Env): void {
               );
               return { content: [{ type: "text", text: data }] };
             } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
+              const msg = toToolErrorText(err);
               // Robustness fallback: some category values (labels vs IDs) cause 400.
               // Retry once without the category filter to keep search usable.
               if (category && /HTTP 400/i.test(msg)) {
@@ -121,7 +122,7 @@ export function registerDaneTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error searching dane.gov.pl: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error searching dane.gov.pl: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -198,7 +199,7 @@ export function registerDaneTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error fetching dane.gov.pl dataset ${dataset_id}: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error fetching dane.gov.pl dataset ${dataset_id}: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

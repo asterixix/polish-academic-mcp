@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Gapla — Galeria plakatu filmowego (Filmoteka Narodowa — Instytut Audiowizualny)
  * https://gapla.fn.org.pl/
@@ -77,7 +78,7 @@ export function registerGaplaTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error calling gapla_search: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error calling gapla_search: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -125,7 +126,7 @@ export function registerGaplaTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error calling gapla_get_poster: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error calling gapla_get_poster: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

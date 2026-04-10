@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Fototeka Śląska — Muzeum Wsi Opolskiej, https://fototekaslaska.pl/
  *
@@ -176,7 +177,7 @@ export function registerFototekaslaskaTools(server: McpServer, env: Env): void {
             };
             return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling fototekaslaska_search: ${msg}` }],
               isError: true,
@@ -241,7 +242,7 @@ export function registerFototekaslaskaTools(server: McpServer, env: Env): void {
             };
             return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling fototekaslaska_get_photo: ${msg}` }],
               isError: true,

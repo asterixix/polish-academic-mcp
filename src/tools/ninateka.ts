@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Ninateka — VOD Filmoteki Narodowej (FINA), https://ninateka.pl/
  *
@@ -88,7 +89,7 @@ export function registerNinatekaTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error calling ninateka_search: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error calling ninateka_search: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -141,7 +142,7 @@ export function registerNinatekaTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error calling ninateka_get_vod: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error calling ninateka_get_vod: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

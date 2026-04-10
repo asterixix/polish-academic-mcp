@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * ICM — Interdisciplinary Centre for Mathematical and Computational Modelling,
  * University of Warsaw — Open Research Data Repository (open.icm.edu.pl).
@@ -288,7 +289,7 @@ export function registerIcmTools(server: McpServer, env: Env): void {
               );
               return { content: [{ type: "text", text: summarizeSearch(data) }] };
             } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
+              const msg = toToolErrorText(err);
               if (/HTTP 404/i.test(msg) || /HTTP 400/i.test(msg)) {
                 span.setAttribute("mcp.fallback", "icm_search_core_query_only");
                 const fallbackParams = buildParams(false);
@@ -315,7 +316,7 @@ export function registerIcmTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error searching ICM repository: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error searching ICM repository: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -366,7 +367,7 @@ export function registerIcmTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error fetching ICM item ${uuid}: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error fetching ICM item ${uuid}: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

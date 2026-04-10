@@ -1,11 +1,12 @@
-﻿/**
- * Ludzie Nauki (ludzie.nauka.gov.pl) â€” publiczny rejestr profili naukowcĂłw (OPI / POLON).
+import { toToolErrorText } from "../tool-error-handling.js";
+/**
+ * Ludzie Nauki (ludzie.nauka.gov.pl) — publiczny rejestr profili naukowców (OPI / POLON).
  * SPA pod /ln/; REST: /api/profiles-api (bez klucza API).
  *
  * Tools:
- *   ludzie_search          â€” lista profili (paginacja, filtry nazwiskowe, dziedzina).
- *   ludzie_semantic_search â€” wyszukiwanie semantyczne (peĹ‚na fraza).
- *   ludzie_get_scientist   â€” ORCID, stopnie/tytuĹ‚y, sĹ‚owa kluczowe + link do profilu.
+ *   ludzie_search          — lista profili (paginacja, filtry nazwiskowe, dziedzina).
+ *   ludzie_semantic_search — wyszukiwanie semantyczne (pełna fraza).
+ *   ludzie_get_scientist   — ORCID, stopnie/tytuły, słowa kluczowe + link do profilu.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -17,7 +18,7 @@ import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 const API_BASE = "https://ludzie.nauka.gov.pl/api/profiles-api";
 const PROFILE_URL = "https://ludzie.nauka.gov.pl/ln/profile";
 const JSON_HEADERS = { Accept: "application/json" };
-const CACHE_TTL = 3_600; // 1 h â€” rejestr bywa aktualizowany
+const CACHE_TTL = 3_600; // 1 h — rejestr bywa aktualizowany
 
 const API_FIELDS = ["name", "institution", "discipline", "title", "orcid", "keywords"];
 
@@ -112,8 +113,8 @@ export function registerLudzieNaukiTools(server: McpServer, env: Env): void {
         .describe(
           "Scientific domain code from Polish classification, e.g. DZ0106N (exact sciences), DZ0105N (social sciences).",
         ),
-      page: z.number().int().min(0).default(0).describe("Page number â€” 0-based"),
-      size: z.number().int().min(1).max(50).default(10).describe("Results per page (1â€“50)"),
+      page: z.number().int().min(0).default(0).describe("Page number — 0-based"),
+      size: z.number().int().min(1).max(50).default(10).describe("Results per page (1–50)"),
       include_deceased: z
         .boolean()
         .default(false)
@@ -170,7 +171,7 @@ export function registerLudzieNaukiTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error ludzie_search: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error ludzie_search: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -187,7 +188,7 @@ export function registerLudzieNaukiTools(server: McpServer, env: Env): void {
       "Semantic / full-text-style search of Ludzie Nauki profiles (ludzie.nauka.gov.pl).",
       "Use for research topics, keywords, or natural-language queries (not only surnames).",
       "Returns a ranked list of profiles with profileId (for ludzie_get_scientist) and profile URLs.",
-      "Large responses are truncated in the summary â€” narrow full_query if you need exhaustive lists.",
+      "Large responses are truncated in the summary — narrow full_query if you need exhaustive lists.",
     ].join(" "),
     {
       full_query: z
@@ -243,7 +244,7 @@ export function registerLudzieNaukiTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error ludzie_semantic_search: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error ludzie_semantic_search: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -332,7 +333,7 @@ export function registerLudzieNaukiTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error ludzie_get_scientist: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error ludzie_get_scientist: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

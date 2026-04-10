@@ -10,8 +10,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
-import { cachedFetch, makeCacheKey } from "../cache.js";
+import { cachedFetch, makeCacheKey, type CacheError } from "../cache.js";
 import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
+import {
+  createToolErrorReport,
+  formatToolErrorResponse,
+  recordErrorToSpan,
+} from "../tool-error-handling.js";
 
 const API_BASE = "http://www.pauart.pl/api";
 const SEARCH_URL = `${API_BASE}/search`;
@@ -163,16 +168,25 @@ export function registerPauartTools(server: McpServer, env: Env): void {
               CACHE_TTL,
             );
             return { content: [{ type: "text", text: summarizeSearch(data, artworks_only) }] };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error pauart_search: ${e instanceof Error ? e.message : String(e)}`,
-                },
-              ],
-              isError: true,
-            };
+          } catch (err) {
+            const report = createToolErrorReport(err, {
+              toolName: "pauart_search",
+              operation: "POST /api/search",
+              url: SEARCH_URL,
+              params: { query, page, size, artworks_only },
+              responseBody:
+                err instanceof Error && "responseBody" in err
+                  ? (err as CacheError).responseBody
+                  : undefined,
+              httpStatus:
+                err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
+              headers:
+                err instanceof Error && "headers" in err
+                  ? (err as CacheError).headers
+                  : undefined,
+            });
+            recordErrorToSpan(span, report);
+            return formatToolErrorResponse(report, true);
           }
         },
       );
@@ -215,16 +229,25 @@ export function registerPauartTools(server: McpServer, env: Env): void {
               CACHE_TTL,
             );
             return { content: [{ type: "text", text: summarizeArtwork(data) }] };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error pauart_get_artwork: ${e instanceof Error ? e.message : String(e)}`,
-                },
-              ],
-              isError: true,
-            };
+          } catch (err) {
+            const report = createToolErrorReport(err, {
+              toolName: "pauart_get_artwork",
+              operation: "POST /api/search",
+              url: SEARCH_URL,
+              params: { artwork_id },
+              responseBody:
+                err instanceof Error && "responseBody" in err
+                  ? (err as CacheError).responseBody
+                  : undefined,
+              httpStatus:
+                err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
+              headers:
+                err instanceof Error && "headers" in err
+                  ? (err as CacheError).headers
+                  : undefined,
+            });
+            recordErrorToSpan(span, report);
+            return formatToolErrorResponse(report, true);
           }
         },
       );

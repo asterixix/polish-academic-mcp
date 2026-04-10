@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Polski Komitet Normalizacyjny (PKN) — main site www.pkn.pl (Drupal + Search API / Solr).
  *
@@ -83,7 +84,7 @@ export function registerPknTools(server: McpServer, env: Env): void {
             );
             return { content: [{ type: "text", text: html }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling pkn_search: ${msg}` }],
               isError: true,

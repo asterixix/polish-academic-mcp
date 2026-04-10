@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * ISAP — Internetowy System Aktów Prawnych (browse via ELI API).
  * Public read API: https://api.sejm.gov.pl/eli (no key). Web UI may show CAPTCHA;
@@ -189,7 +190,7 @@ export function registerIsapTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, SEARCH_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling isap_search_acts: ${msg}` }],
               isError: true,
@@ -231,7 +232,7 @@ export function registerIsapTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, ACT_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling isap_get_act: ${msg}` }],
               isError: true,

@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Dokumenty Śląska — https://www.dokumentyslaska.pl/
  * Edycja Wiesława Długosza: dokumenty, regesty, heraldyka, materiały ikonograficzne (Śląsk).
@@ -107,7 +108,7 @@ export function registerDokumentySlaskaTools(server: McpServer, env: Env): void 
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: HTML_HEADERS }, CACHE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling dokumenty_slaska_get_page: ${msg}` }],
               isError: true,

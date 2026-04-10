@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * GUS Bank Danych Lokalnych (BDL) — regional and national statistics (BDL web UI: bdl.stat.gov.pl).
  * REST API v1: https://bdl.stat.gov.pl/api/v1/ — JSON/XML, OpenAPI at .../swagger/doc/swagger.json
@@ -122,7 +123,7 @@ export function registerBdlTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: bdlHeaders(env) }, SEARCH_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling bdl_search_subjects: ${msg}` }],
               isError: true,
@@ -212,7 +213,7 @@ export function registerBdlTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: bdlHeaders(env) }, SEARCH_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling bdl_search_variables: ${msg}` }],
               isError: true,
@@ -292,7 +293,7 @@ export function registerBdlTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: bdlHeaders(env) }, SEARCH_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling bdl_search_units: ${msg}` }],
               isError: true,
@@ -333,7 +334,7 @@ export function registerBdlTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: bdlHeaders(env) }, SEARCH_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling bdl_get_variable: ${msg}` }],
               isError: true,
@@ -439,7 +440,7 @@ export function registerBdlTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: bdlHeaders(env) }, DATA_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling bdl_get_data_by_variable: ${msg}` }],
               isError: true,
@@ -522,7 +523,7 @@ export function registerBdlTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: bdlHeaders(env) }, DATA_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling bdl_get_data_by_unit: ${msg}` }],
               isError: true,

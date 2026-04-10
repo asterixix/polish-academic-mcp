@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * RCIN — Repozytorium Cyfrowe Instytutów Naukowych (Digital Repository of Scientific Institutes).
  * Public API: OAI-PMH 2.0 at /oai-pmh-repository.xml (no authentication).
@@ -96,7 +97,7 @@ export function registerRcinTools(server: McpServer, env: Env): void {
             const xml = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
             return { content: [{ type: "text", text: xml }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling rcin_search: ${msg}` }],
               isError: true,
@@ -146,7 +147,7 @@ export function registerRcinTools(server: McpServer, env: Env): void {
             const xml = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
             return { content: [{ type: "text", text: xml }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling rcin_get_record: ${msg}` }],
               isError: true,

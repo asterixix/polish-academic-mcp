@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * RODBuK — Krakow inter-university open research data repository.
  * Powered by Harvard Dataverse.  Six member universities.
@@ -125,7 +126,7 @@ export function registerRodbukTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error searching RODBuK: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error searching RODBuK: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

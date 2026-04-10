@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * BazTOL — subject gateway of Polish technical-science web resources (Biblioteka PUT).
  * Web UI: https://baztol.library.put.poznan.pl/ — no public JSON API; the MCP tools replay
@@ -94,7 +95,7 @@ export function registerBaztolTools(server: McpServer, env: Env): void {
             );
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling baztol_search: ${msg}` }],
               isError: true,
@@ -166,7 +167,7 @@ export function registerBaztolTools(server: McpServer, env: Env): void {
             );
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling baztol_browse_domain: ${msg}` }],
               isError: true,
@@ -205,7 +206,7 @@ export function registerBaztolTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: { Accept: HTML_ACCEPT } }, CACHE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling baztol_get_resource: ${msg}` }],
               isError: true,

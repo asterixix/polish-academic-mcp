@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * IMGW — Institute of Meteorology and Water Management (danepubliczne.imgw.pl).
  * Public REST API providing current synoptic, hydrological, and meteorological data
@@ -82,7 +83,7 @@ export function registerImgwTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error fetching IMGW synoptic data: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error fetching IMGW synoptic data: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -125,7 +126,7 @@ export function registerImgwTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error fetching IMGW hydrological data: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error fetching IMGW hydrological data: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -168,7 +169,7 @@ export function registerImgwTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error fetching IMGW meteorological data: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error fetching IMGW meteorological data: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -230,7 +231,7 @@ export function registerImgwTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error fetching IMGW warnings: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error fetching IMGW warnings: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

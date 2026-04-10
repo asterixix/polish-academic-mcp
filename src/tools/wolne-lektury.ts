@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Wolne Lektury — public JSON API (no key).
  * Docs: https://wolnelektury.pl/api/
@@ -87,7 +88,7 @@ export function registerWolneLekturyTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, BOOK_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling wolnelektury_get_book: ${msg}` }],
               isError: true,
@@ -125,7 +126,7 @@ export function registerWolneLekturyTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, BOOK_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling wolnelektury_get_collection: ${msg}` }],
               isError: true,
@@ -187,7 +188,7 @@ export function registerWolneLekturyTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, FILTER_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling wolnelektury_filter_books: ${msg}` }],
               isError: true,
@@ -226,7 +227,7 @@ export function registerWolneLekturyTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, TAXONOMY_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling wolnelektury_list_taxonomy: ${msg}` }],
               isError: true,

@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * POL-on public registry data via RAD-on Open Data API (no API key).
  * Base: https://radon.nauka.gov.pl/opendata/polon
@@ -212,7 +213,7 @@ export function registerPolonTools(server: McpServer, env: Env): void {
             );
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling polon_search: ${msg}` }],
               isError: true,

@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Biblioteka Sejmowa — katalog OPAC (Aleph) pod https://bs.sejm.gov.pl/F
  *
@@ -102,7 +103,7 @@ export function registerSejmBsTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error calling bs_sejm_search: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error calling bs_sejm_search: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,
@@ -178,7 +179,7 @@ export function registerSejmBsTools(server: McpServer, env: Env): void {
               content: [
                 {
                   type: "text",
-                  text: `Error calling bs_sejm_get_item: ${e instanceof Error ? e.message : String(e)}`,
+                  text: `Error calling bs_sejm_get_item: ${toToolErrorText(e)}`,
                 },
               ],
               isError: true,

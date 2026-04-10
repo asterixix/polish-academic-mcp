@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Repozytorium Cyfrowe Filmoteki Narodowej — https://repozytorium.fn.org.pl/
  *
@@ -97,7 +98,7 @@ export function registerFilmotekaRepoTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: { Accept: HTML_ACCEPT } }, SEARCH_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling fn_repo_search: ${msg}` }],
               isError: true,
@@ -138,7 +139,7 @@ export function registerFilmotekaRepoTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: { Accept: HTML_ACCEPT } }, PAGE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling fn_repo_get_node: ${msg}` }],
               isError: true,
@@ -186,7 +187,7 @@ export function registerFilmotekaRepoTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: { Accept: HTML_ACCEPT } }, PAGE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling fn_repo_film_index: ${msg}` }],
               isError: true,
@@ -229,7 +230,7 @@ export function registerFilmotekaRepoTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: { Accept: HTML_ACCEPT } }, PAGE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling fn_repo_browse_kind: ${msg}` }],
               isError: true,

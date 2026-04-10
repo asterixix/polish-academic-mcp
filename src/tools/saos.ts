@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * SAOS — System Analizy Orzeczeń Sądowych (public JSON API, no key).
  *
@@ -256,7 +257,7 @@ export function registerSaosTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, SEARCH_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling saos_search_judgments: ${msg}` }],
               isError: true,
@@ -304,7 +305,7 @@ export function registerSaosTools(server: McpServer, env: Env): void {
             );
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling saos_get_judgment: ${msg}` }],
               isError: true,
@@ -341,7 +342,7 @@ export function registerSaosTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, DUMP_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling saos_dump_services: ${msg}` }],
               isError: true,
@@ -392,7 +393,7 @@ export function registerSaosTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, DUMP_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling saos_dump_common_courts: ${msg}` }],
               isError: true,
@@ -431,7 +432,7 @@ export function registerSaosTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, DUMP_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling saos_dump_sc_chambers: ${msg}` }],
               isError: true,
@@ -517,7 +518,7 @@ export function registerSaosTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, DUMP_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling saos_dump_judgments: ${msg}` }],
               isError: true,
@@ -556,7 +557,7 @@ export function registerSaosTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, DUMP_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling saos_dump_enrichments: ${msg}` }],
               isError: true,

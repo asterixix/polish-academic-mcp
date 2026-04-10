@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Śląski Uniwersytet Medyczny (SUM) — library catalogue (Aleph / Ex Libris).
  * OPAC: https://katalog.sum.edu.pl/
@@ -73,7 +74,7 @@ export function registerSumTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: XML_HEADERS }, CACHE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling sum_aleph_find: ${msg}` }],
               isError: true,
@@ -133,7 +134,7 @@ export function registerSumTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: XML_HEADERS }, CACHE_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling sum_aleph_present: ${msg}` }],
               isError: true,

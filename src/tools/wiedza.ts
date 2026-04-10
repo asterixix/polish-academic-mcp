@@ -1,3 +1,4 @@
+import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * Portal WIEDZA (wiedza.pkn.pl) — wyszukiwarka Polskich Norm i powiązanych dokumentów.
  * Backend: Liferay 6.1; brak publicznego JSON API — używany jest formularz portletu
@@ -277,7 +278,7 @@ export function registerWiedzaTools(server: McpServer, _env: Env): void {
             const out = await res.text();
             return { content: [{ type: "text", text: out }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling wiedza_search_norms: ${msg}` }],
               isError: true,
@@ -343,7 +344,7 @@ export function registerWiedzaTools(server: McpServer, _env: Env): void {
             const out = await res.text();
             return { content: [{ type: "text", text: out }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = toToolErrorText(err);
             return {
               content: [{ type: "text", text: `Error calling wiedza_get_standard: ${msg}` }],
               isError: true,

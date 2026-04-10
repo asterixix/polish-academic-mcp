@@ -13,8 +13,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
-import { cachedFetch, makeCacheKey } from "../cache.js";
+import { cachedFetch, makeCacheKey, type CacheError } from "../cache.js";
 import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
+import {
+  createToolErrorReport,
+  recordErrorToSpan,
+  formatToolErrorResponse,
+} from "../tool-error-handling.js";
 
 const API_BASE = "https://pbn.nauka.gov.pl/api/v1";
 const SEARCH_TTL = 3_600;
@@ -99,9 +104,14 @@ export function registerPbnTools(server: McpServer, env: Env): void {
         },
         async (span) => {
           span.setAttribute("mcp.source", "pbn");
-          const { headers, error } = requirePbnHeaders(env, true);
-          if (error) {
-            return { content: [{ type: "text", text: `Error calling pbn_search_publications: ${error}` }], isError: true };
+          const { headers, error: authError } = requirePbnHeaders(env, true);
+          if (authError) {
+            const report = createToolErrorReport(new Error(authError), {
+              toolName: "pbn_search_publications",
+              operation: "Authentication validation",
+            });
+            recordErrorToSpan(span, report);
+            return formatToolErrorResponse(report, true);
           }
           try {
             const body = prune({
@@ -129,11 +139,21 @@ export function registerPbnTools(server: McpServer, env: Env): void {
             );
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            return {
-              content: [{ type: "text", text: `Error calling pbn_search_publications: ${msg}` }],
-              isError: true,
-            };
+            const report = createToolErrorReport(err, {
+              toolName: "pbn_search_publications",
+              operation: "POST /v1/search/publications",
+              url: `${API_BASE}/search/publications`,
+              params: {
+                title: params.title,
+                doi: params.doi,
+                type: params.type,
+              },
+              responseBody: err instanceof Error && "responseBody" in err ? (err as CacheError).responseBody : undefined,
+              httpStatus: err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
+              headers: err instanceof Error && "headers" in err ? (err as CacheError).headers : undefined,
+            });
+            recordErrorToSpan(span, report);
+            return formatToolErrorResponse(report, true);
           }
         },
       );
@@ -166,9 +186,14 @@ export function registerPbnTools(server: McpServer, env: Env): void {
         },
         async (span) => {
           span.setAttribute("mcp.source", "pbn");
-          const { headers, error } = requirePbnHeaders(env, true);
-          if (error) {
-            return { content: [{ type: "text", text: `Error calling pbn_search_persons: ${error}` }], isError: true };
+          const { headers, error: authError } = requirePbnHeaders(env, true);
+          if (authError) {
+            const report = createToolErrorReport(new Error(authError), {
+              toolName: "pbn_search_persons",
+              operation: "Authentication validation",
+            });
+            recordErrorToSpan(span, report);
+            return formatToolErrorResponse(report, true);
           }
           try {
             const body = prune({
@@ -190,11 +215,21 @@ export function registerPbnTools(server: McpServer, env: Env): void {
             );
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            return {
-              content: [{ type: "text", text: `Error calling pbn_search_persons: ${msg}` }],
-              isError: true,
-            };
+            const report = createToolErrorReport(err, {
+              toolName: "pbn_search_persons",
+              operation: "POST /v1/search/persons",
+              url: `${API_BASE}/search/persons`,
+              params: {
+                first_name: params.first_name,
+                last_name: params.last_name,
+                orcid: params.orcid,
+              },
+              responseBody: err instanceof Error && "responseBody" in err ? (err as CacheError).responseBody : undefined,
+              httpStatus: err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
+              headers: err instanceof Error && "headers" in err ? (err as CacheError).headers : undefined,
+            });
+            recordErrorToSpan(span, report);
+            return formatToolErrorResponse(report, true);
           }
         },
       );
@@ -224,7 +259,12 @@ export function registerPbnTools(server: McpServer, env: Env): void {
           span.setAttribute("mcp.source", "pbn");
           const { headers, error } = requirePbnHeaders(env, false);
           if (error) {
-            return { content: [{ type: "text", text: `Error calling pbn_get_publication: ${error}` }], isError: true };
+            const report = createToolErrorReport(new Error(error), {
+              toolName: "pbn_get_publication",
+              operation: "Authentication validation",
+            });
+            recordErrorToSpan(span, report);
+            return formatToolErrorResponse(report, true);
           }
           try {
             const path = encodeURIComponent(publication_id);
@@ -233,11 +273,24 @@ export function registerPbnTools(server: McpServer, env: Env): void {
             const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { method: "GET", headers }, GET_TTL);
             return { content: [{ type: "text", text }] };
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            return {
-              content: [{ type: "text", text: `Error calling pbn_get_publication: ${msg}` }],
-              isError: true,
-            };
+            const report = createToolErrorReport(err, {
+              toolName: "pbn_get_publication",
+              operation: "GET /v1/publications/id/{id}",
+              url: `${API_BASE}/publications/id/${encodeURIComponent(publication_id)}`,
+              params: { publication_id },
+              responseBody:
+                err instanceof Error && "responseBody" in err
+                  ? (err as CacheError).responseBody
+                  : undefined,
+              httpStatus:
+                err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
+              headers:
+                err instanceof Error && "headers" in err
+                  ? (err as CacheError).headers
+                  : undefined,
+            });
+            recordErrorToSpan(span, report);
+            return formatToolErrorResponse(report, true);
           }
         },
       );

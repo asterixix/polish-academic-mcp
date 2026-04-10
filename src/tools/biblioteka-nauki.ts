@@ -13,8 +13,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
-import { cachedFetch, makeCacheKey } from "../cache.js";
+import { cachedFetch, makeCacheKey, type CacheError } from "../cache.js";
 import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
+import {
+  createToolErrorReport,
+  recordErrorToSpan,
+  formatToolErrorResponse,
+} from "../tool-error-handling.js";
 
 const OAI_BASE = "https://bibliotekanauki.pl/api/oai/articles";
 /** Public website search API (JSON). Supports full-text `generalSearchString`; not documented on OAI-PMH page. */
@@ -210,16 +215,25 @@ export function registerBibliotekaTools(server: McpServer, env: Env): void {
               SEARCH_CACHE_TTL,
             );
             return { content: [{ type: "text", text }] };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error calling bn_search_publications: ${e instanceof Error ? e.message : String(e)}`,
-                },
-              ],
-              isError: true,
-            };
+          } catch (err) {
+            const report = createToolErrorReport(err, {
+              toolName: "bn_search_publications",
+              operation: "POST /api/search",
+              url: SEARCH_API,
+              params: {
+                query,
+                page,
+                page_size,
+                sort_field,
+                sort_direction,
+                publication_types,
+              },
+              responseBody: err instanceof Error && "responseBody" in err ? (err as CacheError).responseBody : undefined,
+              httpStatus: err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
+              headers: err instanceof Error && "headers" in err ? (err as CacheError).headers : undefined,
+            });
+            recordErrorToSpan(span, report);
+            return formatToolErrorResponse(report, true);
           }
         },
       );
@@ -313,16 +327,18 @@ export function registerBibliotekaTools(server: McpServer, env: Env): void {
             return {
               content: [{ type: "text", text: minimize_pii ? scrubPiiXml(xml) : xml }],
             };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error fetching Biblioteka Nauki: ${e instanceof Error ? e.message : String(e)}`,
-                },
-              ],
-              isError: true,
-            };
+          } catch (err) {
+            const report = createToolErrorReport(err, {
+              toolName: "bn_search_articles",
+              operation: "OAI-PMH ListRecords",
+              url: OAI_BASE,
+              params: { from_date, until_date, set, metadata_format },
+              responseBody: err instanceof Error && "responseBody" in err ? (err as CacheError).responseBody : undefined,
+              httpStatus: err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
+              headers: err instanceof Error && "headers" in err ? (err as CacheError).headers : undefined,
+            });
+            recordErrorToSpan(span, report);
+            return formatToolErrorResponse(report, true);
           }
         },
       );
@@ -368,16 +384,18 @@ export function registerBibliotekaTools(server: McpServer, env: Env): void {
             const cacheKey = makeCacheKey("bn_article", { article_id, metadata_format });
             const xml = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
             return { content: [{ type: "text", text: xml }] };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error fetching article ${article_id}: ${e instanceof Error ? e.message : String(e)}`,
-                },
-              ],
-              isError: true,
-            };
+          } catch (err) {
+            const report = createToolErrorReport(err, {
+              toolName: "bn_get_article",
+              operation: "OAI-PMH GetRecord",
+              url: OAI_BASE,
+              params: { article_id, metadata_format },
+              responseBody: err instanceof Error && "responseBody" in err ? (err as CacheError).responseBody : undefined,
+              httpStatus: err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
+              headers: err instanceof Error && "headers" in err ? (err as CacheError).headers : undefined,
+            });
+            recordErrorToSpan(span, report);
+            return formatToolErrorResponse(report, true);
           }
         },
       );
