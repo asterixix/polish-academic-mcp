@@ -2,6 +2,14 @@
   "name": "polish-academic-mcp",
   "version": "1.0.1",
   "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/asterixix/polish-academic-mcp.git"
+  },
+  "homepage": "https://github.com/asterixix/polish-academic-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/asterixix/polish-academic-mcp/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -46,8 +54,7 @@
     "eval:cuda": "python scripts/eval/cuda_batch.py --model meta-llama/Llama-3.1-8B-Instruct",
     "eval:cuda:compare": "python scripts/eval/cuda_batch.py --models meta-llama/Llama-3.1-8B-Instruct speakleash/Bielik-7B-Instruct-v0.1",
     "eval:ts": "npx tsx scripts/eval/runner.ts",
-    "eval:ts:remote": "npx tsx scripts/eval/runner.ts --url http://localhost:8787",
-    "prepare": "npm run build"
+    "eval:ts:remote": "npx tsx scripts/eval/runner.ts --url http://localhost:8787"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

@@ -35,8 +35,8 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number.parseInt(n, 10)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)));
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number.parseInt(n, 10)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(Number.parseInt(h, 16)));
 }
 
 function stripToPlain(html: string): string {
@@ -50,21 +50,19 @@ function stripToPlain(html: string): string {
 }
 
 function extractArticleHtml(page: string): string | undefined {
-  const m = /<article id="(?:film|osoba)">([\s\S]*?)<\/article>/i.exec(page);
+  const m = page.match(/<article id="(?:film|osoba)">([\s\S]*?)<\/article>/i);
   return m?.[1];
 }
 
 function parsePeopleList(inner: string): Array<{ id: string; label: string; hint?: string }> {
   const out: Array<{ id: string; label: string; hint?: string }> = [];
   const liRe = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
-  let lm: RegExpExecArray | null;
-  while ((lm = liRe.exec(inner)) !== null) {
-    const li = lm[1];
-    const hint = /<div class="rodzajfilmu">([^<]*)<\/div>/i.exec(li)?.[1]?.trim();
+  for (const lm of inner.matchAll(liRe)) {
+    const li = lm[1] ?? "";
+    const hint = li.match(/<div class="rodzajfilmu">([^<]*)<\/div>/i)?.[1]?.trim();
     const linkRe = /<a href="index\.php\/(\d+)"[^>]*>([^<]*)<\/a>/gi;
     let last: { id: string; label: string } | undefined;
-    let m: RegExpExecArray | null;
-    while ((m = linkRe.exec(li)) !== null) {
+    for (const m of li.matchAll(linkRe)) {
       const label = decodeEntities(m[2]).trim();
       if (label.length > 0) last = { id: m[1], label };
     }
@@ -80,14 +78,12 @@ function parsePeopleList(inner: string): Array<{ id: string; label: string; hint
 function parseFilmsList(inner: string): Array<{ id: string; title: string; details?: string }> {
   const out: Array<{ id: string; title: string; details?: string }> = [];
   const liRe = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
-  let lm: RegExpExecArray | null;
-  while ((lm = liRe.exec(inner)) !== null) {
-    const li = lm[1];
-    const details = /<div class="rodzajfilmu">([^<]*)<\/div>/i.exec(li)?.[1]?.trim();
+  for (const lm of inner.matchAll(liRe)) {
+    const li = lm[1] ?? "";
+    const details = li.match(/<div class="rodzajfilmu">([^<]*)<\/div>/i)?.[1]?.trim();
     const linkRe = /<a href="index\.php\/(\d+)"[^>]*>([^<]*)<\/a>/gi;
     let last: { id: string; title: string } | undefined;
-    let m: RegExpExecArray | null;
-    while ((m = linkRe.exec(li)) !== null) {
+    for (const m of li.matchAll(linkRe)) {
       const title = decodeEntities(m[2]).trim();
       if (title.length > 0) last = { id: m[1], title };
     }
@@ -108,8 +104,8 @@ function parseSearchPage(html: string): {
   if (/<b>\s*Nic nie znalazłem\s*<\/b>/i.test(html)) {
     return { people: [], films: [], emptyMessage: "Nic nie znalazłem" };
   }
-  const peopleBlock = /<ul class="wynikiszukania wynikiszukaniaosoba">([\s\S]*?)<\/ul>/i.exec(html);
-  const filmsBlock = /<ul class="wynikiszukania">([\s\S]*?)<\/ul>/i.exec(html);
+  const peopleBlock = html.match(/<ul class="wynikiszukania wynikiszukaniaosoba">([\s\S]*?)<\/ul>/i);
+  const filmsBlock = html.match(/<ul class="wynikiszukania">([\s\S]*?)<\/ul>/i);
   const people = peopleBlock ? parsePeopleList(peopleBlock[1]) : [];
   const films = filmsBlock ? parseFilmsList(filmsBlock[1]) : [];
   return { people, films };

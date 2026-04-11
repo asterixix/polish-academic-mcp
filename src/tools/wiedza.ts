@@ -46,13 +46,13 @@ function collectCookieHeader(headers: Headers): string {
 }
 
 function parseAuthToken(html: string): string | null {
-  const m = /Liferay\.authToken = '([^']+)'/.exec(html);
+  const m = html.match(/Liferay\.authToken = '([^']+)'/);
   return m?.[1] ?? null;
 }
 
 function parseFormDate(html: string): string | null {
   const esc = PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const m = new RegExp(`name="${esc}_formDate" type="hidden" value="(\\d+)"`).exec(html);
+  const m = html.match(new RegExp(`name="${esc}_formDate" type="hidden" value="(\\d+)"`));
   return m?.[1] ?? null;
 }
 

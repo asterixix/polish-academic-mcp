@@ -38,8 +38,8 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number.parseInt(n, 10)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)));
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number.parseInt(n, 10)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(Number.parseInt(h, 16)));
 }
 
 function stripToPlain(html: string): string {
@@ -57,14 +57,14 @@ function parseSearchList(html: string): {
   empty_message?: string;
 } {
   if (/\bclass="result-empty"/.test(html) || /\bNic nie znaleziono\b/i.test(html)) {
-    const m = /<div class="result-empty">\s*([^<]+)/i.exec(html);
+    const m = html.match(/<div class="result-empty">\s*([^<]+)/i);
     return {
       items: [],
       empty_message: m?.[1]?.replace(/\s+/g, " ").trim() ?? "Nic nie znaleziono.",
     };
   }
 
-  const block = /<div class="search-list">([\s\S]*?)<h3 class="serch-recently-added">/i.exec(html);
+  const block = html.match(/<div class="search-list">([\s\S]*?)<h3 class="serch-recently-added">/i);
   if (!block) {
     return { items: [], empty_message: "Brak sekcji wyników (nieznany układ strony)." };
   }
@@ -72,16 +72,15 @@ function parseSearchList(html: string): {
   const inner = block[1];
   const items: Array<{ slug: string; url: string; caption: string; image_url?: string }> = [];
   const liRe = /<div class="gallery-listing-single">\s*<a href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>\s*<\/div>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = liRe.exec(inner)) !== null) {
+  for (const m of inner.matchAll(liRe)) {
     const url = m[1];
-    const slugMatch = /\/galeria\/([^/]+)\/?/.exec(url);
+    const slugMatch = url.match(/\/galeria\/([^/]+)\/?/);
     if (!slugMatch) continue;
     const slug = slugMatch[1];
     const body = m[2];
     const img =
-      /data-src="(https?:\/\/[^"]+)"/i.exec(body)?.[1] ?? /<img[^>]*src="(https?:\/\/[^"]+)"/i.exec(body)?.[1];
-    const cap = /<div class="gallery-listing-details">\s*([^<]+)/i.exec(body)?.[1];
+      body.match(/data-src="(https?:\/\/[^\"]+)"/i)?.[1] ?? body.match(/<img[^>]*src="(https?:\/\/[^\"]+)"/i)?.[1];
+    const cap = body.match(/<div class="gallery-listing-details">\s*([^<]+)/i)?.[1];
     const caption = cap ? decodeEntities(cap).replace(/\s+/g, " ").trim() : "";
     const row: { slug: string; url: string; caption: string; image_url?: string } = {
       slug,
@@ -101,14 +100,14 @@ function parsePhotoPage(html: string): {
   image_url?: string;
   details_text: string;
 } {
-  const title = /<div class="[^"]*\bsingle-gallery\b[^"]*"[^>]*>\s*<h2>([^<]+)<\/h2>/i.exec(html)?.[1]?.trim();
-  const catalog_note = /<p class="single-gallery-n">([^<]+)<\/p>/i.exec(html)?.[1]?.trim();
+  const title = html.match(/<div class="[^"]*\bsingle-gallery\b[^"]*"[^>]*>\s*<h2>([^<]+)<\/h2>/i)?.[1]?.trim();
+  const catalog_note = html.match(/<p class="single-gallery-n">([^<]+)<\/p>/i)?.[1]?.trim();
   const image_url =
-    /<a class="gallery-listing-box[^"]*" href="(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp))"/i.exec(html)?.[1] ??
-    /<img class="lazy single-gallery-image"[^>]*data-src="(https?:\/\/[^"]+)"/i.exec(html)?.[1];
+    html.match(/<a class="gallery-listing-box[^"]*" href="(https?:\/\/[^\"]+\.(?:jpg|jpeg|png|webp))"/i)?.[1] ??
+    html.match(/<img class="lazy single-gallery-image"[^>]*data-src="(https?:\/\/[^\"]+)"/i)?.[1];
 
   const detailsHtml =
-    /<div class="single-gallery-details">([\s\S]*?)<\/div>/i.exec(html)?.[1] ?? "";
+    html.match(/<div class="single-gallery-details">([\s\S]*?)<\/div>/i)?.[1] ?? "";
   let details_text = stripToPlain(detailsHtml);
   if (details_text.length > MAX_DETAIL_CHARS) {
     details_text = `${details_text.slice(0, MAX_DETAIL_CHARS)}… [truncated]`;
