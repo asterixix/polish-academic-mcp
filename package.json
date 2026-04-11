@@ -1,23 +1,38 @@
 {
   "name": "polish-academic-mcp",
-  "version": "1.0.0",
-  "private": true,
+  "version": "1.0.1",
+  "private": false,
   "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "polish-academic-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "types": "wrangler types",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "bundle:mcpb": "node -e \"require('fs').mkdirSync('release',{recursive:true})\" && npm run build && npx -y @anthropic-ai/mcpb pack . release/polish-academic-mcp.mcpb",
+    "release": "node scripts/release.mjs",
+    "release:dry-run": "node scripts/release.mjs --dry-run",
     "lint": "oxlint src/",
     "lint:fix": "oxlint src/ --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "node --import tsx --test tests/tool-error-handling.test.ts",
+    "smoke:tools": "node --import tsx scripts/smoke-tools.ts --timeout-ms 30000 --stop-after-failures 30",
+    "smoke:tools:quick": "node --import tsx scripts/smoke-tools.ts --max-tools 20 --timeout-ms 15000 --stop-after-failures 10",
+    "prepublishOnly": "npm run build",
     "eval": "python scripts/eval/evaluator.py",
     "eval:rq1": "python scripts/eval/evaluator.py --rq RQ1",
     "eval:rq2": "python scripts/eval/evaluator.py --rq RQ2",
     "eval:rq3": "python scripts/eval/evaluator.py --rq RQ3",
     "eval:local": "python scripts/eval/evaluator.py --url http://localhost:8787/mcp",
-    "eval:remote": "python scripts/eval/evaluator.py --url https://polish-academic-mcp.kolpol25.workers.dev/mcp",
+    "eval:remote": "python scripts/eval/evaluator.py --url http://localhost:8787/mcp",
     "eval:summary": "python scripts/eval/evaluator.py --summary",
     "eval:export": "python scripts/eval/evaluator.py --export-json",
     "eval:llm": "python scripts/eval/evaluator.py --model anthropic/claude-3.5-sonnet",
@@ -31,19 +46,16 @@
     "eval:cuda": "python scripts/eval/cuda_batch.py --model meta-llama/Llama-3.1-8B-Instruct",
     "eval:cuda:compare": "python scripts/eval/cuda_batch.py --models meta-llama/Llama-3.1-8B-Instruct speakleash/Bielik-7B-Instruct-v0.1",
     "eval:ts": "npx tsx scripts/eval/runner.ts",
-    "eval:ts:remote": "npx tsx scripts/eval/runner.ts --url https://polish-academic-mcp.kolpol25.workers.dev/mcp",
-    "d1:migrate:local": "wrangler d1 migrations apply polish-academic-eval-log --local",
-    "d1:migrate:remote": "wrangler d1 migrations apply polish-academic-eval-log --remote"
+    "eval:ts:remote": "npx tsx scripts/eval/runner.ts --url http://localhost:8787",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "1.26.0",
     "@opentelemetry/api": "^1.9.0",
-    "agents": "^0.6.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250224.0",
     "@openrouter/ai-sdk-provider": "^0.4.0",
     "@types/node": "^22.19.15",
     "cross-env": "^7.0.3",
@@ -51,7 +63,6 @@
     "oxlint": "^1.57.0",
     "prettier": "^3.8.1",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "wrangler": "^4.0.0"
+    "typescript": "^5.7.0"
   }
 }

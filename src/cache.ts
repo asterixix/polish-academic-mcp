@@ -1,9 +1,7 @@
 /**
- * Fetch a URL with KV-backed caching and structured error reporting.
+ * Fetch a URL with cache-backed caching and structured error reporting.
  *
- * Cache writes are fire-and-forget to avoid burning the 1,000 writes/day free
- * tier budget on errors. The caller always gets fresh data on a cache miss.
- * 
+ * Cache writes are fire-and-forget so callers always get fresh data on a miss.
  * On HTTP errors, includes full response headers and body (truncated) for debugging.
  */
 export interface CacheError extends Error {
@@ -14,8 +12,49 @@ export interface CacheError extends Error {
   responseBody?: string;
 }
 
+export interface CacheStore {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  delete?(key: string): Promise<void>;
+}
+
+interface CacheEntry {
+  value: string;
+  expiresAtMs?: number;
+}
+
+class MemoryCacheStore implements CacheStore {
+  private readonly entries = new Map<string, CacheEntry>();
+
+  async get(key: string): Promise<string | null> {
+    const entry = this.entries.get(key);
+    if (!entry) return null;
+    if (entry.expiresAtMs !== undefined && entry.expiresAtMs <= Date.now()) {
+      this.entries.delete(key);
+      return null;
+    }
+    return entry.value;
+  }
+
+  async put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> {
+    const expiresAtMs =
+      typeof options?.expirationTtl === "number" && Number.isFinite(options.expirationTtl)
+        ? Date.now() + Math.max(1, Math.floor(options.expirationTtl)) * 1000
+        : undefined;
+    this.entries.set(key, { value, expiresAtMs });
+  }
+
+  async delete(key: string): Promise<void> {
+    this.entries.delete(key);
+  }
+}
+
+export function createMemoryCacheStore(): CacheStore {
+  return new MemoryCacheStore();
+}
+
 export async function cachedFetch(
-  kv: KVNamespace,
+  kv: CacheStore,
   cacheKey: string,
   url: string,
   options: RequestInit = {},

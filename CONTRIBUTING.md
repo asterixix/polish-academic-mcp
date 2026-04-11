@@ -41,7 +41,7 @@ Be respectful, constructive, and welcoming to all contributors.
 
    ```bash
    npm run dev
-   # → http://localhost:8788/mcp
+   # starts the stdio MCP server from src/index.ts
    ```
 
 4. Verify TypeScript compiles with no errors before every commit:
@@ -57,7 +57,7 @@ Use the **Bug Report** issue template. Please include:
 
 - The exact tool name and parameters you called
 - The error message or unexpected behaviour
-- Whether you can reproduce it locally (`npm run dev`) or only on the deployed Worker
+- Whether you can reproduce it locally (`npm run dev`) or only in the packaged CLI
 - Your Claude Desktop / client version if applicable
 
 ---

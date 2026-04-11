@@ -211,14 +211,14 @@ export function registerImgwTools(server: McpServer, env: Env): void {
             const results: string[] = [];
 
             if (type === "meteo" || type === "all") {
-              const url = `${API_BASE}/warningsmeteo`;
+              const url = `${API_BASE}/warnings_meteo`;
               const cacheKey = makeCacheKey("imgw_warnings_meteo", {});
               const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
               results.push(type === "all" ? `{"type":"meteo","warnings":${data}}` : data);
             }
 
             if (type === "hydro" || type === "all") {
-              const url = `${API_BASE}/warningshydro`;
+              const url = `${API_BASE}/warnings_hydro`;
               const cacheKey = makeCacheKey("imgw_warnings_hydro", {});
               const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
               results.push(type === "all" ? `{"type":"hydro","warnings":${data}}` : data);

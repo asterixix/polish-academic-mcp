@@ -1,0 +1,15 @@
+src/
+web/
+scripts/
+tests/
+eval-results/
+.github/
+release/
+eval.config.ts
+AGENTS.md
+CONTRIBUTING.md
+RESEARCH.md
+SECURITY.md
+test_cases.json
+tsconfig.json
+oxlint.json

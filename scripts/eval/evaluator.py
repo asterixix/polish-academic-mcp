@@ -6,7 +6,7 @@ and computes RQ-aligned scores.
 
 Usage:
     python scripts/eval/evaluator.py [--url http://localhost:8787/mcp] [--rq RQ1]
-    python scripts/eval/evaluator.py --url https://polish-academic-mcp.kolpol25.workers.dev/mcp
+    python scripts/eval/evaluator.py --url http://localhost:8787/mcp
     python scripts/eval/evaluator.py --model claude-3.5-sonnet --rq RQ2
 
 Modes:

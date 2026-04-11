@@ -35,7 +35,6 @@ search Polish academic databases, plus a research evaluation tool:
 | `imgw_warnings` | IMGW-PIB (warnings) | Custom REST (JSON) |
 | `agh_search` | AGH University Repository | DSpace 7 REST (HAL+JSON) |
 | `agh_get_item` | AGH University Repository | DSpace 7 REST (HAL+JSON) |
-| `eval_response` | — (research evaluation) | local (no external API) |
 
 All databases offer **unauthenticated read access** — no external API keys.
 
@@ -44,19 +43,15 @@ All databases offer **unauthenticated read access** — no external API keys.
 ## File map
 
 ```
-src/
+npm run dev          # starts the stdio MCP server from src/index.ts
 ├── index.ts           Worker entry: rate-limit gate → MCP dispatch + eval export
 ├── types.ts           Env interface (CACHE_KV, RATE_LIMIT_KV, HONEYCOMB_API_KEY)
-├── cache.ts           cachedFetch(kv, key, url, options?, ttl?) + makeCacheKey()
-├── ratelimit.ts       sliding-window KV rate limiter: checkRateLimit() + getClientId()
+The package uses an in-memory cache store in local development, so the server runs without Cloudflare bindings.
 ├── tracing.ts         OTel span helpers: withAgentRequestSpan, withLlmCallSpan,
 │                        withToolSelectionSpan, withToolExecutionSpan,
 │                        withResponseGenerationSpan, estimateTokens,
 │                        detectLanguage, detectFieldsInText, annotateCurrentSpan
-├── eval.ts            Post-LLM evaluation: evalResponse(sourceRecord, generated)
-│                        → hallucination markers, classification drift, language flags
-├── eval-webdav.ts     Upload MCP tool-call eval records to Nextcloud WebDAV
-├── eval-rq-scorer.ts  Compute RQ1–RQ4 scores/reports from tool-call spans
+# Connect the inspector to the local `npm run dev` process
 ├── server.ts          createServer(env) — registers all tools, returns McpServer
 ├── tools/
     ├── biblioteka-nauki.ts  → bn_search_articles, bn_get_article
@@ -69,7 +64,7 @@ src/
     ├── icm.ts               → icm_search, icm_get_item
     ├── imgw.ts              → imgw_synop, imgw_hydro, imgw_meteo, imgw_warnings
     ├── agh.ts               → agh_search, agh_get_item
-    └── response-eval.ts     → eval_response  (RQ2 telemetry)
+    └── response-eval.ts     → shared eval pipeline for scripts only
 
 wrangler.jsonc         Cloudflare Workers config (KV bindings + Honeycomb observability)
 tsconfig.json          TypeScript config (strict, module: ES2022, target: ES2022)
@@ -289,17 +284,16 @@ If a new tool requires its own KV namespace (rare — prefer reusing `CACHE_KV`)
 ## Local development
 
 ```bash
-npm run dev          # wrangler dev — serves at http://localhost:8788/mcp
+npm run dev          # starts the stdio MCP server from src/index.ts
 ```
 
-The KV preview IDs in `wrangler.jsonc` point to `"aaa..."` / `"bbb..."` placeholders.
-Wrangler's dev mode uses in-memory KV for preview namespaces, so this works locally.
+The package uses an in-memory cache store in local development, so the server runs without Cloudflare bindings.
 
 Test with MCP Inspector:
 
 ```bash
 npx @modelcontextprotocol/inspector@latest
-# Open http://localhost:5173, connect to http://localhost:8788/mcp
+# Connect the inspector to the local `npm run dev` process
 ```
 
 ## Deployment

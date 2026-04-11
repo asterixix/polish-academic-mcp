@@ -40,7 +40,6 @@ import { registerFilmpolskiTools } from "./tools/filmpolski.js";
 import { registerFototekaslaskaTools } from "./tools/fototekaslaska.js";
 import { registerFilmotekaRepoTools } from "./tools/filmoteka-repo.js";
 import { registerDokumentySlaskaTools } from "./tools/dokumenty-slaska.js";
-import { registerEvalTools } from "./tools/response-eval.js";
 
 export function createServer(env: Env): McpServer {
   const server = new McpServer({
@@ -81,7 +80,6 @@ export function createServer(env: Env): McpServer {
   registerFototekaslaskaTools(server, env);
   registerFilmotekaRepoTools(server, env);
   registerDokumentySlaskaTools(server, env);
-  registerEvalTools(server, env);
 
   return server;
 }

@@ -16,7 +16,7 @@ import { toToolErrorText } from "../tool-error-handling.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
-import { cachedFetch, makeCacheKey } from "../cache.js";
+import { cachedFetch, makeCacheKey, type CacheError } from "../cache.js";
 import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const API_BASE = "https://repod.icm.edu.pl/api";
@@ -170,10 +170,49 @@ export function registerRepodTools(server: McpServer, env: Env): void {
         async (span) => {
           span.setAttribute("mcp.source", "repod");
           try {
-            const url = `${API_BASE}/datasets/export?exporter=${encodeURIComponent(format)}&persistentId=doi:${encodeURIComponent(doi)}`;
-            const cacheKey = makeCacheKey("repod_dataset", { doi, format });
-            const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-            return { content: [{ type: "text", text: data }] };
+            const persistentId = `doi:${doi}`;
+            const exportUrl = `${API_BASE}/datasets/export?exporter=${encodeURIComponent(format)}&persistentId=${encodeURIComponent(persistentId)}`;
+            const exportCacheKey = makeCacheKey("repod_dataset_export", { doi, format });
+
+            try {
+              const exported = await cachedFetch(
+                env.CACHE_KV,
+                exportCacheKey,
+                exportUrl,
+                {},
+                CACHE_TTL,
+              );
+              return { content: [{ type: "text", text: exported }] };
+            } catch (innerErr) {
+              const cacheErr = innerErr as CacheError;
+              const status = cacheErr?.status;
+              if (status !== 400 && status !== 404) {
+                throw innerErr;
+              }
+
+              // RePOD export endpoint is intermittently broken for valid datasets; use Dataverse JSON fallback.
+              const fallbackUrl = `${API_BASE}/datasets/:persistentId/versions/:latest?persistentId=${encodeURIComponent(persistentId)}`;
+              const fallbackCacheKey = makeCacheKey("repod_dataset_latest", { doi });
+              const fallback = await cachedFetch(
+                env.CACHE_KV,
+                fallbackCacheKey,
+                fallbackUrl,
+                {},
+                CACHE_TTL,
+              );
+
+              const wrapped = JSON.stringify(
+                {
+                  requested_format: format,
+                  fallback_format: "dataverse_json",
+                  note: "RePOD export endpoint returned 400/404; served latest Dataverse JSON dataset version instead.",
+                  dataset: JSON.parse(fallback),
+                },
+                null,
+                2,
+              );
+              return { content: [{ type: "text", text: wrapped }] };
+            }
           } catch (e) {
             return {
               content: [
