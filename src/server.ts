@@ -44,7 +44,7 @@ import { registerDokumentySlaskaTools } from "./tools/dokumenty-slaska.js";
 export function createServer(env: Env): McpServer {
   const server = new McpServer({
     name: "Polish Academic MCP",
-    version: "1.0.0",
+    version: "1.0.1",
   });
 
   registerBibliotekaTools(server, env);
