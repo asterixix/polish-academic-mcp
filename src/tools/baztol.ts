@@ -18,7 +18,7 @@ import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
 import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
-const API_ORIGIN = "https://baztol.library.put.poznan.pl";
+const API_ORIGIN = "http://baztol.library.put.poznan.pl";
 const READER_PATH = "/baztol_czytelnik/baztol";
 const READER_URL = `${API_ORIGIN}${READER_PATH}`;
 const HTML_ACCEPT = "text/html; charset=utf-8";

@@ -50,8 +50,14 @@ function stripToPlain(html: string): string {
 }
 
 function extractArticleHtml(page: string): string | undefined {
-  const m = page.match(/<article id="(?:film|osoba)">([\s\S]*?)<\/article>/i);
-  return m?.[1];
+  const strict = page.match(/<article id="(?:film|osoba)"[^>]*>([\s\S]*?)<\/article>/i);
+  if (strict?.[1]) return strict[1];
+
+  const genericArticle = page.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i);
+  if (genericArticle?.[1]) return genericArticle[1];
+
+  const mainBlock = page.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
+  return mainBlock?.[1];
 }
 
 function parsePeopleList(inner: string): Array<{ id: string; label: string; hint?: string }> {
@@ -213,7 +219,7 @@ export function registerFilmpolskiTools(server: McpServer, env: Env): void {
                       {
                         item_id,
                         url,
-                        error: "Could not find article body (wrong id or page layout changed).",
+                        error: "Could not find record body (wrong id or page layout changed).",
                       },
                       null,
                       2,

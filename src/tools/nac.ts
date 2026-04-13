@@ -23,15 +23,29 @@ import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const SITE = "https://www.nac.gov.pl";
 const RSS_URL = `${SITE}/feed/`;
-const WP_API = `${SITE}/wp-json/wp/v2`;
+const WP_REST_BASE = `${SITE}/?rest_route=/wp/v2`;
 
-const JSON_HEADERS = { Accept: "application/json" };
+const JSON_HEADERS = {
+  Accept: "application/json",
+  "Accept-Language": "pl,en;q=0.8",
+  Referer: `${SITE}/`,
+  "User-Agent": "Mozilla/5.0 (compatible; PolishAcademicMCP/1.0)",
+};
 const RSS_HEADERS = { Accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8" };
 
 const FEED_TTL = 3_600; // 1 h — news
 const WP_TTL = 3_600; // 1 h — CMS
 
 const API_FIELDS = ["title", "link", "id"];
+
+function buildWpRestUrl(path: string, params?: URLSearchParams): string {
+  const cleanPath = path.replace(/^\/+/, "");
+  const base = `${WP_REST_BASE}/${cleanPath}`;
+  if (!params || params.size === 0) {
+    return base;
+  }
+  return `${base}&${params.toString()}`;
+}
 
 export function registerNacTools(server: McpServer, env: Env): void {
   // ── nac_news_rss ──────────────────────────────────────────────────────────
@@ -105,7 +119,7 @@ export function registerNacTools(server: McpServer, env: Env): void {
               per_page: String(per_page),
             });
             for (const s of subtypes) params.append("subtype", s);
-            const url = `${WP_API}/search?${params}`;
+            const url = buildWpRestUrl("search", params);
             const key = makeCacheKey("nac_site_search", { query, per_page, subtypes });
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
             return { content: [{ type: "text", text }] };
@@ -141,7 +155,7 @@ export function registerNacTools(server: McpServer, env: Env): void {
         async (span) => {
           span.setAttribute("mcp.source", "nac-gov");
           try {
-            const url = `${WP_API}/posts/${post_id}`;
+            const url = buildWpRestUrl(`posts/${post_id}`);
             const key = makeCacheKey("nac_get_post", { post_id });
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
             return { content: [{ type: "text", text }] };
@@ -177,7 +191,7 @@ export function registerNacTools(server: McpServer, env: Env): void {
         async (span) => {
           span.setAttribute("mcp.source", "nac-gov");
           try {
-            const url = `${WP_API}/pages/${page_id}`;
+            const url = buildWpRestUrl(`pages/${page_id}`);
             const key = makeCacheKey("nac_get_page", { page_id });
             const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
             return { content: [{ type: "text", text }] };

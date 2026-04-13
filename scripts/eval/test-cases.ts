@@ -180,7 +180,7 @@ const TOOL_ARGS: Record<string, Record<string, unknown>> = {
   // ── BLZ ──────────────────────────────────────────────────────────────────
   blz_listing_categories: {},
   blz_search:             { query: "prawo autorskie", page: 1 },
-  blz_get_listing:        { listing_id: 1 },
+  blz_get_listing:        { listing_id: 18804 },
 
   // ── Sejm Library (Biblioteka Sejmowa) ────────────────────────────────────
   // bs_sejm_search: request + local_base are required; find_code defaults to WRD
@@ -214,7 +214,7 @@ const TOOL_ARGS: Record<string, Record<string, unknown>> = {
   // ── FilmPolski ───────────────────────────────────────────────────────────
   // filmpolski_search: query + match_mode (fragment/start/exact)
   filmpolski_search:   { query: "Wajda", match_mode: "fragment" },
-  filmpolski_get_item: { item_id: 2798 },
+  filmpolski_get_item: { item_id: 1274081 },
 
   // ── Filmoteka Narodowa repo ───────────────────────────────────────────────
   fn_repo_search:      { query: "dokumentalny" },
@@ -224,11 +224,11 @@ const TOOL_ARGS: Record<string, Record<string, unknown>> = {
 
   // ── Fototeka (FINA) ──────────────────────────────────────────────────────
   fototeka_search:   { query: "teatr Warszawa", page: 1, per_page: 10 },
-  fototeka_get_photo: { photo_id: 1 },
+  fototeka_get_photo: { photo_id: 13426 },
 
   // ── Fototeka Śląska ──────────────────────────────────────────────────────
   fototekaslaska_search:    { query: "Katowice", page: 1 },
-  fototekaslaska_get_photo: { slug: "katowice-rynek-1960" },
+  fototekaslaska_get_photo: { slug: "rowerzysci-11" },
 
   // ── GAPLA (poster archive) ───────────────────────────────────────────────
   gapla_search:    { q: "plakat filmowy", page: 1 },
@@ -266,12 +266,12 @@ const TOOL_ARGS: Record<string, Record<string, unknown>> = {
   // ── NAC (Narodowe Archiwum Cyfrowe) ──────────────────────────────────────
   nac_news_rss:   {},
   nac_site_search: { query: "digitalizacja zbiorów", per_page: 10 },
-  nac_get_post:   { post_id: 1 },
-  nac_get_page:   { page_id: 1 },
+  nac_get_post:   { post_id: 12965 },
+  nac_get_page:   { page_id: 11598 },
 
   // ── Ninateka ─────────────────────────────────────────────────────────────
   ninateka_search:   { query: "film dokumentalny", page: 1 },
-  ninateka_get_vod:  { vod_id: 1 },
+  ninateka_get_vod:  { vod_id: 180 },
 
   // ── PAUart ───────────────────────────────────────────────────────────────
   pauart_search:    { query: "malarstwo polskie XIX wiek", page: 1 },
@@ -326,7 +326,7 @@ const TOOL_ARGS: Record<string, Record<string, unknown>> = {
     page_number: 0,
   },
   // saos_get_judgment: judgment_id positive integer
-  saos_get_judgment: { judgment_id: 9572580 },
+  saos_get_judgment: { judgment_id: 1 },
   // saos_dump_services: no params
   saos_dump_services: {},
   // saos_dump_*: page_size 10-100, page_number 0-based
@@ -351,9 +351,9 @@ const TOOL_ARGS: Record<string, Record<string, unknown>> = {
   // wolnelektury_get_book: slug required (from catalog URL or taxonomy)
   wolnelektury_get_book:       { slug: "pan-tadeusz" },
   // wolnelektury_get_collection: slug required
-  wolnelektury_get_collection: { slug: "lektury-szkoly-podstawowej" },
+  wolnelektury_get_collection: { slug: "52-wolne-ksiazki" },
   // wolnelektury_filter_books: at least one of author_slug/epoch_slug/genre_slug/kind_slug
-  wolnelektury_filter_books:   { author_slug: "mickiewicz-adam", parent_only: true },
+  wolnelektury_filter_books:   { genre_slug: "powiesc", parent_only: true },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
