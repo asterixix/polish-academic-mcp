@@ -177,55 +177,169 @@ npx -y polish-academic-mcp
 
 ---
 
-## Bundle MCPB
+## Podłączenie klientów MCP (konfiguracja `npx`)
 
-Repo zawiera manifest MCPB i wspiera pakowanie do pliku bundle.
+Poniżej znajdziesz aktualne, praktyczne konfiguracje dla najpopularniejszych hostów MCP. Ten pakiet działa jako **lokalny serwer stdio**, więc podstawowy wariant to:
 
-```bash
-npm run bundle:mcpb
+```json
+{
+  "command": "npx",
+  "args": ["-y", "polish-academic-mcp"]
+}
 ```
 
-Wynik:
+### 0) Wymagania wspólne
 
-- `release/polish-academic-mcp.mcpb`
+1. Zainstaluj Node.js 18+.
+2. Upewnij się, że `npx` działa w terminalu (`npx --version`).
+3. W klientach GUI (Desktop) sprawdź, czy aplikacja widzi `npx` w `PATH`.
 
-Pełny flow release (build, testy, bundle, publish):
+### 1) Claude Code (CLI)
+
+Najprościej przez komendę:
 
 ```bash
-npm run release
+claude mcp add --transport stdio polish-academic-mcp -- npx -y polish-academic-mcp
 ```
 
----
+Sprawdzenie:
 
-## Podłączenie klientów MCP
+```bash
+claude mcp list
+```
 
-### Claude Desktop
+Uwaga dla Windows (poza WSL):
 
-Preferowana konfiguracja (stabilniejsza niż `npx` w środowiskach GUI):
+```bash
+claude mcp add --transport stdio polish-academic-mcp -- cmd /c npx -y polish-academic-mcp
+```
+
+### 2) Claude Desktop
+
+Claude Desktop promuje obecnie Desktop Extensions (`.mcpb`), ale ręczna konfiguracja `mcpServers` nadal jest spotykana.
+
+Przykład:
 
 ```json
 {
   "mcpServers": {
     "polish-academic-mcp": {
-      "command": "node",
-      "args": ["D:/polish-academic-mcp/dist/index.js"]
+      "command": "npx",
+      "args": ["-y", "polish-academic-mcp"]
     }
   }
 }
 ```
 
-Lokalizacja pliku:
+Typowe lokalizacje pliku konfiguracji:
 
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%/Claude/claude_desktop_config.json`
+- Linux: zależnie od sposobu instalacji desktopowej (zwykle katalog konfiguracyjny aplikacji Claude)
 
-### Cursor i inne klienty MCP
+### 3) ChatGPT
 
-Użyj analogicznego polecenia stdio:
+W ChatGPT (Apps/Connectors oraz Responses API) oficjalnie używa się **zdalnych MCP** (HTTP/SSE), nie lokalnego `stdio` uruchamianego przez `npx` bezpośrednio w aplikacji.
+
+To oznacza, że dla tego pakietu masz 2 ścieżki:
+
+1. Używaj go lokalnie w klientach obsługujących `stdio` (`Claude Code`, `Gemini CLI`, `LM Studio`, `AnythingLLM`, `Cursor`).
+2. Jeśli koniecznie chcesz ChatGPT: wystaw serwer jako zdalny endpoint MCP (HTTP/SSE), a potem podłącz URL w ChatGPT.
+
+### 4) Gemini (Gemini CLI)
+
+Gemini CLI obsługuje MCP przez `mcpServers` w `settings.json` oraz komendy `gemini mcp ...`.
+
+Przykład `settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "polish-academic-mcp": {
+      "command": "npx",
+      "args": ["-y", "polish-academic-mcp"]
+    }
+  }
+}
+```
+
+Lub przez CLI:
 
 ```bash
-node D:/polish-academic-mcp/dist/index.js
+gemini mcp add polish-academic-mcp npx -y polish-academic-mcp
 ```
+
+### 5) LM Studio
+
+Od LM Studio `0.3.17` dostępne są lokalne i zdalne MCP. Konfiguracja używa formatu `mcp.json` (zgodnego z notacją Cursor).
+
+Przykład `mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "polish-academic-mcp": {
+      "command": "npx",
+      "args": ["-y", "polish-academic-mcp"]
+    }
+  }
+}
+```
+
+### 6) AnythingLLM (Desktop / Docker)
+
+AnythingLLM czyta konfigurację z `plugins/anythingllm_mcp_servers.json` (w katalogu storage AnythingLLM).
+
+Przykład:
+
+```json
+{
+  "mcpServers": {
+    "polish-academic-mcp": {
+      "command": "npx",
+      "args": ["-y", "polish-academic-mcp"]
+    }
+  }
+}
+```
+
+Uwaga: AnythingLLM uruchamia MCP-y przy wejściu w „Agent Skills” lub wywołaniu agenta (niekoniecznie od razu przy starcie aplikacji).
+
+### 7) Perplexity
+
+Perplexity publikuje oficjalny **własny serwer MCP** (np. `https://mcp.perplexity.ai/mcp`) do użycia w klientach MCP.
+
+Jeśli celem jest uruchomienie **tego** pakietu (`polish-academic-mcp`) bezpośrednio „wewnątrz Perplexity”, publiczna dokumentacja Perplexity skupia się obecnie na korzystaniu z endpointów MCP, a nie na lokalnym `stdio` przez `npx` jako w klasycznych klientach desktopowych.
+
+### 8) Inne klienty (Cursor, Windsurf, Cline, Open WebUI itd.)
+
+W większości przypadków działa standardowy wpis `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "polish-academic-mcp": {
+      "command": "npx",
+      "args": ["-y", "polish-academic-mcp"]
+    }
+  }
+}
+```
+
+Jeśli klient wspiera tylko zdalne MCP, potrzebny będzie endpoint HTTP/SSE zamiast lokalnego `stdio`.
+
+### Źródła (oficjalne / referencyjne)
+
+- OpenAI Developers (MCP and Connectors): `https://developers.openai.com/api/docs/guides/tools-connectors-mcp`
+- OpenAI Developers (Building MCP servers for ChatGPT Apps): `https://developers.openai.com/api/docs/mcp`
+- Claude Code docs (MCP): `https://code.claude.com/docs/en/mcp`
+- Claude Help Center (Claude Desktop + local MCP): `https://support.claude.com/en/articles/10949351-getting-started-with-model-context-protocol-mcp-on-claude-for-desktop`
+- Gemini CLI docs (MCP servers): `https://geminicli.com/docs/tools/mcp-server/`
+- LM Studio docs (Use MCP Servers): `https://lmstudio.ai/docs/app/mcp`
+- AnythingLLM docs (overview): `https://docs.anythingllm.com/mcp-compatibility/overview`
+- AnythingLLM docs (desktop): `https://docs.anythingllm.com/mcp-compatibility/desktop`
+- AnythingLLM docs (docker): `https://docs.anythingllm.com/mcp-compatibility/docker`
+- Perplexity MCP URL (referencje integracyjne): `https://mcp.perplexity.ai/mcp`
 
 ---
 
@@ -284,7 +398,7 @@ npm run lint
 npm run build
 ```
 
-Wskazówki contributorskie:
+Wskazówki dla chętnych do pomocy:
 
 - `CONTRIBUTING.md`
 - `AGENTS.md`
