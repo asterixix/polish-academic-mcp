@@ -31,9 +31,9 @@ Jeśli korzystasz z publicznie hostowanej instancji MCP (nie tej lokalnej z repo
 | `ruj_get_item`       | RUJ                                                          | Pobranie metadanych pozycji po UUID                             |
 | `agh_search`         | [AGH — Repozytorium AGH](https://repo.agh.edu.pl)            | Wyszukiwanie prac i publikacji AGH w Krakowie                   |
 | `agh_get_item`       | AGH                                                          | Pobranie metadanych pozycji po UUID                             |
-| `amu_search`         | [AMU — Repozytorium UAM](https://repozytorium.amu.edu.pl)    | Wyszukiwanie publikacji Uniwersytetu Adama Mickiewicza          |
+| `amu_search`         | [AMU — Repozytorium UAM](https://repozytorium.amu.edu.pl)    | Wyszukiwanie publikacji Uniwersytetu Adama Mickiewicza w Poznaniu          |
 | `amu_get_item`       | AMU                                                          | Pobranie metadanych pozycji po UUID                             |
-| `uafm_search`        | [UAFM — Repozytorium UAFM](https://repozytorium.uafm.edu.pl) | Wyszukiwanie publikacji Akademii Nauk Stosowanych w Nowym Sączu |
+| `uafm_search`        | [UAFM — Repozytorium UAFM](https://repozytorium.uafm.edu.pl) | Wyszukiwanie publikacji Uniwersytetu Andrzeja Frycza Modrzewskiego w Krakowie |
 | `uafm_get_item`      | UAFM                                                         | Pobranie metadanych pozycji po UUID                             |
 | `icm_search`         | [ICM — Otwarte Dane Badawcze UW](https://open.icm.edu.pl)    | Wyszukiwanie danych badawczych ICM UW                           |
 | `icm_get_item`       | ICM                                                          | Pobranie metadanych pozycji po UUID                             |
