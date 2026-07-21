@@ -15,7 +15,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const SITE = "https://fototekaslaska.pl";
 
@@ -27,8 +26,6 @@ const HTML_HEADERS: HeadersInit = {
 const CACHE_TTL = 86_400;
 
 const MAX_DETAIL_CHARS = 20_000;
-
-const API_FIELDS = ["slug", "url", "caption", "image_url"];
 
 function decodeEntities(s: string): string {
   return s
@@ -49,7 +46,10 @@ function stripToPlain(html: string): string {
   s = s.replace(/<\/(p|div|h[1-6]|li|tr)>/gi, "\n");
   s = s.replace(/<[^>]+>/g, " ");
   s = decodeEntities(s);
-  return s.replace(/[ \t\f\v]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  return s
+    .replace(/[ \t\f\v]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function parseSearchList(html: string): {
@@ -71,7 +71,8 @@ function parseSearchList(html: string): {
 
   const inner = block[1];
   const items: Array<{ slug: string; url: string; caption: string; image_url?: string }> = [];
-  const liRe = /<div class="gallery-listing-single">\s*<a href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>\s*<\/div>/gi;
+  const liRe =
+    /<div class="gallery-listing-single">\s*<a href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>\s*<\/div>/gi;
   for (const m of inner.matchAll(liRe)) {
     const url = m[1];
     const slugMatch = url.match(/\/galeria\/([^/]+)\/?/);
@@ -79,7 +80,8 @@ function parseSearchList(html: string): {
     const slug = slugMatch[1];
     const body = m[2];
     const img =
-      body.match(/data-src="(https?:\/\/[^\"]+)"/i)?.[1] ?? body.match(/<img[^>]*src="(https?:\/\/[^\"]+)"/i)?.[1];
+      body.match(/data-src="(https?:\/\/[^\"]+)"/i)?.[1] ??
+      body.match(/<img[^>]*src="(https?:\/\/[^\"]+)"/i)?.[1];
     const cap = body.match(/<div class="gallery-listing-details">\s*([^<]+)/i)?.[1];
     const caption = cap ? decodeEntities(cap).replace(/\s+/g, " ").trim() : "";
     const row: { slug: string; url: string; caption: string; image_url?: string } = {
@@ -100,10 +102,14 @@ function parsePhotoPage(html: string): {
   image_url?: string;
   details_text: string;
 } {
-  const title = html.match(/<div class="[^"]*\bsingle-gallery\b[^"]*"[^>]*>\s*<h2>([^<]+)<\/h2>/i)?.[1]?.trim();
+  const title = html
+    .match(/<div class="[^"]*\bsingle-gallery\b[^"]*"[^>]*>\s*<h2>([^<]+)<\/h2>/i)?.[1]
+    ?.trim();
   const catalog_note = html.match(/<p class="single-gallery-n">([^<]+)<\/p>/i)?.[1]?.trim();
   const image_url =
-    html.match(/<a class="gallery-listing-box[^"]*" href="(https?:\/\/[^\"]+\.(?:jpg|jpeg|png|webp))"/i)?.[1] ??
+    html.match(
+      /<a class="gallery-listing-box[^"]*" href="(https?:\/\/[^\"]+\.(?:jpg|jpeg|png|webp))"/i,
+    )?.[1] ??
     html.match(/<img class="lazy single-gallery-image"[^>]*data-src="(https?:\/\/[^\"]+)"/i)?.[1];
 
   const detailsHtml =
@@ -132,58 +138,58 @@ export function registerFototekaslaskaTools(server: McpServer, env: Env): void {
       "Use fototekaslaska_get_photo with `slug` from result URLs (/galeria/{slug}/).",
     ].join(" "),
     {
-      query: z.string().min(1).describe("Search phrase"),
+      query: z.string().min(1).describe("Fraza wyszukiwania w indeksie Fototeki Śląskiej"),
       field: z
         .enum(["title", "place", "district", "description", "catalog_n"])
         .default("title")
-        .describe("Which metadata field to search (form parameter t)"),
+        .describe("Pole metadanych do przeszukania (parametr formularza t)"),
       year_period: z
         .enum(["do1900", "1900-1918", "1918-1939", "1939-1945"])
         .optional()
-        .describe("Optional historical period filter (form y). Omit for any period."),
-      page: z.number().int().min(1).default(1).describe("Results page (WordPress paged)"),
+        .describe("Opcjonalny filtr okresu historycznego (parametr formularza y). Pomiń dla wszystkich okresów."),
+      page: z.number().int().min(1).default(1).describe("Numer strony wyników (paginacja WordPress)"),
     },
     async ({ query, field, year_period, page }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "fototekaslaska_search",
-          params: { query, field, year_period, page } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(query),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "fototekaslaska");
-          try {
-            const qs = new URLSearchParams();
-            qs.set("s", query);
-            qs.set("t", field);
-            if (year_period !== undefined) qs.set("y", year_period);
-            if (page > 1) qs.set("paged", String(page));
-            const url = `${SITE}/?${qs.toString()}`;
-            const cacheKey = makeCacheKey("fototekaslaska_search", { query, field, year_period, page });
-            const html = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: HTML_HEADERS }, CACHE_TTL);
-            const parsed = parseSearchList(html);
-            const payload = {
-              source: "fototekaslaska.pl",
-              query,
-              field,
-              year_period,
-              page,
-              search_url: url,
-              ...parsed,
-            };
-            return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling fototekaslaska_search: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const qs = new URLSearchParams();
+          qs.set("s", query);
+          qs.set("t", field);
+          if (year_period !== undefined) qs.set("y", year_period);
+          if (page > 1) qs.set("paged", String(page));
+          const url = `${SITE}/?${qs.toString()}`;
+          const cacheKey = makeCacheKey("fototekaslaska_search", {
+            query,
+            field,
+            year_period,
+            page,
+          });
+          const html = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: HTML_HEADERS },
+            CACHE_TTL,
+          );
+          const parsed = parseSearchList(html);
+          const payload = {
+            source: "fototekaslaska.pl",
+            query,
+            field,
+            year_period,
+            page,
+            search_url: url,
+            ...parsed,
+          };
+          return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling fototekaslaska_search: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
@@ -198,57 +204,52 @@ export function registerFototekaslaskaTools(server: McpServer, env: Env): void {
       slug: z
         .string()
         .min(1)
-        .describe("URL segment after /galeria/ e.g. dzieci-przed-domem from fototekaslaska_search"),
+        .describe("Segment adresu URL po /galeria/, np. dzieci-przed-domem (wartość z fototekaslaska_search)"),
     },
     async ({ slug }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "fototekaslaska_get_photo",
-          params: { slug } as Record<string, unknown>,
-          fieldsRequested: ["title", "details_text", "image_url"],
-          fieldsReturned: ["title", "details_text", "image_url"],
-          tokensByField: {},
-          queryTokens: 0,
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "fototekaslaska");
-          try {
-            const safe = slug.replace(/^\/+|\/+$/g, "").replace(/^galeria\//, "");
-            const url = `${SITE}/galeria/${encodeURI(safe)}/`;
-            const cacheKey = makeCacheKey("fototekaslaska_get_photo", { slug: safe });
-            const html = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: HTML_HEADERS }, CACHE_TTL);
-            const parsed = parsePhotoPage(html);
-            if (!parsed.title && !parsed.details_text) {
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: JSON.stringify(
-                      { slug: safe, url, error: "Could not parse gallery record (layout changed?)." },
-                      null,
-                      2,
-                    ),
-                  },
-                ],
-                isError: true,
-              };
-            }
-            const payload = {
-              slug: safe,
-              url,
-              ...parsed,
-              source: "fototekaslaska.pl",
-            };
-            return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
+      return (async () => {
+        try {
+          const safe = slug.replace(/^\/+|\/+$/g, "").replace(/^galeria\//, "");
+          const url = `${SITE}/galeria/${encodeURI(safe)}/`;
+          const cacheKey = makeCacheKey("fototekaslaska_get_photo", { slug: safe });
+          const html = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: HTML_HEADERS },
+            CACHE_TTL,
+          );
+          const parsed = parsePhotoPage(html);
+          if (!parsed.title && !parsed.details_text) {
             return {
-              content: [{ type: "text", text: `Error calling fototekaslaska_get_photo: ${msg}` }],
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(
+                    { slug: safe, url, error: "Could not parse gallery record (layout changed?)." },
+                    null,
+                    2,
+                  ),
+                },
+              ],
               isError: true,
             };
           }
-        },
-      );
+          const payload = {
+            slug: safe,
+            url,
+            ...parsed,
+            source: "fototekaslaska.pl",
+          };
+          return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling fototekaslaska_get_photo: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }

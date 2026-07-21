@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { ALL_TEST_CASES } from "./eval/test-cases.js";
+import { LIVE_SAMPLE_ARGS } from "./live-samples.js";
 
 type ToolDef = {
   name: string;
@@ -20,6 +20,7 @@ type ToolSmokeResult = {
 type RunnerArgs = {
   maxTools?: number;
   include?: string[];
+  pair?: boolean;
   timeoutMs: number;
   stopAfterFailures?: number;
   quiet: boolean;
@@ -38,6 +39,7 @@ function parseArgs(): RunnerArgs {
   const includeRaw = get("--include");
   const timeoutRaw = get("--timeout-ms");
   const stopAfterFailuresRaw = get("--stop-after-failures");
+  const pair = argv.includes("--pair");
   const quiet = argv.includes("--quiet");
 
   const maxTools =
@@ -65,6 +67,7 @@ function parseArgs(): RunnerArgs {
   return {
     maxTools,
     include,
+    pair,
     timeoutMs,
     stopAfterFailures,
     quiet,
@@ -87,12 +90,7 @@ function responseToText(content: unknown): string {
 }
 
 function buildSampleArgsMap(): Map<string, Record<string, unknown>> {
-  const map = new Map<string, Record<string, unknown>>();
-  for (const tc of ALL_TEST_CASES) {
-    if (!map.has(tc.tool)) {
-      map.set(tc.tool, tc.toolArgs ?? {});
-    }
-  }
+  const map = new Map(Object.entries(LIVE_SAMPLE_ARGS));
 
   // Keep these in sync with current tool zod schemas in src/tools/*.ts.
   map.set("rcin_get_record", { record_id: "204728", metadata_format: "oai_dc" });
@@ -122,9 +120,204 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   });
 }
 
+// Dynamic search → get pairs. Each entry calls search, extracts the first
+// usable id, then calls get with that id. Both calls must succeed.
+interface SearchGetPair {
+  searchTool: string;
+  searchArgs: Record<string, unknown>;
+  getTool: string;
+  getArgs: (id: string) => Record<string, unknown>;
+  extractId: (text: string) => string | null;
+}
+
+function firstUuid(text: string): string | null {
+  const m = text.match(/"uuid"\s*:\s*"([a-f0-9-]{36})"/);
+  return m ? m[1] : null;
+}
+
+function firstHitId(text: string): string | null {
+  const m = text.match(/"id"\s*:\s*"([^"\s,}]+)"/);
+  return m ? m[1] : null;
+}
+
+function firstPublicationId(text: string): string | null {
+  const m = text.match(/"publicationId"\s*:\s*"(\d+)"/);
+  return m ? m[1] : null;
+}
+
+const SEARCH_GET_PAIRS: SearchGetPair[] = [
+  // DSpace 7/8 — compact summary uses {items:[{uuid}]}
+  {
+    searchTool: "agh_search",
+    searchArgs: { query: "inżynieria materiałowa", size: 5 },
+    getTool: "agh_get_item",
+    getArgs: (id) => ({ uuid: id }),
+    extractId: firstUuid,
+  },
+  {
+    searchTool: "amu_search",
+    searchArgs: { query: "pedagogika", size: 5 },
+    getTool: "amu_get_item",
+    getArgs: (id) => ({ uuid: id }),
+    extractId: firstUuid,
+  },
+  {
+    searchTool: "icm_search",
+    searchArgs: { query: "climate change Poland", size: 5 },
+    getTool: "icm_get_item",
+    getArgs: (id) => ({ uuid: id }),
+    extractId: firstUuid,
+  },
+  {
+    searchTool: "ruj_search",
+    searchArgs: { query: "uczenie maszynowe", size: 5 },
+    getTool: "ruj_get_item",
+    getArgs: (id) => ({ uuid: id }),
+    extractId: firstUuid,
+  },
+  // Biblioteka Nauki — JSON {documents:[{publicationId}]}
+  {
+    searchTool: "bn_search_publications",
+    searchArgs: { query: "sztuczna inteligencja", page: 1, page_size: 5 },
+    getTool: "bn_get_article",
+    getArgs: (id) => ({ article_id: id, metadata_format: "jats" }),
+    extractId: firstPublicationId,
+  },
+];
+
+async function runSingleTools(
+  client: Client,
+  tools: ToolDef[],
+  sampleArgs: Map<string, Record<string, unknown>>,
+  runnerArgs: RunnerArgs,
+  results: ToolSmokeResult[],
+): Promise<void> {
+  for (const t of tools) {
+    const toolArgs = sampleArgs.get(t.name) ?? {};
+    const begin = Date.now();
+    try {
+      const resp = (await withTimeout(
+        client.callTool({ name: t.name, arguments: toolArgs }),
+        runnerArgs.timeoutMs,
+      )) as { isError?: boolean; content?: unknown };
+
+      const text = responseToText(resp.content ?? "");
+      const isErrorResult = Boolean(resp.isError) || /^Error:/i.test(text.trim());
+
+      results.push({
+        tool: t.name,
+        ok: !isErrorResult,
+        durationMs: Date.now() - begin,
+        args: toolArgs,
+        isErrorResult,
+        ...(isErrorResult ? { error: text.slice(0, 500) } : {}),
+      });
+      if (!runnerArgs.quiet) {
+        const status = isErrorResult ? "FAIL" : "OK";
+        console.log(`[${status}] ${t.name} (${Date.now() - begin}ms)`);
+      }
+    } catch (e) {
+      results.push({
+        tool: t.name,
+        ok: false,
+        durationMs: Date.now() - begin,
+        args: toolArgs,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      if (!runnerArgs.quiet) {
+        console.log(`[FAIL] ${t.name} (${Date.now() - begin}ms)`);
+      }
+    }
+
+    if (runnerArgs.stopAfterFailures !== undefined) {
+      const failuresSoFar = results.filter((r) => !r.ok).length;
+      if (failuresSoFar >= runnerArgs.stopAfterFailures) {
+        if (!runnerArgs.quiet) {
+          console.log(`Stopping early after ${failuresSoFar} failure(s).`);
+        }
+        break;
+      }
+    }
+  }
+}
+
+async function runPairs(
+  client: Client,
+  runnerArgs: RunnerArgs,
+  results: ToolSmokeResult[],
+): Promise<void> {
+  for (const pair of SEARCH_GET_PAIRS) {
+    const begin = Date.now();
+    try {
+      const searchResp = (await withTimeout(
+        client.callTool({ name: pair.searchTool, arguments: pair.searchArgs }),
+        runnerArgs.timeoutMs,
+      )) as { isError?: boolean; content?: unknown };
+      const searchText = responseToText(searchResp.content ?? "");
+      const searchFailed = Boolean(searchResp.isError) || /^Error:/i.test(searchText.trim());
+      if (searchFailed) {
+        results.push({
+          tool: pair.searchTool,
+          ok: false,
+          durationMs: Date.now() - begin,
+          args: pair.searchArgs,
+          error: `search failed: ${searchText.slice(0, 200)}`,
+        });
+        if (!runnerArgs.quiet)
+          console.log(`[FAIL] ${pair.searchTool}→${pair.getTool} (search)`);
+        continue;
+      }
+      const id = pair.extractId(searchText);
+      if (!id) {
+        results.push({
+          tool: pair.searchTool,
+          ok: false,
+          durationMs: Date.now() - begin,
+          args: pair.searchArgs,
+          error: "could not extract id from search response",
+        });
+        if (!runnerArgs.quiet)
+          console.log(`[FAIL] ${pair.searchTool}→${pair.getTool} (no id)`);
+        continue;
+      }
+      const getArgs = pair.getArgs(id);
+      const getResp = (await withTimeout(
+        client.callTool({ name: pair.getTool, arguments: getArgs }),
+        runnerArgs.timeoutMs,
+      )) as { isError?: boolean; content?: unknown };
+      const getText = responseToText(getResp.content ?? "");
+      const getFailed =
+        Boolean(getResp.isError) || /^Error:/i.test(getText.trim()) || getText.length < 10;
+      results.push({
+        tool: `${pair.searchTool}→${pair.getTool}`,
+        ok: !getFailed,
+        durationMs: Date.now() - begin,
+        args: { search: pair.searchArgs, get: getArgs },
+        isErrorResult: getFailed,
+        ...(getFailed ? { error: getText.slice(0, 500) } : {}),
+      });
+      if (!runnerArgs.quiet)
+        console.log(
+          `[${getFailed ? "FAIL" : "OK"}] ${pair.searchTool}→${pair.getTool} (id=${id})`,
+        );
+    } catch (e) {
+      results.push({
+        tool: `${pair.searchTool}→${pair.getTool}`,
+        ok: false,
+        durationMs: Date.now() - begin,
+        args: pair.searchArgs,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      if (!runnerArgs.quiet)
+        console.log(`[FAIL] ${pair.searchTool}→${pair.getTool}`);
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const runnerArgs = parseArgs();
-  const serverCommand = process.platform === "win32" ? ["node.exe", "dist/index.js"] : ["node", "dist/index.js"];
+  const serverCommand =
+    process.platform === "win32" ? ["node.exe", "dist/index.js"] : ["node", "dist/index.js"];
   const sampleArgs = buildSampleArgsMap();
 
   const transport = new StdioClientTransport({
@@ -147,72 +340,22 @@ async function main(): Promise<void> {
   try {
     await client.connect(transport);
 
-    const listResp = (await client.listTools()) as { tools?: ToolDef[] };
-
-    let tools = listResp.tools ?? [];
-    if (tools.length === 0) {
-      throw new Error("No tools discovered from tools/list");
-    }
-
-    if (runnerArgs.include && runnerArgs.include.length > 0) {
-      const wanted = new Set(runnerArgs.include);
-      tools = tools.filter((t) => wanted.has(t.name));
-    }
-
-    if (runnerArgs.maxTools !== undefined) {
-      tools = tools.slice(0, runnerArgs.maxTools);
-    }
-
-    if (!runnerArgs.quiet) {
-      console.log(`Running smoke test for ${tools.length} tool(s)...`);
-    }
-
-    for (const t of tools) {
-      const toolArgs = sampleArgs.get(t.name) ?? {};
-      const begin = Date.now();
-      try {
-        const resp = (await withTimeout(
-          client.callTool({ name: t.name, arguments: toolArgs }),
-          runnerArgs.timeoutMs,
-        )) as { isError?: boolean; content?: unknown };
-
-        const text = responseToText(resp.content ?? "");
-        const isErrorResult = Boolean(resp.isError) || /^Error:/i.test(text.trim());
-
-        results.push({
-          tool: t.name,
-          ok: !isErrorResult,
-          durationMs: Date.now() - begin,
-          args: toolArgs,
-          isErrorResult,
-          ...(isErrorResult ? { error: text.slice(0, 500) } : {}),
-        });
-        if (!runnerArgs.quiet) {
-          const status = isErrorResult ? "FAIL" : "OK";
-          console.log(`[${status}] ${t.name} (${Date.now() - begin}ms)`);
-        }
-      } catch (e) {
-        results.push({
-          tool: t.name,
-          ok: false,
-          durationMs: Date.now() - begin,
-          args: toolArgs,
-          error: e instanceof Error ? e.message : String(e),
-        });
-        if (!runnerArgs.quiet) {
-          console.log(`[FAIL] ${t.name} (${Date.now() - begin}ms)`);
-        }
+    if (runnerArgs.pair) {
+      if (!runnerArgs.quiet) console.log(`Running ${SEARCH_GET_PAIRS.length} search→get pair(s)...`);
+      await runPairs(client, runnerArgs, results);
+    } else {
+      const listResp = (await client.listTools()) as { tools?: ToolDef[] };
+      let tools = listResp.tools ?? [];
+      if (tools.length === 0) throw new Error("No tools discovered from tools/list");
+      if (runnerArgs.include && runnerArgs.include.length > 0) {
+        const wanted = new Set(runnerArgs.include);
+        tools = tools.filter((t) => wanted.has(t.name));
       }
-
-      if (runnerArgs.stopAfterFailures !== undefined) {
-        const failuresSoFar = results.filter((r) => !r.ok).length;
-        if (failuresSoFar >= runnerArgs.stopAfterFailures) {
-          if (!runnerArgs.quiet) {
-            console.log(`Stopping early after ${failuresSoFar} failure(s).`);
-          }
-          break;
-        }
+      if (runnerArgs.maxTools !== undefined) {
+        tools = tools.slice(0, runnerArgs.maxTools);
       }
+      if (!runnerArgs.quiet) console.log(`Running smoke test for ${tools.length} tool(s)...`);
+      await runSingleTools(client, tools, sampleArgs, runnerArgs, results);
     }
   } finally {
     try {
@@ -254,6 +397,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  console.error(e);
-  process.exitCode = 1;
+  console.error("Smoke runner fatal error:", e);
+  process.exit(1);
 });

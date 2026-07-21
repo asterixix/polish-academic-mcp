@@ -1,6 +1,6 @@
 /**
  * Centralized tool error handling, debugging, and structured error reporting.
- * 
+ *
  * Provides:
  * - Structured error types with full context
  * - Debug logging with request/response inspection
@@ -9,8 +9,6 @@
  * - Rate limit and timeout detection
  * - Diagnostic context capture for troubleshooting
  */
-
-import { SpanStatusCode, trace, type Span } from "@opentelemetry/api";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Error Types
@@ -112,14 +110,16 @@ function analyzeHttpError(
     if (status === 404) {
       return {
         type: "api_error",
-        suggestion: "Resource not found. Verify URL, parameters, and resource ID. Check for typos or outdated API structure.",
+        suggestion:
+          "Resource not found. Verify URL, parameters, and resource ID. Check for typos or outdated API structure.",
         retryable: false,
       };
     }
     if (status === 400) {
       return {
         type: "validation_error",
-        suggestion: "Bad request. Validate request body structure, field types, parameter formats, and encoding.",
+        suggestion:
+          "Bad request. Validate request body structure, field types, parameter formats, and encoding.",
         retryable: false,
       };
     }
@@ -157,7 +157,9 @@ function analyzeJsonError(
   const match = err.message.match(/position (\d+)/);
   const position = match ? parseInt(match[1], 10) : null;
 
-  const context = position ? jsonString.slice(Math.max(0, position - 40), Math.min(jsonString.length, position + 40)) : preview;
+  const context = position
+    ? jsonString.slice(Math.max(0, position - 40), Math.min(jsonString.length, position + 40))
+    : preview;
 
   return {
     details: `JSON parse error near: "${context}". ${err.message}`,
@@ -220,7 +222,11 @@ export function createToolErrorReport(
     debugInfo = {
       errorStack: err.stack,
       retryable: true,
-      recoverySteps: ["Verify network connection", "Check firewall/proxy settings", "Verify API endpoint is accessible"],
+      recoverySteps: [
+        "Verify network connection",
+        "Check firewall/proxy settings",
+        "Verify API endpoint is accessible",
+      ],
     };
     originalError = err;
   } else if (err instanceof SyntaxError) {
@@ -236,11 +242,7 @@ export function createToolErrorReport(
     };
     originalError = err;
   } else if (fullContext.httpStatus) {
-    const httpAnalysis = analyzeHttpError(
-      fullContext.httpStatus,
-      "unknown",
-      fullContext.headers,
-    );
+    const httpAnalysis = analyzeHttpError(fullContext.httpStatus, "unknown", fullContext.headers);
     errorType = httpAnalysis.type;
     message = `HTTP ${fullContext.httpStatus} error from ${fullContext.url}`;
     suggestion = httpAnalysis.suggestion;
@@ -317,40 +319,6 @@ export function formatErrorMessage(report: ToolErrorReport, verbose: boolean = f
 }
 
 /**
- * Log error details to span for observability.
- */
-export function recordErrorToSpan(span: Span | null, report: ToolErrorReport): void {
-  if (!span) return;
-
-  span.setStatus({
-    code: SpanStatusCode.ERROR,
-    message: report.message,
-  });
-
-  span.setAttribute("error.type", report.type);
-  span.setAttribute("error.message", report.message);
-  span.setAttribute("error.context.tool", report.context.toolName);
-  span.setAttribute("error.context.operation", report.context.operation || "unknown");
-  span.setAttribute("error.retryable", report.debugInfo.retryable);
-
-  if (report.context.httpStatus) {
-    span.setAttribute("error.http_status", report.context.httpStatus);
-  }
-
-  if (report.context.duration) {
-    span.setAttribute("error.duration_ms", report.context.duration);
-  }
-
-  if (report.originalError) {
-    span.recordException(report.originalError);
-  }
-
-  if (report.context.url) {
-    span.setAttribute("error.url", report.context.url);
-  }
-}
-
-/**
  * Create structured debug context for troubleshooting future issues.
  */
 export function captureDebugContext(
@@ -383,7 +351,7 @@ export function validateHttpResponse(
 ): { valid: boolean; error?: string } {
   // Check content type
   const contentType = response.headers.get("content-type") || "";
-  
+
   if (expectedContentType === "json" && !contentType.includes("application/json")) {
     return {
       valid: false,
@@ -441,7 +409,7 @@ export function formatToolErrorResponse(
 ): { content: Array<{ type: "text"; text: string }>; isError: true } {
   const errorId = generateErrorRequestId();
   const message = formatErrorMessage(report, verbose);
-  
+
   const text = verbose
     ? message
     : `Error calling ${report.context.toolName}: ${report.message} [${errorId}]`;
@@ -452,32 +420,11 @@ export function formatToolErrorResponse(
   };
 }
 
-function inferToolNameFromSpan(span: Span | undefined): string | undefined {
-  if (!span) return undefined;
-
-  const spanAny = span as unknown as { attributes?: Record<string, unknown>; name?: unknown };
-  const attributeToolName = spanAny.attributes?.["mcp.tool.name"];
-  if (typeof attributeToolName === "string" && attributeToolName) {
-    return attributeToolName;
-  }
-
-  if (typeof spanAny.name === "string" && spanAny.name.startsWith("mcp.tool/")) {
-    return spanAny.name.slice("mcp.tool/".length);
-  }
-
-  return undefined;
-}
-
 /**
  * Lightweight formatter for existing tools that still use local catch blocks.
  * This is intentionally compact so it can be adopted safely across many tools.
  */
 export function toToolErrorText(err: unknown, context: Partial<ToolErrorContext> = {}): string {
-  const activeSpan = trace.getActiveSpan();
-  const report = createToolErrorReport(err, {
-    ...context,
-    toolName: context.toolName ?? inferToolNameFromSpan(activeSpan) ?? "unknown",
-  });
-  recordErrorToSpan(activeSpan ?? null, report);
+  const report = createToolErrorReport(err, context);
   return formatErrorMessage(report, false);
 }

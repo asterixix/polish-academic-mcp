@@ -1,6 +1,6 @@
 {
   "name": "polish-academic-mcp",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "private": false,
   "repository": {
     "type": "git",
@@ -12,6 +12,9 @@
   },
   "type": "module",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=18"
+  },
   "bin": {
     "polish-academic-mcp": "dist/index.js"
   },
@@ -24,49 +27,23 @@
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "bundle:mcpb": "node -e \"require('fs').mkdirSync('release',{recursive:true})\" && npm run build && npx -y @anthropic-ai/mcpb pack . release/polish-academic-mcp.mcpb",
     "release": "node scripts/release.mjs",
     "release:dry-run": "node scripts/release.mjs --dry-run",
     "lint": "oxlint src/",
     "lint:fix": "oxlint src/ --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --import tsx --test tests/tool-error-handling.test.ts",
+    "test": "npm run build && node --import tsx --test tests/package-contract.test.ts tests/mcp-contract.test.ts",
     "smoke:tools": "node --import tsx scripts/smoke-tools.ts --timeout-ms 30000 --stop-after-failures 30",
     "smoke:tools:quick": "node --import tsx scripts/smoke-tools.ts --max-tools 20 --timeout-ms 15000 --stop-after-failures 10",
-    "prepublishOnly": "npm run build",
-    "eval": "python scripts/eval/evaluator.py",
-    "eval:rq1": "python scripts/eval/evaluator.py --rq RQ1",
-    "eval:rq2": "python scripts/eval/evaluator.py --rq RQ2",
-    "eval:rq3": "python scripts/eval/evaluator.py --rq RQ3",
-    "eval:local": "python scripts/eval/evaluator.py --url http://localhost:8787/mcp",
-    "eval:remote": "python scripts/eval/evaluator.py --url http://localhost:8787/mcp",
-    "eval:summary": "python scripts/eval/evaluator.py --summary",
-    "eval:export": "python scripts/eval/evaluator.py --export-json",
-    "eval:llm": "python scripts/eval/evaluator.py --model anthropic/claude-3.5-sonnet",
-    "eval:llm:rq1": "python scripts/eval/evaluator.py --rq RQ1 --model anthropic/claude-3.5-sonnet",
-    "eval:llm:rq2": "python scripts/eval/evaluator.py --rq RQ2 --model anthropic/claude-3.5-sonnet",
-    "eval:llm:rq3": "python scripts/eval/evaluator.py --rq RQ3 --model anthropic/claude-3.5-sonnet",
-    "eval:llm:claude": "python scripts/eval/evaluator.py --model anthropic/claude-3.5-sonnet",
-    "eval:llm:claude:rq1": "python scripts/eval/evaluator.py --rq RQ1 --model anthropic/claude-3.5-sonnet",
-    "eval:llm:claude:rq2": "python scripts/eval/evaluator.py --rq RQ2 --model anthropic/claude-3.5-sonnet",
-    "eval:llm:claude:rq3": "python scripts/eval/evaluator.py --rq RQ3 --model anthropic/claude-3.5-sonnet",
-    "eval:cuda": "python scripts/eval/cuda_batch.py --model meta-llama/Llama-3.1-8B-Instruct",
-    "eval:cuda:compare": "python scripts/eval/cuda_batch.py --models meta-llama/Llama-3.1-8B-Instruct speakleash/Bielik-7B-Instruct-v0.1",
-    "eval:ts": "npx tsx scripts/eval/runner.ts",
-    "eval:ts:remote": "npx tsx scripts/eval/runner.ts --url http://localhost:8787"
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "1.26.0",
-    "@opentelemetry/api": "^1.9.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@openrouter/ai-sdk-provider": "^0.4.0",
     "@types/node": "^22.19.15",
-    "cross-env": "^7.0.3",
-    "dotenv": "^16.0.0",
     "oxlint": "^1.57.0",
     "prettier": "^3.8.1",
     "tsx": "^4.19.0",

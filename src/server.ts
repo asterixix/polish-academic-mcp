@@ -5,8 +5,20 @@
  * global instance causes cross-client data leakage (CVE fixed in SDK 1.26.0).
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Env } from "./types.js";
+
+// Mirror src/index.ts: read the version from package.json so the handshake
+// value cannot drift from the published package.
+function readPackageVersion(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const pkgPath = resolve(here, "..", "package.json");
+  const raw = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: unknown };
+  return typeof raw.version === "string" ? raw.version : "0.0.0";
+}
 import { registerBibliotekaTools } from "./tools/biblioteka-nauki.js";
 import { registerRujTools } from "./tools/ruj.js";
 import { registerRodbukTools } from "./tools/rodbuk.js";
@@ -44,7 +56,7 @@ import { registerDokumentySlaskaTools } from "./tools/dokumenty-slaska.js";
 export function createServer(env: Env): McpServer {
   const server = new McpServer({
     name: "Polish Academic MCP",
-    version: "1.0.2",
+    version: readPackageVersion(),
   });
 
   registerBibliotekaTools(server, env);

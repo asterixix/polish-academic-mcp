@@ -12,7 +12,6 @@ import { toToolErrorText } from "../tool-error-handling.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const WIEDZA_ORIGIN = "https://wiedza.pkn.pl";
 const PREFIX = "_searchstandards_WAR_p4scustomerpknzwnelsearchstandardsportlet";
@@ -26,21 +25,15 @@ const LANDING: Record<"pl" | "en" | "ru", string> = {
 
 const DEFAULT_UA = "Mozilla/5.0 (compatible; PolishAcademicMCP/1.0)";
 
-const API_FIELDS = [
-  "standard_number",
-  "title",
-  "ics",
-  "language",
-  "status",
-  "rows",
-];
-
 type HeadersWithCookies = Headers & { getSetCookie?: () => string[] };
 
 function collectCookieHeader(headers: Headers): string {
   const gn = (headers as HeadersWithCookies).getSetCookie?.();
   if (gn && gn.length > 0) {
-    return gn.map((c) => c.split(";")[0]!.trim()).filter(Boolean).join("; ");
+    return gn
+      .map((c) => c.split(";")[0]!.trim())
+      .filter(Boolean)
+      .join("; ");
   }
   return "";
 }
@@ -154,14 +147,14 @@ const wiedzaSearchFields = {
     .enum(["pl", "en", "ru"])
     .default("pl")
     .describe("Język strony wyszukiwarki (ścieżka Liferay: pl / en / ru)."),
-  standard_number: z.string().optional().describe("Numer normy (np. PN-EN ISO 9001)."),
+  standard_number: z.string().optional().describe("Numer normy polskiej lub międzynarodowej, np. PN-EN ISO 9001."),
   title: z.string().optional().describe("Tytuł normy (język polski)."),
   title_english: z.string().optional().describe("Tytuł w języku angielskim."),
   content: z.string().optional().describe("Fragment treści normy (wyszukiwanie)."),
-  ics: z.string().optional().describe("Klasyfikacja ICS."),
-  sector: z.string().optional().describe("Sektor normalizacji."),
-  technical_committee: z.string().optional().describe("Organ techniczny (KT, np. PKN/KT 40)."),
-  directive: z.string().optional().describe("Numer dyrektywy (np. 2009/48/EC)."),
+  ics: z.string().optional().describe("Klasyfikacja ICS (Międzynarodowa Klasyfikacja Norm)."),
+  sector: z.string().optional().describe("Identyfikator sektora normalizacji (np. budownictwo, IT)."),
+  technical_committee: z.string().optional().describe("Identyfikator organu technicznego (Komitet Techniczny PKN), np. PKN/KT 40."),
+  directive: z.string().optional().describe("Numer dyrektywy unijnej implementowanej w polskich normach, np. 2009/48/EC."),
   introduction: z.string().optional().describe("Norma wprowadzająca (np. EN ISO 9001)."),
   publish_from: z.string().optional().describe("Data publikacji od (YYYY-MM-DD)."),
   publish_to: z.string().optional().describe("Data publikacji do (YYYY-MM-DD)."),
@@ -174,11 +167,13 @@ const wiedzaSearchFields = {
   language: z
     .enum(["ALL", "P", "E", "D", "F"])
     .default("ALL")
-    .describe("Wersja językowa: ALL — wszystkie; P — polska; E — angielska; D — niemiecka; F — francuska."),
+    .describe(
+      "Wersja językowa: ALL — wszystkie; P — polska; E — angielska; D — niemiecka; F — francuska.",
+    ),
   status: z
     .enum(["all", "standard-actual", "standard-withdrawal"])
     .default("all")
-    .describe("Status: all; standard-actual — aktualne; standard-withdrawal — wycofane."),
+    .describe("Status normy: all — wszystkie; standard-actual — aktualne; standard-withdrawal — wycofane z użytkowania."),
   rows_on_page: z
     .enum(["20", "30", "50", "75"])
     .default("50")
@@ -228,64 +223,47 @@ export function registerWiedzaTools(server: McpServer, _env: Env): void {
         };
       }
       const args = parseResult.data;
-      return withToolExecutionSpan(
-        {
-          toolName: "wiedza_search_norms",
-          params: args as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(
-            [
-              args.standard_number,
-              args.title,
-              args.title_english,
-              args.content,
-              args.ics,
-            ]
-              .filter(Boolean)
-              .join(" "),
-          ),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "wiedza-pkn");
-          try {
-            const { html, cookieHeader, landingPath } = await fetchLandingSession(args.locale);
-            if (!cookieHeader) {
-              throw new Error("Serwer nie zwrócił ciasteczek sesji (Set-Cookie) — wyszukiwanie Liferay nie zadziała.");
-            }
-            const token = parseAuthToken(html);
-            const formDate = parseFormDate(html);
-            if (!token || !formDate) {
-              throw new Error("Nie znaleziono tokenu Liferay ani formDate w HTML strony wyszukiwarki.");
-            }
-            const body = buildSearchBody(formDate, args);
-            const postUrl = postSearchUrl(token);
-            const res = await fetch(postUrl, {
-              method: "POST",
-              headers: {
-                Accept: "text/html",
-                "Content-Type": "application/x-www-form-urlencoded",
-                Cookie: cookieHeader,
-                Referer: `${WIEDZA_ORIGIN}${landingPath}`,
-                "User-Agent": DEFAULT_UA,
-              },
-              body,
-            });
-            if (!res.ok) {
-              throw new Error(`HTTP ${res.status} ${res.statusText} — wyszukiwanie norm`);
-            }
-            const out = await res.text();
-            return { content: [{ type: "text", text: out }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling wiedza_search_norms: ${msg}` }],
-              isError: true,
-            };
+      return (async () => {
+        try {
+          const { html, cookieHeader, landingPath } = await fetchLandingSession(args.locale);
+          if (!cookieHeader) {
+            throw new Error(
+              "Serwer nie zwrócił ciasteczek sesji (Set-Cookie) — wyszukiwanie Liferay nie zadziała.",
+            );
           }
-        },
-      );
+          const token = parseAuthToken(html);
+          const formDate = parseFormDate(html);
+          if (!token || !formDate) {
+            throw new Error(
+              "Nie znaleziono tokenu Liferay ani formDate w HTML strony wyszukiwarki.",
+            );
+          }
+          const body = buildSearchBody(formDate, args);
+          const postUrl = postSearchUrl(token);
+          const res = await fetch(postUrl, {
+            method: "POST",
+            headers: {
+              Accept: "text/html",
+              "Content-Type": "application/x-www-form-urlencoded",
+              Cookie: cookieHeader,
+              Referer: `${WIEDZA_ORIGIN}${landingPath}`,
+              "User-Agent": DEFAULT_UA,
+            },
+            body,
+          });
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status} ${res.statusText} — wyszukiwanie norm`);
+          }
+          const out = await res.text();
+          return { content: [{ type: "text", text: out }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling wiedza_search_norms: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
@@ -308,50 +286,39 @@ export function registerWiedzaTools(server: McpServer, _env: Env): void {
         .describe("Język strony referera (sesja z tej samej ścieżki co wyszukiwarka)."),
     },
     async ({ standard_number, locale }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "wiedza_get_standard",
-          params: { standard_number, locale } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(standard_number),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "wiedza-pkn");
-          try {
-            const { html, cookieHeader, landingPath } = await fetchLandingSession(locale);
-            if (!cookieHeader) {
-              throw new Error("Serwer nie zwrócił ciasteczek sesji (Set-Cookie).");
-            }
-            const token = parseAuthToken(html);
-            if (!token) {
-              throw new Error("Nie znaleziono tokenu Liferay w HTML.");
-            }
-            const url = getStandardUrl(token, standard_number);
-            const res = await fetch(url, {
-              redirect: "follow",
-              headers: {
-                Accept: "text/html",
-                Cookie: cookieHeader,
-                Referer: `${WIEDZA_ORIGIN}${landingPath}`,
-                "User-Agent": DEFAULT_UA,
-              },
-            });
-            if (!res.ok) {
-              throw new Error(`HTTP ${res.status} ${res.statusText} — szczegóły normy`);
-            }
-            const out = await res.text();
-            return { content: [{ type: "text", text: out }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling wiedza_get_standard: ${msg}` }],
-              isError: true,
-            };
+      return (async () => {
+        try {
+          const { html, cookieHeader, landingPath } = await fetchLandingSession(locale);
+          if (!cookieHeader) {
+            throw new Error("Serwer nie zwrócił ciasteczek sesji (Set-Cookie).");
           }
-        },
-      );
+          const token = parseAuthToken(html);
+          if (!token) {
+            throw new Error("Nie znaleziono tokenu Liferay w HTML.");
+          }
+          const url = getStandardUrl(token, standard_number);
+          const res = await fetch(url, {
+            redirect: "follow",
+            headers: {
+              Accept: "text/html",
+              Cookie: cookieHeader,
+              Referer: `${WIEDZA_ORIGIN}${landingPath}`,
+              "User-Agent": DEFAULT_UA,
+            },
+          });
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status} ${res.statusText} — szczegóły normy`);
+          }
+          const out = await res.text();
+          return { content: [{ type: "text", text: out }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling wiedza_get_standard: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }

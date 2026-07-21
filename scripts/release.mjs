@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
@@ -21,7 +21,6 @@ function parseArgs() {
     publishNpm: !has("--skip-npm-publish"),
     pushGit: !has("--skip-git-push"),
     commitGit: !has("--skip-git-commit"),
-    createBundle: !has("--skip-bundle"),
     runSmoke: !has("--skip-smoke"),
     runFullSmoke: has("--full-smoke"),
   };
@@ -64,29 +63,17 @@ function readJsonFile(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
 }
 
-function writeJsonFile(filePath, value) {
-  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-}
-
-function updateManifestVersion(version) {
-  const manifestPath = resolve(process.cwd(), "manifest.json");
-  const manifest = readJsonFile(manifestPath);
-  manifest.version = version;
-  writeJsonFile(manifestPath, manifest);
-}
-
 function getPackageVersion() {
   const pkg = readJsonFile(resolve(process.cwd(), "package.json"));
   return pkg.version;
 }
 
 function setPackageVersion(bump) {
-  runCommandLine(`npm version ${bump} --no-git-tag-version --force`, `Bump package version (${bump})`);
+  runCommandLine(
+    `npm version ${bump} --no-git-tag-version --force`,
+    `Bump package version (${bump})`,
+  );
   return getPackageVersion();
-}
-
-function ensureBundleDirectory() {
-  run(process.execPath, ["-e", "require('fs').mkdirSync('release',{recursive:true})"], "Create release directory");
 }
 
 function maybeRunSmoke(fullSmoke) {
@@ -112,19 +99,13 @@ async function main() {
 
   if (options.bump) {
     const nextVersion = setPackageVersion(options.bump);
-    updateManifestVersion(nextVersion);
     console.log(`Version set to ${nextVersion}`);
   }
 
   if (!options.dryRun) {
     runCommandLine("npm run build", "Build TypeScript output");
-    runCommandLine("npx -y @anthropic-ai/mcpb validate manifest.json", "Validate MCPB manifest");
     if (options.runSmoke) {
       maybeRunSmoke(options.runFullSmoke);
-    }
-    if (options.createBundle) {
-      ensureBundleDirectory();
-      runCommandLine("npm run bundle:mcpb", "Build MCPB bundle");
     }
   }
 
@@ -153,6 +134,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
   process.exitCode = 1;
 });

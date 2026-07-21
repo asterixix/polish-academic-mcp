@@ -16,7 +16,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const SITE_ORIGIN = "https://www.dokumentyslaska.pl";
 
@@ -26,8 +25,6 @@ const HTML_HEADERS: HeadersInit = {
 };
 
 const CACHE_TTL = 86_400;
-
-const API_FIELDS = ["path", "html"];
 
 /** Główna seria „Dokumenty” z menu strony głównej (ścieżki względne katalogu serwisu). */
 const MEDIEVAL_CATALOG: { label: string; indeks: string; dokument: string }[] = [
@@ -63,13 +60,15 @@ function toSafeSiteUrl(relPath: string): string {
       throw new Error("invalid path segment");
     }
   }
-  const encoded = parts.map((seg) => {
-    try {
-      return encodeURIComponent(decodeURIComponent(seg));
-    } catch {
-      return encodeURIComponent(seg);
-    }
-  }).join("/");
+  const encoded = parts
+    .map((seg) => {
+      try {
+        return encodeURIComponent(decodeURIComponent(seg));
+      } catch {
+        return encodeURIComponent(seg);
+      }
+    })
+    .join("/");
   return `${SITE_ORIGIN}/${encoded}`;
 }
 
@@ -77,72 +76,56 @@ export function registerDokumentySlaskaTools(server: McpServer, env: Env): void 
   server.tool(
     "dokumenty_slaska_get_page",
     [
-      "Fetch a single page from the Dokumenty Śląska static site (medieval Silesian documents, regesta, seals, iconography).",
-      "There is no public search API — content is static HTML; use indeks*.html for tables of contents and dokument*.html for full compilations where the menu provides them.",
-      "Pass a relative path such as \"indeks 1200.html\", \"kamenz/index.html\", or \"bibliografia.html\". Spaces in filenames are OK.",
-      "Returns raw HTML (iso-8859-2 on most pages). Follow links from the response to load further pages.",
+      "Pobiera pojedynczą stronę ze statycznego serwisu Dokumenty Śląska (średniowieczne dokumenty śląskie, regesty, pieczęcie, ikonografia).",
+      "Brak publicznego API wyszukiwania — treści są statyczne w HTML; użyj indeks*.html dla spisów treści oraz dokument*.html dla pełnych wydań, gdy dostarcza je menu.",
+      "Przekaż ścieżkę względną, na przykład \"indeks 1200.html\", \"kamenz/index.html\" lub \"bibliografia.html\". Spacje w nazwach plików są dozwolone.",
+      "Zwraca surowy HTML (iso-8859-2 na większości stron). Podążaj za odnośnikami z odpowiedzi, by pobrać dalsze strony.",
     ].join(" "),
     {
       path: z
         .string()
         .min(1)
         .describe(
-          "Relative path from site root, e.g. indeks 1200.html, dokument 1201-1230.html, bibliografia.html, kamenz/index.html",
+          "Ścieżka względna od katalogu głównego serwisu, np. indeks 1200.html, dokument 1201-1230.html, bibliografia.html, kamenz/index.html",
         ),
     },
     async ({ path: relPath }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "dokumenty_slaska_get_page",
-          params: { path: relPath } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(relPath),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "dokumenty-slaska");
-          try {
-            const url = toSafeSiteUrl(relPath);
-            const cacheKey = makeCacheKey("dokumenty_slaska_get_page", { path: relPath });
-            const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: HTML_HEADERS }, CACHE_TTL);
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling dokumenty_slaska_get_page: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const url = toSafeSiteUrl(relPath);
+          const cacheKey = makeCacheKey("dokumenty_slaska_get_page", { path: relPath });
+          const text = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: HTML_HEADERS },
+            CACHE_TTL,
+          );
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling dokumenty_slaska_get_page: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
   server.tool(
     "dokumenty_slaska_medieval_catalog",
     [
-      "Returns a fixed JSON list of relative paths for the main medieval document series on dokumentyslaska.pl (menu „Dokumenty”: periods up to 1333).",
-      "Use dokumenty_slaska_get_page with indeks* paths for a table of contents and dokument* for the full running text for that period.",
+      "Zwraca stałą listę JSON ze ścieżkami względnymi głównej serii dokumentów średniowiecznych na dokumentyslaska.pl (menu „Dokumenty\": okresy do 1333).",
+      "Użyj dokumenty_slaska_get_page ze ścieżkami indeks* dla spisu treści oraz dokument* dla pełnego tekstu wydań dla danego okresu.",
       "This is not a database query — only a navigation aid; other collections (monasteries, chronicles, etc.) use different folders — discover paths from the homepage HTML.",
     ].join(" "),
     {},
     async () => {
-      return withToolExecutionSpan(
-        {
-          toolName: "dokumenty_slaska_medieval_catalog",
-          params: {} as Record<string, unknown>,
-          fieldsRequested: ["label", "indeks", "dokument"],
-          fieldsReturned: ["label", "indeks", "dokument"],
-          tokensByField: {},
-          queryTokens: 0,
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "dokumenty-slaska");
-          const text = JSON.stringify({ site: SITE_ORIGIN, periods: MEDIEVAL_CATALOG }, null, 2);
-          return { content: [{ type: "text", text }] };
-        },
-      );
+      return (async () => {
+        const text = JSON.stringify({ site: SITE_ORIGIN, periods: MEDIEVAL_CATALOG }, null, 2);
+        return { content: [{ type: "text", text }] };
+      })();
     },
   );
 }

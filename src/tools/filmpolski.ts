@@ -12,7 +12,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const SITE = "https://www.filmpolski.pl/fp";
 const INDEX = `${SITE}/index.php`;
@@ -26,8 +25,6 @@ const HTML_HEADERS: HeadersInit = {
 const CACHE_TTL = 86_400;
 
 const MAX_RECORD_CHARS = 25_000;
-
-const API_FIELDS = ["id", "title", "label", "details"];
 
 function decodeEntities(s: string): string {
   return s
@@ -46,7 +43,10 @@ function stripToPlain(html: string): string {
   s = s.replace(/<\/(p|div|h[1-6]|li|tr)>/gi, "\n");
   s = s.replace(/<[^>]+>/g, " ");
   s = decodeEntities(s);
-  return s.replace(/[ \t\f\v]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  return s
+    .replace(/[ \t\f\v]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function extractArticleHtml(page: string): string | undefined {
@@ -94,7 +94,10 @@ function parseFilmsList(inner: string): Array<{ id: string; title: string; detai
       if (title.length > 0) last = { id: m[1], title };
     }
     if (last) {
-      const row: { id: string; title: string; details?: string } = { id: last.id, title: last.title };
+      const row: { id: string; title: string; details?: string } = {
+        id: last.id,
+        title: last.title,
+      };
       if (details) row.details = decodeEntities(details).replace(/\s+/g, " ").trim();
       out.push(row);
     }
@@ -110,7 +113,9 @@ function parseSearchPage(html: string): {
   if (/<b>\s*Nic nie znalazłem\s*<\/b>/i.test(html)) {
     return { people: [], films: [], emptyMessage: "Nic nie znalazłem" };
   }
-  const peopleBlock = html.match(/<ul class="wynikiszukania wynikiszukaniaosoba">([\s\S]*?)<\/ul>/i);
+  const peopleBlock = html.match(
+    /<ul class="wynikiszukania wynikiszukaniaosoba">([\s\S]*?)<\/ul>/i,
+  );
   const filmsBlock = html.match(/<ul class="wynikiszukania">([\s\S]*?)<\/ul>/i);
   const people = peopleBlock ? parsePeopleList(peopleBlock[1]) : [];
   const films = filmsBlock ? parseFilmsList(filmsBlock[1]) : [];
@@ -127,55 +132,50 @@ export function registerFilmpolskiTools(server: McpServer, env: Env): void {
       "Respect site terms: short excerpts; cite filmpolski.pl as source.",
     ].join(" "),
     {
-      query: z.string().min(1).describe("Search phrase (film title fragment or person name)"),
+      query: z.string().min(1).describe("Fraza wyszukiwania (fragment tytułu filmu lub nazwisko osoby)"),
       match_mode: z
         .enum(["fragment", "start", "exact"])
         .default("fragment")
         .describe(
-          "fragment = any match; start = titles/names starting with query; exact = exact title or 'Kowalski, Jan' for persons",
+          "Tryb dopasowania: fragment — dowolne zawierające; start — tytuły i nazwiska zaczynające się od frazy; exact — dokładny tytuł lub osoba w formacie 'Kowalski, Jan'",
         ),
     },
     async ({ query, match_mode }) => {
       const rodzaj = match_mode === "start" ? 2 : match_mode === "exact" ? 3 : 1;
-      return withToolExecutionSpan(
-        {
-          toolName: "filmpolski_search",
-          params: { query, match_mode } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(query),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "filmpolski");
-          try {
-            const qs = new URLSearchParams({
-              szukaj: query,
-              rodzaj: String(rodzaj),
-            });
-            const url = `${INDEX}?${qs.toString()}`;
-            const cacheKey = makeCacheKey("filmpolski_search", { query, rodzaj });
-            const html = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: HTML_HEADERS }, CACHE_TTL);
-            const parsed = parseSearchPage(html);
-            const payload = {
-              source: "filmpolski.pl",
-              query,
-              match_mode,
-              rodzaj,
-              ...parsed,
-              ui_search: url,
-              ui_record: `${INDEX}/{id}`,
-            };
-            return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling filmpolski_search: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const qs = new URLSearchParams({
+            szukaj: query,
+            rodzaj: String(rodzaj),
+          });
+          const url = `${INDEX}?${qs.toString()}`;
+          const cacheKey = makeCacheKey("filmpolski_search", { query, rodzaj });
+          const html = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: HTML_HEADERS },
+            CACHE_TTL,
+          );
+          const parsed = parseSearchPage(html);
+          const payload = {
+            source: "filmpolski.pl",
+            query,
+            match_mode,
+            rodzaj,
+            ...parsed,
+            ui_search: url,
+            ui_record: `${INDEX}/{id}`,
+          };
+          return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling filmpolski_search: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
@@ -191,69 +191,64 @@ export function registerFilmpolskiTools(server: McpServer, env: Env): void {
         .number()
         .int()
         .min(1)
-        .describe("Numeric record id from a filmpolski index.php/{id} URL"),
+        .describe("Numeryczny identyfikator rekordu z URL filmpolski index.php/{id}"),
     },
     async ({ item_id }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "filmpolski_get_item",
-          params: { item_id } as Record<string, unknown>,
-          fieldsRequested: ["text"],
-          fieldsReturned: ["text"],
-          tokensByField: {},
-          queryTokens: 0,
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "filmpolski");
-          try {
-            const url = `${INDEX}/${item_id}`;
-            const cacheKey = makeCacheKey("filmpolski_get_item", { item_id });
-            const html = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: HTML_HEADERS }, CACHE_TTL);
-            const inner = extractArticleHtml(html);
-            if (!inner) {
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: JSON.stringify(
-                      {
-                        item_id,
-                        url,
-                        error: "Could not find record body (wrong id or page layout changed).",
-                      },
-                      null,
-                      2,
-                    ),
-                  },
-                ],
-                isError: true,
-              };
-            }
-            let text = stripToPlain(inner);
-            let truncated = false;
-            if (text.length > MAX_RECORD_CHARS) {
-              text = text.slice(0, MAX_RECORD_CHARS);
-              truncated = true;
-            }
-            const kind = /<article id="film"/i.test(html) ? "film" : "osoba";
-            const payload = {
-              item_id,
-              kind,
-              url,
-              text,
-              truncated,
-              source: "filmpolski.pl",
-            };
-            return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
+      return (async () => {
+        try {
+          const url = `${INDEX}/${item_id}`;
+          const cacheKey = makeCacheKey("filmpolski_get_item", { item_id });
+          const html = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: HTML_HEADERS },
+            CACHE_TTL,
+          );
+          const inner = extractArticleHtml(html);
+          if (!inner) {
             return {
-              content: [{ type: "text", text: `Error calling filmpolski_get_item: ${msg}` }],
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(
+                    {
+                      item_id,
+                      url,
+                      error: "Could not find record body (wrong id or page layout changed).",
+                    },
+                    null,
+                    2,
+                  ),
+                },
+              ],
               isError: true,
             };
           }
-        },
-      );
+          let text = stripToPlain(inner);
+          let truncated = false;
+          if (text.length > MAX_RECORD_CHARS) {
+            text = text.slice(0, MAX_RECORD_CHARS);
+            truncated = true;
+          }
+          const kind = /<article id="film"/i.test(html) ? "film" : "osoba";
+          const payload = {
+            item_id,
+            kind,
+            url,
+            text,
+            truncated,
+            source: "filmpolski.pl",
+          };
+          return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling filmpolski_get_item: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }

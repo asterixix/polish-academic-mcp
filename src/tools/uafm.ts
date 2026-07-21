@@ -1,7 +1,7 @@
 import { toToolErrorText } from "../tool-error-handling.js";
 /**
  * UAFM — University of Applied Sciences in Nowy Sącz Repository (repozytorium.uafm.edu.pl).
- * Runs DSpace 7, responds with HAL+JSON.  Anonymous read access for all public items.
+ * Runs DSpace 8, responds with HAL+JSON.  Anonymous read access for all public items.
  *
  * Tools:
  *   uafm_search    — full-text + faceted discovery search.
@@ -10,29 +10,23 @@ import { toToolErrorText } from "../tool-error-handling.js";
  * Available discovery filters (from /server/api/discover/search):
  *   title, author, subject, dateIssued, itemtype, keyword, dateAccessioned, license,
  *   has_content_in_original_bundle
+ *
+ * Status (as of 2026-07-20): repozytorium.uafm.edu.pl zwraca HTTP 404 dla endpointów
+ * /server/api/* oraz HTTP 500 dla strony Angular UI. Backend DSpace Tomcat jest
+ * odmontowany lub uszkodzony. Narzędzia pozostają w pakiecie, ale obecnie zawsze
+ * zwracają błąd HTTP 404 z czytelnym komunikatem. Gdy usługa wróci, kontrakt
+ * publicznego API się nie zmienił i te wywołania zaczną działać bez zmian kodu.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const API_BASE = "https://repozytorium.uafm.edu.pl/server/api";
 const BASE_URL = "https://repozytorium.uafm.edu.pl";
 const JSON_HEADERS = { Accept: "application/json" };
 const CACHE_TTL = 86_400; // 24 h
-
-const API_FIELDS = [
-  "title",
-  "author",
-  "subject",
-  "abstract",
-  "date",
-  "language",
-  "doi",
-  "keywords",
-];
 
 const VALID_OPS = new Set([
   "equals",
@@ -148,19 +142,18 @@ export function registerUafmTools(server: McpServer, env: Env): void {
   server.tool(
     "uafm_search",
     [
-      "Search publications in the University of Applied Sciences in Nowy Sącz Repository",
-      "(repozytorium.uafm.edu.pl) via DSpace 7 discovery.",
-      "Supports full-text search with filters for author, title, subject, keyword, item type, date,",
-      "license, and full-text availability.",
-      "Results are HAL+JSON with Dublin Core metadata.",
-      "Each filter value may include an explicit operator suffix (e.g. 'Smith,equals');",
-      "if omitted the documented default operator is applied.",
-      "Supported operators: equals, notequals, contains, notcontains, authority, notauthority, query.",
+      "Wyszukiwanie publikacji w Repozytorium UAFM (repozytorium.uafm.edu.pl) — repozytorium eRIKA — przez mechanizm discovery DSpace 7.",
+      "Wspiera wyszukiwanie pełnotekstowe z filtrami dla autora, tytułu, tematu, słowa kluczowego, typu dokumentu, daty,",
+      "licencji oraz dostępności pełnego tekstu.",
+      "Wyniki w formacie HAL+JSON z metadanymi Dublin Core.",
+      "Każda wartość filtra może zawierać operator po przecinku (np. 'Kowalski,equals');",
+      "jeśli operator nie jest podany, stosowany jest operator domyślny dla danego pola.",
+      "Obsługiwane operatory: equals, notequals, contains, notcontains, authority, notauthority, query.",
     ].join(" "),
     {
-      query: z.string().describe("Full-text search terms"),
-      page: z.number().int().min(0).default(0).describe("Page number — 0-based"),
-      size: z.number().int().min(1).max(50).default(10).describe("Results per page (1–50)"),
+      query: z.string().describe("Wyrażenie do wyszukiwania pełnotekstowego"),
+      page: z.number().int().min(0).default(0).describe("Numer strony liczony od zera"),
+      size: z.number().int().min(1).max(50).default(10).describe("Liczba wyników na stronę (1–50)"),
       sort: z
         .enum([
           "score,desc",
@@ -172,34 +165,34 @@ export function registerUafmTools(server: McpServer, env: Env): void {
           "dc.date.accessioned,desc",
         ])
         .default("score,desc")
-        .describe("Sort field and direction"),
-      author: z.string().optional().describe("Author name filter (default op: contains)."),
-      title: z.string().optional().describe("Title filter (default op: contains)."),
-      subject: z.string().optional().describe("Subject filter (default op: equals)."),
-      keyword: z.string().optional().describe("Keyword filter (default op: equals)."),
+        .describe("Pole i kierunek sortowania"),
+      author: z.string().optional().describe("Filtr autora (domyślnie: contains)."),
+      title: z.string().optional().describe("Filtr tytułu (domyślnie: contains)."),
+      subject: z.string().optional().describe("Filtr tematu (domyślnie: equals)."),
+      keyword: z.string().optional().describe("Filtr słowa kluczowego (domyślnie: equals)."),
       itemtype: z
         .string()
         .optional()
-        .describe("Item type filter (default op: equals). E.g. 'article', 'book'."),
+        .describe("Filtr typu dokumentu (domyślnie: equals). Np. 'article', 'book'."),
       date_issued: z
         .string()
         .optional()
         .describe(
-          "Issue date filter (default op: equals). For ranges use Solr syntax, e.g. '[2020-01-01 TO 2023-12-31],query'.",
+          "Filtr daty wydania (domyślnie: equals). Dla zakresów użyj notacji Solr, np. '[2020-01-01 TO 2023-12-31],query'.",
         ),
       date_accessioned: z
         .string()
         .optional()
-        .describe("Accession date filter (default op: equals)."),
+        .describe("Filtr daty zdeponowania (domyślnie: equals)."),
       license: z
         .string()
         .optional()
-        .describe("License filter (default op: contains). E.g. 'CC BY'."),
+        .describe("Filtr licencji (domyślnie: contains). Np. 'CC BY'."),
       has_full_text: z
         .boolean()
         .optional()
         .describe(
-          "When true, restrict to items with files in the original bundle (full-text available).",
+          "Gdy true, ogranicza wyniki do obiektów z plikami w oryginalnym pakiecie (dostępny pełny tekst).",
         ),
     },
     async ({
@@ -217,10 +210,29 @@ export function registerUafmTools(server: McpServer, env: Env): void {
       license,
       has_full_text,
     }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "uafm_search",
-          params: {
+      return (async () => {
+        try {
+          const searchParams = new URLSearchParams({
+            query,
+            page: String(page),
+            size: String(size),
+            sort,
+          });
+          if (author) addFilter(searchParams, "author", author, "contains");
+          if (title) addFilter(searchParams, "title", title, "contains");
+          if (subject) addFilter(searchParams, "subject", subject, "equals");
+          if (keyword) addFilter(searchParams, "keyword", keyword, "equals");
+          if (itemtype) addFilter(searchParams, "itemtype", itemtype, "equals");
+          if (date_issued) addFilter(searchParams, "dateIssued", date_issued, "equals");
+          if (date_accessioned)
+            addFilter(searchParams, "dateAccessioned", date_accessioned, "equals");
+          if (license) addFilter(searchParams, "license", license, "contains");
+          if (has_full_text !== undefined) {
+            searchParams.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
+          }
+
+          const url = `${API_BASE}/discover/search/objects?${searchParams}`;
+          const cacheKey = makeCacheKey("uafm_search", {
             query,
             page,
             size,
@@ -234,71 +246,32 @@ export function registerUafmTools(server: McpServer, env: Env): void {
             date_accessioned,
             license,
             has_full_text,
-          } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(query),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "uafm");
-          try {
-            const searchParams = new URLSearchParams({
-              query,
-              page: String(page),
-              size: String(size),
-              sort,
-            });
-            if (author) addFilter(searchParams, "author", author, "contains");
-            if (title) addFilter(searchParams, "title", title, "contains");
-            if (subject) addFilter(searchParams, "subject", subject, "equals");
-            if (keyword) addFilter(searchParams, "keyword", keyword, "equals");
-            if (itemtype) addFilter(searchParams, "itemtype", itemtype, "equals");
-            if (date_issued) addFilter(searchParams, "dateIssued", date_issued, "equals");
-            if (date_accessioned)
-              addFilter(searchParams, "dateAccessioned", date_accessioned, "equals");
-            if (license) addFilter(searchParams, "license", license, "contains");
-            if (has_full_text !== undefined) {
-              searchParams.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
-            }
-
-            const url = `${API_BASE}/discover/search/objects?${searchParams}`;
-            const cacheKey = makeCacheKey("uafm_search", {
-              query,
-              page,
-              size,
-              sort,
-              author,
-              title,
-              subject,
-              keyword,
-              itemtype,
-              date_issued,
-              date_accessioned,
-              license,
-              has_full_text,
-            });
-            const data = await cachedFetch(
-              env.CACHE_KV,
-              cacheKey,
-              url,
-              { headers: JSON_HEADERS },
-              CACHE_TTL,
-            );
-            return { content: [{ type: "text", text: summarizeSearch(data) }] };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error searching UAFM repository: ${toToolErrorText(e)}`,
-                },
-              ],
-              isError: true,
-            };
-          }
-        },
-      );
+          });
+          const data = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: JSON_HEADERS },
+            CACHE_TTL,
+          );
+          return { content: [{ type: "text", text: summarizeSearch(data) }] };
+        } catch (e) {
+          const detail = toToolErrorText(e);
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Error searching UAFM repository: ${detail}\n` +
+                  "Repozytorium eRIKA (repozytorium.uafm.edu.pl) jest obecnie niedostępne: " +
+                  "backend DSpace zwraca HTTP 404 dla /server/api/*. Gdy usługa wróci, " +
+                  "narzędzia uafm_search i uafm_get_item zaczną działać bez zmian kodu.",
+              },
+            ],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
@@ -306,50 +279,44 @@ export function registerUafmTools(server: McpServer, env: Env): void {
   server.tool(
     "uafm_get_item",
     [
-      "Retrieve full metadata for a single item in the University of Applied Sciences in Nowy Sącz Repository by its UUID.",
-      "The UUID is found in the 'uuid' field of uafm_search results.",
+      "Pobiera pełne metadane pojedynczego obiektu w Repozytorium UAFM (repozytorium eRIKA) na podstawie UUID.",
+      "UUID znajduje się w polu 'uuid' wyników uafm_search.",
     ].join(" "),
     {
       uuid: z
         .string()
-        .describe("Item UUID from uafm_search results, e.g. 3fa85f64-5717-4562-b3fc-2c963f66afa6"),
+        .describe("UUID obiektu z wyników uafm_search, np. 3fa85f64-5717-4562-b3fc-2c963f66afa6"),
     },
     async ({ uuid }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "uafm_get_item",
-          params: { uuid } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(uuid),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "uafm");
-          try {
-            const url = `${API_BASE}/core/items/${uuid}`;
-            const cacheKey = makeCacheKey("uafm_item", { uuid });
-            const data = await cachedFetch(
-              env.CACHE_KV,
-              cacheKey,
-              url,
-              { headers: JSON_HEADERS },
-              CACHE_TTL,
-            );
-            return { content: [{ type: "text", text: summarizeItem(data) }] };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error fetching UAFM item ${uuid}: ${toToolErrorText(e)}`,
-                },
-              ],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const url = `${API_BASE}/core/items/${uuid}`;
+          const cacheKey = makeCacheKey("uafm_item", { uuid });
+          const data = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: JSON_HEADERS },
+            CACHE_TTL,
+          );
+          return { content: [{ type: "text", text: summarizeItem(data) }] };
+        } catch (e) {
+          const detail = toToolErrorText(e);
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Error fetching UAFM item ${uuid}: ${detail}\n` +
+                  "Repozytorium eRIKA (repozytorium.uafm.edu.pl) jest obecnie niedostępne: " +
+                  "backend DSpace zwraca HTTP 404 dla /server/api/*. Gdy usługa wróci, " +
+                  "narzędzia uafm_search i uafm_get_item zaczną działać bez zmian kodu.",
+              },
+            ],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }

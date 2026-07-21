@@ -17,21 +17,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey, type CacheError } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const API_BASE = "https://repod.icm.edu.pl/api";
 const CACHE_TTL = 86_400; // 24 h
-
-const API_FIELDS = [
-  "title",
-  "author",
-  "subject",
-  "abstract",
-  "date",
-  "doi",
-  "keywords",
-  "publisher",
-];
 
 type DataverseSearchItem = {
   name?: string;
@@ -84,61 +72,50 @@ export function registerRepodTools(server: McpServer, env: Env): void {
   server.tool(
     "repod_search",
     [
-      "Search open research datasets in RePOD (ICM University of Warsaw).",
-      "Contains ~3,737 datasets with DOIs under the 10.18150/ prefix.",
-      "Returns JSON with relevance scores, authors, descriptions, and publication dates.",
+      "Wyszukiwanie otwartych zbiorów danych badawczych w RePOD (ICM Uniwersytet Warszawski).",
+      "Zawiera około 3 737 zbiorów z DOI w prefiksie 10.18150/.",
+      "Zwraca JSON z punktacją trafności, autorami, opisami i datami publikacji.",
     ].join(" "),
     {
-      query: z.string().describe("Search query"),
+      query: z.string().describe("Zapytanie wyszukiwania"),
       type: z
         .enum(["dataset", "dataverse", "file"])
         .optional()
-        .describe("Restrict results to one content type"),
-      per_page: z.number().int().min(1).max(100).default(10).describe("Results per page"),
-      start: z.number().int().min(0).default(0).describe("Zero-based offset for pagination"),
+        .describe("Ogranicz wyniki do jednego typu treści"),
+      per_page: z.number().int().min(1).max(100).default(10).describe("Liczba wyników na stronę"),
+      start: z.number().int().min(0).default(0).describe("Przesunięcie liczone od zera dla paginacji"),
     },
     async ({ query, type, per_page, start }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "repod_search",
-          params: { query, type, per_page, start } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(query),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "repod");
-          try {
-            const searchParams = new URLSearchParams({
-              q: query,
-              per_page: String(per_page),
-              start: String(start),
-            });
-            if (type) searchParams.set("type", type);
+      return (async () => {
+        try {
+          const searchParams = new URLSearchParams({
+            q: query,
+            per_page: String(per_page),
+            start: String(start),
+          });
+          if (type) searchParams.set("type", type);
 
-            const url = `${API_BASE}/search?${searchParams}`;
-            const cacheKey = makeCacheKey("repod_search", {
-              query,
-              type,
-              per_page,
-              start,
-            });
-            const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
-            return { content: [{ type: "text", text: normalizeRepodSearch(data) }] };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error searching RePOD: ${toToolErrorText(e)}`,
-                },
-              ],
-              isError: true,
-            };
-          }
-        },
-      );
+          const url = `${API_BASE}/search?${searchParams}`;
+          const cacheKey = makeCacheKey("repod_search", {
+            query,
+            type,
+            per_page,
+            start,
+          });
+          const data = await cachedFetch(env.CACHE_KV, cacheKey, url, {}, CACHE_TTL);
+          return { content: [{ type: "text", text: normalizeRepodSearch(data) }] };
+        } catch (e) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error searching RePOD: ${toToolErrorText(e)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
@@ -146,86 +123,75 @@ export function registerRepodTools(server: McpServer, env: Env): void {
   server.tool(
     "repod_get_dataset",
     [
-      "Get metadata for a specific dataset in RePOD by its DOI.",
-      "Choose datacite for standard metadata, schema.org for JSON-LD,",
-      "dcterms for Dublin Core XML, or dataverse_json for the full native record.",
+      "Pobiera metadane konkretnego zbioru danych w RePOD po DOI.",
+      "Wybierz datacite dla standardowych metadanych, schema.org dla JSON-LD,",
+      "dcterms dla Dublin Core XML lub dataverse_json dla pełnego rekordu natywnego.",
     ].join(" "),
     {
-      doi: z.string().describe("Dataset DOI without the doi: prefix, e.g. 10.18150/ABCDEF"),
+      doi: z.string().describe("Identyfikator DOI zbioru danych bez prefiksu doi:, np. 10.18150/ABCDEF"),
       format: z
         .enum(["datacite", "dcterms", "schema.org", "ddi", "dataverse_json"])
         .default("datacite")
-        .describe("Metadata export format"),
+        .describe("Format eksportu metadanych (datacite, schema.org, dcterms, ddi, dataverse_json)."),
     },
     async ({ doi, format }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "repod_get_dataset",
-          params: { doi, format } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(doi),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "repod");
+      return (async () => {
+        try {
+          const persistentId = `doi:${doi}`;
+          const exportUrl = `${API_BASE}/datasets/export?exporter=${encodeURIComponent(format)}&persistentId=${encodeURIComponent(persistentId)}`;
+          const exportCacheKey = makeCacheKey("repod_dataset_export", { doi, format });
+
           try {
-            const persistentId = `doi:${doi}`;
-            const exportUrl = `${API_BASE}/datasets/export?exporter=${encodeURIComponent(format)}&persistentId=${encodeURIComponent(persistentId)}`;
-            const exportCacheKey = makeCacheKey("repod_dataset_export", { doi, format });
-
-            try {
-              const exported = await cachedFetch(
-                env.CACHE_KV,
-                exportCacheKey,
-                exportUrl,
-                {},
-                CACHE_TTL,
-              );
-              return { content: [{ type: "text", text: exported }] };
-            } catch (innerErr) {
-              const cacheErr = innerErr as CacheError;
-              const status = cacheErr?.status;
-              if (status !== 400 && status !== 404) {
-                throw innerErr;
-              }
-
-              // RePOD export endpoint is intermittently broken for valid datasets; use Dataverse JSON fallback.
-              const fallbackUrl = `${API_BASE}/datasets/:persistentId/versions/:latest?persistentId=${encodeURIComponent(persistentId)}`;
-              const fallbackCacheKey = makeCacheKey("repod_dataset_latest", { doi });
-              const fallback = await cachedFetch(
-                env.CACHE_KV,
-                fallbackCacheKey,
-                fallbackUrl,
-                {},
-                CACHE_TTL,
-              );
-
-              const wrapped = JSON.stringify(
-                {
-                  requested_format: format,
-                  fallback_format: "dataverse_json",
-                  note: "RePOD export endpoint returned 400/404; served latest Dataverse JSON dataset version instead.",
-                  dataset: JSON.parse(fallback),
-                },
-                null,
-                2,
-              );
-              return { content: [{ type: "text", text: wrapped }] };
+            const exported = await cachedFetch(
+              env.CACHE_KV,
+              exportCacheKey,
+              exportUrl,
+              {},
+              CACHE_TTL,
+            );
+            return { content: [{ type: "text", text: exported }] };
+          } catch (innerErr) {
+            const cacheErr = innerErr as CacheError;
+            const status = cacheErr?.status;
+            if (status !== 400 && status !== 404) {
+              throw innerErr;
             }
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error fetching RePOD dataset ${doi}: ${toToolErrorText(e)}`,
-                },
-              ],
-              isError: true,
-            };
+
+            // RePOD export endpoint is intermittently broken for valid datasets; use Dataverse JSON fallback.
+            const fallbackUrl = `${API_BASE}/datasets/:persistentId/versions/:latest?persistentId=${encodeURIComponent(persistentId)}`;
+            const fallbackCacheKey = makeCacheKey("repod_dataset_latest", { doi });
+            const fallback = await cachedFetch(
+              env.CACHE_KV,
+              fallbackCacheKey,
+              fallbackUrl,
+              {},
+              CACHE_TTL,
+            );
+
+            const wrapped = JSON.stringify(
+              {
+                requested_format: format,
+                fallback_format: "dataverse_json",
+                note: "RePOD export endpoint returned 400/404; served latest Dataverse JSON dataset version instead.",
+                dataset: JSON.parse(fallback),
+              },
+              null,
+              2,
+            );
+            return { content: [{ type: "text", text: wrapped }] };
           }
-        },
-      );
+        } catch (e) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error fetching RePOD dataset ${doi}: ${toToolErrorText(e)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }

@@ -15,7 +15,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const SITE_BASE = "https://gapla.fn.org.pl";
 const DEFAULT_UA = "Mozilla/5.0 (compatible; PolishAcademicMCP/1.0)";
@@ -25,8 +24,6 @@ const HTML_HEADERS: HeadersInit = {
 };
 const SEARCH_TTL = 3_600;
 const POSTER_TTL = 86_400;
-
-const SPAN_FIELDS = ["q", "typ"];
 
 export function registerGaplaTools(server: McpServer, env: Env): void {
   server.tool(
@@ -39,53 +36,42 @@ export function registerGaplaTools(server: McpServer, env: Env): void {
       "Use gapla_get_poster with numeric id parsed from result links.",
     ].join(" "),
     {
-      q: z.string().min(1).describe("Search phrase (maps to query parameter q)"),
+      q: z.string().min(1).describe("Fraza wyszukiwania (mapowana na parametr zapytania q)"),
       typ: z
         .enum(["tytul", "autor", "rezyseria"])
         .default("tytul")
-        .describe("Search field: title, artist/author, or director credit"),
-      page: z.number().int().min(1).default(1).describe("Result page number (1-based)"),
+        .describe("Pole wyszukiwania: tytuł, artysta lub autor, reżyser obsady"),
+      page: z.number().int().min(1).default(1).describe("Numer strony wyników, liczony od 1"),
       sort: z
         .enum(["alfabetycznie", "chronologicznie_asc", "chronologicznie_desc"])
         .default("alfabetycznie")
         .describe("Sort order for the hit list"),
     },
     async ({ q, typ, page, sort }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "gapla_search",
-          params: { q, typ, page, sort } as Record<string, unknown>,
-          fieldsRequested: SPAN_FIELDS,
-          fieldsReturned: SPAN_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(q),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "gapla");
-          try {
-            const params = new URLSearchParams({ q, typ, page: String(page), sort });
-            const url = `${SITE_BASE}/szukaj.html?${params}`;
-            const text = await cachedFetch(
-              env.CACHE_KV,
-              makeCacheKey("gapla_search", { q, typ, page, sort }),
-              url,
-              { headers: HTML_HEADERS },
-              SEARCH_TTL,
-            );
-            return { content: [{ type: "text", text }] };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error calling gapla_search: ${toToolErrorText(e)}`,
-                },
-              ],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const params = new URLSearchParams({ q, typ, page: String(page), sort });
+          const url = `${SITE_BASE}/szukaj.html?${params}`;
+          const text = await cachedFetch(
+            env.CACHE_KV,
+            makeCacheKey("gapla_search", { q, typ, page, sort }),
+            url,
+            { headers: HTML_HEADERS },
+            SEARCH_TTL,
+          );
+          return { content: [{ type: "text", text }] };
+        } catch (e) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error calling gapla_search: ${toToolErrorText(e)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
@@ -100,40 +86,29 @@ export function registerGaplaTools(server: McpServer, env: Env): void {
       poster_id: z.number().int().positive().describe("Numeric poster id from search results"),
     },
     async ({ poster_id }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "gapla_get_poster",
-          params: { poster_id } as Record<string, unknown>,
-          fieldsRequested: SPAN_FIELDS,
-          fieldsReturned: SPAN_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(String(poster_id)),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "gapla");
-          try {
-            const url = `${SITE_BASE}/plakat/${poster_id}.html`;
-            const text = await cachedFetch(
-              env.CACHE_KV,
-              makeCacheKey("gapla_get_poster", { poster_id }),
-              url,
-              { headers: HTML_HEADERS },
-              POSTER_TTL,
-            );
-            return { content: [{ type: "text", text }] };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error calling gapla_get_poster: ${toToolErrorText(e)}`,
-                },
-              ],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const url = `${SITE_BASE}/plakat/${poster_id}.html`;
+          const text = await cachedFetch(
+            env.CACHE_KV,
+            makeCacheKey("gapla_get_poster", { poster_id }),
+            url,
+            { headers: HTML_HEADERS },
+            POSTER_TTL,
+          );
+          return { content: [{ type: "text", text }] };
+        } catch (e) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error calling gapla_get_poster: ${toToolErrorText(e)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }

@@ -12,7 +12,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const API_BASE = "https://radon.nauka.gov.pl/opendata/polon";
 const JSON_HEADERS = { Accept: "application/json" };
@@ -28,8 +27,6 @@ const RESOURCE_SEGMENTS = {
 } as const;
 
 type ResourceKey = keyof typeof RESOURCE_SEGMENTS;
-
-const API_FIELDS = ["results", "pagination", "version"];
 
 function buildPolonUrl(
   resource: ResourceKey,
@@ -104,14 +101,7 @@ export function registerPolonTools(server: McpServer, env: Env): void {
     ].join(" "),
     {
       resource: z
-        .enum([
-          "institutions",
-          "employees",
-          "projects",
-          "publications",
-          "courses",
-          "branches",
-        ])
+        .enum(["institutions", "employees", "projects", "publications", "courses", "branches"])
         .describe("POL-on dataset to query"),
       result_numbers: z
         .number()
@@ -119,38 +109,52 @@ export function registerPolonTools(server: McpServer, env: Env): void {
         .min(1)
         .max(100)
         .default(20)
-        .describe("Page size (resultNumbers); max 100 per request"),
+        .describe("Rozmiar strony (resultNumbers); maks. 100 na żądanie"),
       page_token: z
         .string()
         .optional()
-        .describe("Pagination token from prior response pagination.token"),
+        .describe("Token paginacji z poprzedniej odpowiedzi (pole pagination.token)"),
       city: z
         .string()
         .optional()
-        .describe("Filter: city — use for institutions or branches (UTF-8, e.g. Kraków)"),
+        .describe("Filtr: miasto — używaj dla instytucji lub oddziałów (UTF-8, np. Kraków)"),
       voivodeship: z
         .string()
         .optional()
-        .describe("Filter: Polish voivodeship name — institutions or branches"),
+        .describe("Filtr: nazwa polskiego województwa — instytucje lub oddziały"),
       institution_name: z
         .string()
         .optional()
-        .describe("Filter: institution name fragment — institutions only"),
-      first_name: z.string().optional().describe("Filter: employee first name — employees only"),
+        .describe("Filtr: fragment nazwy instytucji — tylko instytucje"),
+      first_name: z.string().optional().describe("Filtr: imię pracownika — tylko pracownicy"),
       last_name: z
         .string()
         .optional()
-        .describe("Filter: surname — employees (firstName+lastName) or publications (author lastName)"),
+        .describe(
+          "Filtr: nazwisko — pracownicy (firstName + lastName) lub publikacje (nazwisko autora)",
+        ),
       discipline_name: z
         .string()
         .optional()
-        .describe("Filter: academic discipline name — employees only (e.g. astronomia)"),
-      project_title_pl: z.string().optional().describe("Filter: Polish project title — projects only"),
-      project_title_en: z.string().optional().describe("Filter: English project title — projects only"),
-      project_number: z.string().optional().describe("Filter: grant/project number — projects only"),
-      keywords: z.string().optional().describe("Filter: project keywords — projects only"),
-      publication_title: z.string().optional().describe("Filter: publication title fragment — publications only"),
-      course_name: z.string().optional().describe("Filter: field of study name — courses only"),
+        .describe("Filtr: nazwa dyscypliny naukowej — tylko pracownicy (np. astronomia)"),
+      project_title_pl: z
+        .string()
+        .optional()
+        .describe("Filtr: polski tytuł projektu — tylko projekty"),
+      project_title_en: z
+        .string()
+        .optional()
+        .describe("Filtr: angielski tytuł projektu — tylko projekty"),
+      project_number: z
+        .string()
+        .optional()
+        .describe("Filtr: numer grantu lub projektu — tylko projekty"),
+      keywords: z.string().optional().describe("Filtr: słowa kluczowe projektu — tylko projekty"),
+      publication_title: z
+        .string()
+        .optional()
+        .describe("Filtr: fragment tytułu publikacji — tylko publikacje"),
+      course_name: z.string().optional().describe("Filtr: nazwa kierunku studiów — tylko kierunki"),
     },
     async (params) => {
       const {
@@ -171,56 +175,41 @@ export function registerPolonTools(server: McpServer, env: Env): void {
         course_name,
       } = params;
 
-      return withToolExecutionSpan(
-        {
-          toolName: "polon_search",
-          params: params as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(
-            [resource, institution_name, publication_title, course_name, project_title_pl, last_name]
-              .filter(Boolean)
-              .join(" "),
-          ),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "radon-polon");
-          try {
-            const url = buildPolonUrl(resource, {
-              result_numbers,
-              page_token,
-              city,
-              voivodeship,
-              institution_name,
-              first_name,
-              last_name,
-              discipline_name,
-              project_title_pl,
-              project_title_en,
-              project_number,
-              keywords,
-              publication_title,
-              course_name,
-            });
-            const cacheKey = makeCacheKey("polon_search", params as Record<string, unknown>);
-            const text = await cachedFetch(
-              env.CACHE_KV,
-              cacheKey,
-              url,
-              { headers: JSON_HEADERS },
-              CACHE_TTL,
-            );
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling polon_search: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const url = buildPolonUrl(resource, {
+            result_numbers,
+            page_token,
+            city,
+            voivodeship,
+            institution_name,
+            first_name,
+            last_name,
+            discipline_name,
+            project_title_pl,
+            project_title_en,
+            project_number,
+            keywords,
+            publication_title,
+            course_name,
+          });
+          const cacheKey = makeCacheKey("polon_search", params as Record<string, unknown>);
+          const text = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: JSON_HEADERS },
+            CACHE_TTL,
+          );
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling polon_search: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }

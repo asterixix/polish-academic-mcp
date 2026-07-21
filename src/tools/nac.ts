@@ -19,7 +19,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const SITE = "https://www.nac.gov.pl";
 const RSS_URL = `${SITE}/feed/`;
@@ -35,8 +34,6 @@ const RSS_HEADERS = { Accept: "application/rss+xml, application/xml, text/xml;q=
 
 const FEED_TTL = 3_600; // 1 h — news
 const WP_TTL = 3_600; // 1 h — CMS
-
-const API_FIELDS = ["title", "link", "id"];
 
 function buildWpRestUrl(path: string, params?: URLSearchParams): string {
   const cleanPath = path.replace(/^\/+/, "");
@@ -58,30 +55,25 @@ export function registerNacTools(server: McpServer, env: Env): void {
     ].join(" "),
     {},
     async () => {
-      return withToolExecutionSpan(
-        {
-          toolName: "nac_news_rss",
-          params: {} as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: 0,
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "nac-gov");
-          try {
-            const key = makeCacheKey("nac_news_rss", {});
-            const text = await cachedFetch(env.CACHE_KV, key, RSS_URL, { headers: RSS_HEADERS }, FEED_TTL);
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling nac_news_rss: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const key = makeCacheKey("nac_news_rss", {});
+          const text = await cachedFetch(
+            env.CACHE_KV,
+            key,
+            RSS_URL,
+            { headers: RSS_HEADERS },
+            FEED_TTL,
+          );
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling nac_news_rss: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
@@ -89,121 +81,88 @@ export function registerNacTools(server: McpServer, env: Env): void {
   server.tool(
     "nac_site_search",
     [
-      "Search the nac.gov.pl WordPress site (posts and pages) via REST API.",
-      "Returns JSON hits with title, URL, id, subtype — use `nac_get_post` / `nac_get_page` with that id.",
-      "If the response is HTTP 403, the origin WAF may block automated clients from your egress; retry from another network or use the website.",
+      "Wyszukiwanie w serwisie WordPress nac.gov.pl (wpisy i strony) przez REST API.",
+      "Zwraca trafienia JSON z title, URL, id, subtype — użyj nac_get_post / nac_get_page z tym identyfikatorem.",
+      "Jeśli odpowiedź to HTTP 403, WAF origin może blokować zautomatyzowanych klientów; spróbuj z innej sieci albo skorzystaj z serwisu.",
     ].join(" "),
     {
-      query: z.string().min(1).describe("Search string (Polish keywords)"),
-      per_page: z.number().int().min(1).max(50).default(10).describe("Max results (1–50)"),
+      query: z.string().min(1).describe("Fraza wyszukiwania (polskie słowa kluczowe)"),
+      per_page: z.number().int().min(1).max(50).default(10).describe("Maksymalna liczba wyników (1–50)"),
       subtypes: z
         .array(z.enum(["post", "page"]))
         .default(["post", "page"])
-        .describe("WordPress object subtypes for content search (post vs page)"),
+        .describe("Podtypy obiektów WordPress do przeszukania (post vs page)"),
     },
     async ({ query, per_page, subtypes }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "nac_site_search",
-          params: { query, per_page, subtypes } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(query),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "nac-gov");
-          try {
-            const params = new URLSearchParams({
-              search: query,
-              per_page: String(per_page),
-            });
-            for (const s of subtypes) params.append("subtype", s);
-            const url = buildWpRestUrl("search", params);
-            const key = makeCacheKey("nac_site_search", { query, per_page, subtypes });
-            const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling nac_site_search: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const params = new URLSearchParams({
+            search: query,
+            per_page: String(per_page),
+          });
+          for (const s of subtypes) params.append("subtype", s);
+          const url = buildWpRestUrl("search", params);
+          const key = makeCacheKey("nac_site_search", { query, per_page, subtypes });
+          const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling nac_site_search: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
   // ── nac_get_post ──────────────────────────────────────────────────────────
   server.tool(
     "nac_get_post",
-    "Fetch a single blog post from nac.gov.pl as WordPress REST JSON (`/wp/v2/posts/{id}`).",
+    "Pobiera pojedynczy wpis blogowy z nac.gov.pl jako JSON REST WordPress (`/wp/v2/posts/{id}`).",
     {
-      post_id: z.number().int().positive().describe("Numeric post id from nac_site_search or URLs"),
+      post_id: z.number().int().positive().describe("Numeryczny identyfikator wpisu z nac_site_search lub URL"),
     },
     async ({ post_id }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "nac_get_post",
-          params: { post_id } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: 0,
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "nac-gov");
-          try {
-            const url = buildWpRestUrl(`posts/${post_id}`);
-            const key = makeCacheKey("nac_get_post", { post_id });
-            const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling nac_get_post: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const url = buildWpRestUrl(`posts/${post_id}`);
+          const key = makeCacheKey("nac_get_post", { post_id });
+          const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling nac_get_post: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
   // ── nac_get_page ──────────────────────────────────────────────────────────
   server.tool(
     "nac_get_page",
-    "Fetch a single static page from nac.gov.pl as WordPress REST JSON (`/wp/v2/pages/{id}`).",
+    "Pobiera pojedynczą stronę statyczną z nac.gov.pl jako JSON REST WordPress (`/wp/v2/pages/{id}`).",
     {
-      page_id: z.number().int().positive().describe("Numeric page id from nac_site_search"),
+      page_id: z.number().int().positive().describe("Numeryczny identyfikator strony z nac_site_search"),
     },
     async ({ page_id }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "nac_get_page",
-          params: { page_id } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: 0,
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "nac-gov");
-          try {
-            const url = buildWpRestUrl(`pages/${page_id}`);
-            const key = makeCacheKey("nac_get_page", { page_id });
-            const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling nac_get_page: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const url = buildWpRestUrl(`pages/${page_id}`);
+          const key = makeCacheKey("nac_get_page", { page_id });
+          const text = await cachedFetch(env.CACHE_KV, key, url, { headers: JSON_HEADERS }, WP_TTL);
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling nac_get_page: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }
