@@ -8,72 +8,98 @@
 
 ## Project overview
 
-**polish-academic-mcp** is a stateless Remote MCP Server running on Cloudflare Workers
-(free tier). It exposes tools that let any MCP-compatible LLM (Claude, GPT-4, etc.)
-search Polish academic databases, plus a research evaluation tool:
+**polish-academic-mcp** is a local MCP server (Model Context Protocol) that exposes
+**85 tools** letting any MCP-compatible LLM (Claude, GPT-4, etc.) search Polish
+academic, public, and cultural databases. It runs as a local Node.js process
+communicating via **stdio**, distributed exclusively through npm as the
+`polish-academic-mcp` package. All databases offer **unauthenticated read access**
+except for the three PBN tools (require `PBN_APP_ID` + `PBN_APP_TOKEN`).
 
-| Tool name | Database | Protocol |
-|---|---|---|
-| `bn_search_articles` | Biblioteka Nauki | OAI-PMH (XML) |
-| `bn_get_article` | Biblioteka Nauki | OAI-PMH (XML) |
-| `ruj_search` | RUJ (Jagiellonian Univ.) | DSpace 7 REST (HAL+JSON) |
-| `ruj_get_item` | RUJ | DSpace 7 REST (HAL+JSON) |
-| `rodbuk_search` | RODBuK | Dataverse REST (JSON) |
-| `repod_search` | RePOD | Dataverse REST (JSON) |
-| `repod_get_dataset` | RePOD | Dataverse REST (JSON) |
-| `dane_search` | dane.gov.pl | Custom REST v1.4 (JSON) |
-| `dane_get_dataset` | dane.gov.pl | Custom REST v1.4 (JSON) |
-| `amu_search` | AMU Repository (Adam Mickiewicz Univ.) | DSpace 7 REST (HAL+JSON) |
-| `amu_get_item` | AMU Repository | DSpace 7 REST (HAL+JSON) |
-| `uafm_search` | UAFM Repository (Andrzej Frycz Modrzewski) | DSpace 7 REST (HAL+JSON) |
-| `uafm_get_item` | UAFM Repository | DSpace 7 REST (HAL+JSON) |
-| `icm_search` | ICM Open (Univ. of Warsaw) | DSpace 7 REST (HAL+JSON) |
-| `icm_get_item` | ICM Open | DSpace 7 REST (HAL+JSON) |
-| `imgw_synop` | IMGW-PIB (meteorology) | Custom REST (JSON) |
-| `imgw_hydro` | IMGW-PIB (hydrology) | Custom REST (JSON) |
-| `imgw_meteo` | IMGW-PIB (climate) | Custom REST (JSON) |
-| `imgw_warnings` | IMGW-PIB (warnings) | Custom REST (JSON) |
-| `agh_search` | AGH University Repository | DSpace 7 REST (HAL+JSON) |
-| `agh_get_item` | AGH University Repository | DSpace 7 REST (HAL+JSON) |
+This file describes the v1.1.0 architecture (npm-only, local stdio). Historical
+sections that reference Cloudflare Workers, MCPB bundles, or research evaluation
+apparatus are obsolete and have been removed; if you see references to those
+in the wild, treat them as out of date.
 
-All databases offer **unauthenticated read access** — no external API keys.
+For the complete tool catalogue (85 entries with Polish descriptions) see
+`README.md`. For per-client configuration snippets see `docs/CLIENTS.md`.
+For AI agents that need to configure the server themselves see
+`docs/AGENT-GUIDE.md`.
 
 ---
 
 ## File map
 
 ```
-npm run dev          # starts the stdio MCP server from src/index.ts
-├── index.ts           Worker entry: rate-limit gate → MCP dispatch + eval export
-├── types.ts           Env interface (CACHE_KV, RATE_LIMIT_KV, HONEYCOMB_API_KEY)
-The package uses an in-memory cache store in local development, so the server runs without Cloudflare bindings.
-├── tracing.ts         OTel span helpers: withAgentRequestSpan, withLlmCallSpan,
-│                        withToolSelectionSpan, withToolExecutionSpan,
-│                        withResponseGenerationSpan, estimateTokens,
-│                        detectLanguage, detectFieldsInText, annotateCurrentSpan
-# Connect the inspector to the local `npm run dev` process
-├── server.ts          createServer(env) — registers all tools, returns McpServer
-├── tools/
-    ├── biblioteka-nauki.ts  → bn_search_articles, bn_get_article
+package.json           npm-only distribution; entry "bin": { "polish-academic-mcp": "dist/index.js" }
+                       engines: "node": ">=18"; no MCPB; no eval; no telemetry deps
+
+src/
+├── index.ts           Stdio entry: --help, --version, MCP dispatch (creates fresh McpServer per request)
+├── server.ts          createServer(env) — registers all 85 tools
+├── cache.ts           in-process TTL cache + 30s timeout + single retry on transient errors
+├── tool-error-handling.ts   structured error classification without OTel
+├── types.ts           Env interface (BDL_CLIENT_ID, PBN_APP_ID, PBN_APP_TOKEN optional)
+└── tools/             33 files, one per database / source
+    ├── biblioteka-nauki.ts  → bn_search_publications, bn_search_articles, bn_get_article
     ├── ruj.ts               → ruj_search, ruj_get_item
+    ├── agh.ts               → agh_search, agh_get_item
+    ├── amu.ts               → amu_search, amu_get_item
+    ├── uafm.ts              → uafm_search, uafm_get_item   (currently: HTTP 404 from eRIKA)
+    ├── icm.ts               → icm_search, icm_get_item
     ├── rodbuk.ts            → rodbuk_search
     ├── repod.ts             → repod_search, repod_get_dataset
     ├── dane.ts              → dane_search, dane_get_dataset
-    ├── amu.ts               → amu_search, amu_get_item
-    ├── uafm.ts              → uafm_search, uafm_get_item
-    ├── icm.ts               → icm_search, icm_get_item
+    ├── polon.ts             → polon_search
+    ├── pbn.ts               → pbn_search_publications, pbn_search_persons, pbn_get_publication
+    ├── bdl.ts               → bdl_search_subjects, bdl_search_variables, bdl_search_units,
+    │                          bdl_get_variable, bdl_get_data_by_variable, bdl_get_data_by_unit
     ├── imgw.ts              → imgw_synop, imgw_hydro, imgw_meteo, imgw_warnings
-    ├── agh.ts               → agh_search, agh_get_item
-    └── response-eval.ts     → shared eval pipeline for scripts only
+    ├── pkn.ts               → pkn_search
+    ├── wiedza.ts            → wiedza_search_norms, wiedza_get_standard
+    ├── blz.ts               → blz_search, blz_get_listing, blz_listing_categories
+    ├── baztol.ts            → baztol_search, baztol_browse_domain, baztol_get_resource
+    ├── nac.ts               → nac_news_rss, nac_site_search, nac_get_post, nac_get_page
+    ├── sum.ts               → sum_aleph_find, sum_aleph_present
+    ├── ludzie-nauki.ts      → ludzie_search, ludzie_semantic_search, ludzie_get_scientist
+    ├── pauart.ts            → pauart_search, pauart_get_artwork
+    ├── isap.ts              → isap_search_acts, isap_get_act
+    ├── sejm-bs.ts           → bs_sejm_search, bs_sejm_get_item
+    ├── saos.ts              → saos_search_judgments, saos_get_judgment, saos_dump_services,
+    │                          saos_dump_common_courts, saos_dump_sc_chambers,
+    │                          saos_dump_judgments, saos_dump_enrichments
+    ├── wolne-lektury.ts     → wolnelektury_list_taxonomy, wolnelektury_filter_books,
+    │                          wolnelektury_get_book, wolnelektury_get_collection
+    ├── ninateka.ts          → ninateka_search, ninateka_get_vod
+    ├── gapla.ts             → gapla_search, gapla_get_poster
+    ├── fototeka.ts          → fototeka_search, fototeka_get_photo
+    ├── filmpolski.ts        → filmpolski_search, filmpolski_get_record
+    ├── fototekaslaska.ts    → fototekaslaska_search, fototekaslaska_get_gallery
+    ├── filmoteka-repo.ts    → fn_repo_search, fn_repo_get_node, fn_repo_film_index, fn_repo_browse_kind
+    ├── rcin.ts              → rcin_search, rcin_get_record
+    └── dokumenty-slaska.ts  → dokumenty_slaska_get_page, dokumenty_slaska_medieval_catalog
 
-wrangler.jsonc         Cloudflare Workers config (KV bindings + Honeycomb observability)
+tests/
+├── package-contract.test.ts   version, --help, --version, npm-only, no MCPB / eval / telemetry
+├── mcp-contract.test.ts       85 tool IDs stable, all tool + parameter descriptions in Polish
+└── fetch-policy.test.ts       30s timeout, single retry on transient, no retry on 4xx
+
+scripts/
+└── smoke-tools.ts             live smoke (82 tools + 5 dynamic search→get pairs)
+
 tsconfig.json          TypeScript config (strict, module: ES2022, target: ES2022)
-package.json           Dependencies pinned: @modelcontextprotocol/sdk@1.26.0
+docs/
+├── CLIENTS.md         per-client MCP configuration snippets
+├── AGENT-GUIDE.md     prompt for AI agents configuring the server
+└── plans/             implementation plans
 ```
 
 ---
 
-## Architecture decisions (do not change these without understanding why)
+## Architecture decisions (HISTORICAL — see v1.1.0 note at top)
+
+> **These sections describe the pre-v1.1.0 Cloudflare Workers / MCPB / eval-pipeline
+> architecture that no longer ships with `polish-academic-mcp`. They are kept as a
+> historical reference only. Do not change the codebase to match them.**
 
 ### 1. Stateless — one `McpServer` instance per request
 
@@ -311,12 +337,20 @@ npm run deploy
 
 ---
 
-## What NOT to do
+## What NOT to do (CURRENT for v1.1.0)
 
-- Do not add `ctx.waitUntil()` calls — `ExecutionContext` is not forwarded into tool
-  handlers in the stateless `createMcpHandler` path.
-- Do not parse XML or large JSON in the Worker — return raw text to the LLM.
-- Do not share a single `McpServer` instance across requests.
-- Do not bump `@modelcontextprotocol/sdk` without checking `agents` compatibility.
-- Do not use `console.log` for debugging in production paths — use `wrangler tail` for
-  live log streaming, and emit only meaningful warnings/errors.
+- Do not parse XML or large JSON inside tool handlers — return raw text from the
+  source API to the LLM and let the model interpret it.
+- Do not share a single `McpServer` instance across requests — `createServer(env)`
+  is called per-request in `src/index.ts`; SDK v1.26+ leaks state otherwise.
+- Do not bump `@modelcontextprotocol/sdk` without checking the bundled SDK version
+  in `agents` (npm deduplicates; private-field type conflicts are otherwise
+  invisible until CI breaks).
+- Do not `npm install -g polish-academic-mcp` or recommend global install — this
+  package is designed to be invoked through `npx -y polish-academic-mcp` so each
+  MCP client can pin its own version.
+- Do not re-introduce Cloudflare / MCPB / research-evaluation / telemetry
+  dependencies. v1.1.0 is local stdio + npm-only by design.
+- Do not commit secrets. The only optional secrets are `PBN_APP_ID`,
+  `PBN_APP_TOKEN`, `BDL_CLIENT_ID`; they live in the user's environment, never in
+  the repo.

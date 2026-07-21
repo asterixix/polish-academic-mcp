@@ -13,14 +13,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const ELI_BASE = "https://api.sejm.gov.pl/eli";
 const JSON_HEADERS = { Accept: "application/json" };
 const SEARCH_TTL = 3_600;
 const ACT_TTL = 86_400;
-
-const API_FIELDS = ["title", "ELI", "displayAddress", "type", "year", "publisher", "entryIntoForce"];
 
 function buildSearchParams(args: {
   title?: string;
@@ -45,7 +42,10 @@ function buildSearchParams(args: {
   const p = new URLSearchParams();
   if (args.title) p.set("title", args.title);
   for (const k of args.keywords ?? []) {
-    for (const part of k.split(",").map((s) => s.trim()).filter(Boolean)) {
+    for (const part of k
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)) {
       p.append("keyword", part);
     }
   }
@@ -84,47 +84,63 @@ export function registerIsapTools(server: McpServer, env: Env): void {
   server.tool(
     "isap_search_acts",
     [
-      "Search Polish legal acts indexed in ISAP via the Sejm ELI JSON API (European Legislation Identifier).",
-      "Use title for full-text-in-title search; keywords match ISAP keyword tags (not arbitrary prose).",
-      "Filter by publisher (e.g. DU = Dziennik Ustaw), year, type (e.g. Ustawa, Rozporządzenie), in_force, dates.",
-      "Returns raw JSON with items[].ELI, title, displayAddress, texts, references. See https://api.sejm.gov.pl/eli/openapi/",
+      "Wyszukiwanie polskich aktów prawnych indeksowanych w ISAP przez API JSON ELI Sejmu (European Legislation Identifier).",
+      "Użyj title do wyszukiwania pełnotekstowego w tytułach; keyword dopasowuje tagi słów kluczowych ISAP (nie dowolny tekst).",
+      "Filtruj po wydawcy (np. DU = Dziennik Ustaw), roku, typie (np. Ustawa, Rozporządzenie), obowiązywaniu, datach.",
+      "Zwraca surowy JSON z items[].ELI, title, displayAddress, texts, references. Zobacz https://api.sejm.gov.pl/eli/openapi/",
     ].join(" "),
     {
-      title: z.string().optional().describe("Words to find in the act title."),
+      title: z.string().optional().describe("Słowa do znalezienia w tytule aktu."),
       keyword: z
         .string()
         .optional()
         .describe(
-          "ISAP keyword tag(s)—comma-separated; matches controlled vocabulary tags (e.g. szkolnictwo, podatki), not free text.",
+          "Tag lub tagi słów kluczowych ISAP rozdzielone przecinkami; dopasowuje tagi kontrolowanego słownika (np. szkolnictwo, podatki), nie tekst swobodny.",
         ),
-      year: z.number().int().min(1).optional().describe("Calendar year of the act in the journal (e.g. 2025)."),
+      year: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("Rok kalendarzowy aktu w dzienniku (np. 2025)."),
       publisher: z
         .string()
         .optional()
-        .describe('Publisher code, e.g. "DU" (Dziennik Ustaw), "MP" (Monitor Polski).'),
+        .describe('Kod wydawcy aktu prawnego, np. "DU" (Dziennik Ustaw), "MP" (Monitor Polski); parametr typu tekst.'),
       type: z
         .string()
         .optional()
-        .describe('Act type, e.g. "Ustawa", "Rozporządzenie", "Obwieszczenie".'),
-      position: z.number().int().min(1).optional().describe("Position number in the journal (poz.)."),
-      volume: z.number().int().optional().describe("Volume (journal volume)."),
+        .describe('Typ aktu, np. "Ustawa", "Rozporządzenie", "Obwieszczenie".'),
+      position: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("Numer pozycji w dzienniku (poz.)."),
+      volume: z.number().int().optional().describe("Numer tomu (wolumen dziennika urzędowego)."),
       in_force: z
         .boolean()
         .optional()
-        .describe("When true, only acts currently in force (API: inForce=1)."),
-      date_from: z.string().optional().describe("Announcement date from (yyyy-MM-dd)."),
-      date_to: z.string().optional().describe("Announcement date to (yyyy-MM-dd)."),
-      date_effect_from: z.string().optional().describe("Entry-into-force date from (yyyy-MM-dd)."),
-      date_effect_to: z.string().optional().describe("Entry-into-force date to (yyyy-MM-dd)."),
-      pub_date_from: z.string().optional().describe("Promulgation date from (yyyy-MM-dd)."),
-      pub_date_to: z.string().optional().describe("Promulgation date to (yyyy-MM-dd)."),
-      limit: z.number().int().min(1).max(100).default(20).describe("Max results (API default 500; capped at 100 here)."),
-      offset: z.number().int().min(0).default(0).describe("0-based offset for pagination."),
+        .describe("Gdy true, tylko akty aktualnie obowiązujące (API: inForce=1)."),
+      date_from: z.string().optional().describe("Data ogłoszenia od (yyyy-MM-dd)."),
+      date_to: z.string().optional().describe("Data ogłoszenia do (yyyy-MM-dd)."),
+      date_effect_from: z.string().optional().describe("Data wejścia w życie od (yyyy-MM-dd)."),
+      date_effect_to: z.string().optional().describe("Data wejścia w życie do (yyyy-MM-dd)."),
+      pub_date_from: z.string().optional().describe("Data publikacji od (yyyy-MM-dd)."),
+      pub_date_to: z.string().optional().describe("Data publikacji do (yyyy-MM-dd)."),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .default(20)
+        .describe("Maksymalna liczba wyników (domyślnie API 500; ograniczone do 100)."),
+      offset: z.number().int().min(0).default(0).describe("Przesunięcie liczone od zera dla paginacji."),
       sort_by: z
         .enum(["publisher", "position", "title", "change"])
         .default("publisher")
-        .describe("Sort field (see ELI API)."),
-      sort_dir: z.enum(["asc", "desc"]).default("asc").describe("Sort direction."),
+        .describe("Pole sortowania (zobacz API ELI)."),
+      sort_dir: z.enum(["asc", "desc"]).default("asc").describe("Kierunek sortowania listy wyników (rosnąco lub malejąco)."),
     },
     async (params) => {
       const {
@@ -147,99 +163,86 @@ export function registerIsapTools(server: McpServer, env: Env): void {
         sort_by,
         sort_dir,
       } = params;
-      return withToolExecutionSpan(
-        {
-          toolName: "isap_search_acts",
-          params: params as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens([title, keyword].filter(Boolean).join(" ")),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "isap-sejm-eli");
-          try {
-            const keywords = keyword
-              ? keyword
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-              : undefined;
-            const searchParams = buildSearchParams({
-              title,
-              keywords,
-              year,
-              publisher,
-              type,
-              position,
-              volume,
-              in_force,
-              date_from,
-              date_to,
-              date_effect_from,
-              date_effect_to,
-              pub_date_from,
-              pub_date_to,
-              limit,
-              offset,
-              sort_by,
-              sort_dir,
-            });
-            const url = `${ELI_BASE}/acts/search?${searchParams}`;
-            const cacheKey = makeCacheKey("isap_search", { url });
-            const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, SEARCH_TTL);
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling isap_search_acts: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const keywords = keyword
+            ? keyword
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : undefined;
+          const searchParams = buildSearchParams({
+            title,
+            keywords,
+            year,
+            publisher,
+            type,
+            position,
+            volume,
+            in_force,
+            date_from,
+            date_to,
+            date_effect_from,
+            date_effect_to,
+            pub_date_from,
+            pub_date_to,
+            limit,
+            offset,
+            sort_by,
+            sort_dir,
+          });
+          const url = `${ELI_BASE}/acts/search?${searchParams}`;
+          const cacheKey = makeCacheKey("isap_search", { url });
+          const text = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: JSON_HEADERS },
+            SEARCH_TTL,
+          );
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling isap_search_acts: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
   server.tool(
     "isap_get_act",
     [
-      "Fetch one legal act from ISAP by ELI identifier (same numbering as in search results).",
-      "Example ELI: DU/2026/370 — Dziennik Ustaw, year 2026, position 370. Returns JSON with title, texts (PDF file names), references.",
+      "Pobiera jeden akt prawny z ISAP po identyfikatorze ELI (te same numery co w wynikach wyszukiwania).",
+      "Przykład ELI: DU/2026/370 — Dziennik Ustaw, rok 2026, pozycja 370. Zwraca JSON z title, texts (nazwy plików PDF), references.",
     ].join(" "),
     {
-      eli: z
-        .string()
-        .min(3)
-        .describe('ELI id, e.g. "DU/2026/370" (publisher/year/position).'),
+      eli: z.string().min(3).describe('Identyfikator ELI, np. "DU/2026/370" (wydawca/rok/pozycja).'),
     },
     async ({ eli }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "isap_get_act",
-          params: { eli } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(eli),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "isap-sejm-eli");
-          try {
-            const path = eliToPath(eli);
-            const url = `${ELI_BASE}/acts/${path}`;
-            const cacheKey = makeCacheKey("isap_act", { eli });
-            const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, ACT_TTL);
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling isap_get_act: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const path = eliToPath(eli);
+          const url = `${ELI_BASE}/acts/${path}`;
+          const cacheKey = makeCacheKey("isap_act", { eli });
+          const text = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: JSON_HEADERS },
+            ACT_TTL,
+          );
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling isap_get_act: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }

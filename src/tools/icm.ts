@@ -18,23 +18,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const API_BASE = "https://open.icm.edu.pl/server/api";
 const BASE_URL = "https://open.icm.edu.pl";
 const JSON_HEADERS = { Accept: "application/json" };
 const CACHE_TTL = 86_400; // 24 h
-
-const API_FIELDS = [
-  "title",
-  "author",
-  "subject",
-  "abstract",
-  "date",
-  "language",
-  "doi",
-  "keywords",
-];
 
 const VALID_OPS = new Set([
   "equals",
@@ -153,19 +141,19 @@ export function registerIcmTools(server: McpServer, env: Env): void {
   server.tool(
     "icm_search",
     [
-      "Search research data and publications in the ICM Open Research Data Repository (open.icm.edu.pl)",
-      "at the University of Warsaw via DSpace 7 discovery.",
-      "Supports full-text search with filters for author, title, subject, publisher,",
-      "affiliation, license, date, and full-text availability.",
-      "Results are HAL+JSON with Dublin Core metadata.",
-      "Each filter value may include an explicit operator suffix (e.g. 'Smith,equals');",
-      "if omitted the documented default operator is applied.",
-      "Supported operators: equals, notequals, contains, notcontains, authority, notauthority, query.",
+      "Wyszukiwanie danych badawczych i publikacji w repozytorium ICM Open (open.icm.edu.pl)",
+      "Uniwersytetu Warszawskiego przez mechanizm discovery DSpace 7.",
+      "Wspiera wyszukiwanie pełnotekstowe z filtrami dla autora, tytułu, tematu, wydawcy,",
+      "afiliacji, licencji, daty oraz dostępności pełnego tekstu.",
+      "Wyniki w formacie HAL+JSON z metadanymi Dublin Core.",
+      "Każda wartość filtra może zawierać operator po przecinku (np. 'Kowalski,equals');",
+      "jeśli operator nie jest podany, stosowany jest operator domyślny dla danego pola.",
+      "Obsługiwane operatory: equals, notequals, contains, notcontains, authority, notauthority, query.",
     ].join(" "),
     {
-      query: z.string().describe("Full-text search terms"),
-      page: z.number().int().min(0).default(0).describe("Page number — 0-based"),
-      size: z.number().int().min(1).max(50).default(10).describe("Results per page (1–50)"),
+      query: z.string().describe("Wyrażenie do wyszukiwania pełnotekstowego"),
+      page: z.number().int().min(0).default(0).describe("Numer strony liczony od zera"),
+      size: z.number().int().min(1).max(50).default(10).describe("Liczba wyników na stronę (1–50)"),
       sort: z
         .enum([
           "score,desc",
@@ -177,30 +165,30 @@ export function registerIcmTools(server: McpServer, env: Env): void {
           "dc.date.accessioned,desc",
         ])
         .default("score,desc")
-        .describe("Sort field and direction"),
-      author: z.string().optional().describe("Author name filter (default op: contains)."),
-      title: z.string().optional().describe("Title filter (default op: contains)."),
-      subject: z.string().optional().describe("Subject filter (default op: equals)."),
-      publisher: z.string().optional().describe("Publisher filter (default op: contains)."),
+        .describe("Pole i kierunek sortowania"),
+      author: z.string().optional().describe("Filtr autora (domyślnie: contains)."),
+      title: z.string().optional().describe("Filtr tytułu (domyślnie: contains)."),
+      subject: z.string().optional().describe("Filtr tematu (domyślnie: equals)."),
+      publisher: z.string().optional().describe("Filtr wydawcy (domyślnie: contains)."),
       affiliation: z
         .string()
         .optional()
-        .describe("Author institutional affiliation filter (default op: contains)."),
+        .describe("Filtr afiliacji instytucjonalnej autora (domyślnie: contains)."),
       license: z
         .string()
         .optional()
-        .describe("License filter (default op: contains). E.g. 'CC BY'."),
+        .describe("Filtr licencji (domyślnie: contains). Np. 'CC BY'."),
       date_issued: z
         .string()
         .optional()
         .describe(
-          "Issue date filter (default op: equals). For ranges use Solr syntax, e.g. '[2020-01-01 TO 2023-12-31],query'.",
+          "Filtr daty wydania (domyślnie: equals). Dla zakresów użyj notacji Solr, np. '[2020-01-01 TO 2023-12-31],query'.",
         ),
       has_full_text: z
         .boolean()
         .optional()
         .describe(
-          "When true, restrict to items with files in the original bundle (full-text available).",
+          "Gdy true, ogranicza wyniki do obiektów z plikami w oryginalnym pakiecie (dostępny pełny tekst).",
         ),
     },
     async ({
@@ -217,10 +205,32 @@ export function registerIcmTools(server: McpServer, env: Env): void {
       date_issued,
       has_full_text,
     }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "icm_search",
-          params: {
+      return (async () => {
+        try {
+          const buildParams = (useAllFilters: boolean): URLSearchParams => {
+            const params = new URLSearchParams({
+              query,
+              page: String(page),
+              size: String(size),
+              sort,
+            });
+            if (!useAllFilters) return params;
+            if (author) addFilter(params, "author", author, "contains");
+            if (title) addFilter(params, "title", title, "contains");
+            if (subject) addFilter(params, "subject", subject, "equals");
+            if (publisher) addFilter(params, "publisher", publisher, "contains");
+            if (affiliation) addFilter(params, "affiliation", affiliation, "contains");
+            if (license) addFilter(params, "license", license, "contains");
+            if (date_issued) addFilter(params, "dateIssued", date_issued, "equals");
+            if (has_full_text !== undefined) {
+              params.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
+            }
+            return params;
+          };
+
+          const searchParams = buildParams(true);
+          const url = `${API_BASE}/discover/search/objects?${searchParams}`;
+          const cacheKey = makeCacheKey("icm_search", {
             query,
             page,
             size,
@@ -233,97 +243,50 @@ export function registerIcmTools(server: McpServer, env: Env): void {
             license,
             date_issued,
             has_full_text,
-          } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(query),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "icm");
+          });
           try {
-            const buildParams = (useAllFilters: boolean): URLSearchParams => {
-              const params = new URLSearchParams({
+            const data = await cachedFetch(
+              env.CACHE_KV,
+              cacheKey,
+              url,
+              { headers: JSON_HEADERS },
+              CACHE_TTL,
+            );
+            return { content: [{ type: "text", text: summarizeSearch(data) }] };
+          } catch (err) {
+            const msg = toToolErrorText(err);
+            if (/HTTP 404/i.test(msg) || /HTTP 400/i.test(msg)) {
+              const fallbackParams = buildParams(false);
+              const fallbackUrl = `${API_BASE}/discover/search/objects?${fallbackParams}`;
+              const fallbackKey = makeCacheKey("icm_search_fallback", {
                 query,
-                page: String(page),
-                size: String(size),
+                page,
+                size,
                 sort,
               });
-              if (!useAllFilters) return params;
-              if (author) addFilter(params, "author", author, "contains");
-              if (title) addFilter(params, "title", title, "contains");
-              if (subject) addFilter(params, "subject", subject, "equals");
-              if (publisher) addFilter(params, "publisher", publisher, "contains");
-              if (affiliation) addFilter(params, "affiliation", affiliation, "contains");
-              if (license) addFilter(params, "license", license, "contains");
-              if (date_issued) addFilter(params, "dateIssued", date_issued, "equals");
-              if (has_full_text !== undefined) {
-                params.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
-              }
-              return params;
-            };
-
-            const searchParams = buildParams(true);
-            const url = `${API_BASE}/discover/search/objects?${searchParams}`;
-            const cacheKey = makeCacheKey("icm_search", {
-              query,
-              page,
-              size,
-              sort,
-              author,
-              title,
-              subject,
-              publisher,
-              affiliation,
-              license,
-              date_issued,
-              has_full_text,
-            });
-            try {
               const data = await cachedFetch(
                 env.CACHE_KV,
-                cacheKey,
-                url,
+                fallbackKey,
+                fallbackUrl,
                 { headers: JSON_HEADERS },
                 CACHE_TTL,
               );
               return { content: [{ type: "text", text: summarizeSearch(data) }] };
-            } catch (err) {
-              const msg = toToolErrorText(err);
-              if (/HTTP 404/i.test(msg) || /HTTP 400/i.test(msg)) {
-                span.setAttribute("mcp.fallback", "icm_search_core_query_only");
-                const fallbackParams = buildParams(false);
-                const fallbackUrl = `${API_BASE}/discover/search/objects?${fallbackParams}`;
-                const fallbackKey = makeCacheKey("icm_search_fallback", {
-                  query,
-                  page,
-                  size,
-                  sort,
-                });
-                const data = await cachedFetch(
-                  env.CACHE_KV,
-                  fallbackKey,
-                  fallbackUrl,
-                  { headers: JSON_HEADERS },
-                  CACHE_TTL,
-                );
-                return { content: [{ type: "text", text: summarizeSearch(data) }] };
-              }
-              throw err;
             }
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error searching ICM repository: ${toToolErrorText(e)}`,
-                },
-              ],
-              isError: true,
-            };
+            throw err;
           }
-        },
-      );
+        } catch (e) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error searching ICM repository: ${toToolErrorText(e)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
@@ -337,44 +300,33 @@ export function registerIcmTools(server: McpServer, env: Env): void {
     {
       uuid: z
         .string()
-        .describe("Item UUID from icm_search results, e.g. 3fa85f64-5717-4562-b3fc-2c963f66afa6"),
+        .describe("UUID obiektu z wyników icm_search, np. 3fa85f64-5717-4562-b3fc-2c963f66afa6"),
     },
     async ({ uuid }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "icm_get_item",
-          params: { uuid } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(uuid),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "icm");
-          try {
-            const url = `${API_BASE}/core/items/${uuid}`;
-            const cacheKey = makeCacheKey("icm_item", { uuid });
-            const data = await cachedFetch(
-              env.CACHE_KV,
-              cacheKey,
-              url,
-              { headers: JSON_HEADERS },
-              CACHE_TTL,
-            );
-            return { content: [{ type: "text", text: summarizeItem(data) }] };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error fetching ICM item ${uuid}: ${toToolErrorText(e)}`,
-                },
-              ],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const url = `${API_BASE}/core/items/${uuid}`;
+          const cacheKey = makeCacheKey("icm_item", { uuid });
+          const data = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: JSON_HEADERS },
+            CACHE_TTL,
+          );
+          return { content: [{ type: "text", text: summarizeItem(data) }] };
+        } catch (e) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error fetching ICM item ${uuid}: ${toToolErrorText(e)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }

@@ -402,6 +402,8 @@ Wskazówki dla chętnych do pomocy:
 
 - `CONTRIBUTING.md`
 - `AGENTS.md`
+- [`docs/CLIENTS.md`](docs/CLIENTS.md) — konfiguracja per klient MCP (Claude Desktop, Cursor, LM Studio, AnythingLLM, Perplexity, Open WebUI, OpenClaw, Hermes Agent, Cline, Continue, Roo Code).
+- [`docs/AGENT-GUIDE.md`](docs/AGENT-GUIDE.md) — prompt dla agentów AI, którzy mają skonfigurować serwer samodzielnie.
 
 ---
 

@@ -11,20 +11,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey, type CacheError } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
-import {
-  createToolErrorReport,
-  formatToolErrorResponse,
-  recordErrorToSpan,
-} from "../tool-error-handling.js";
+import { createToolErrorReport, formatToolErrorResponse } from "../tool-error-handling.js";
 
 const API_BASE = "http://www.pauart.pl/api";
 const SEARCH_URL = `${API_BASE}/search`;
 const SITE_APP = "http://www.pauart.pl/app";
 const JSON_HEADERS = { Accept: "application/json", "Content-Type": "application/json" };
 const CACHE_TTL = 86_400;
-
-const API_FIELDS = ["title", "author", "date", "inventory", "type"];
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function tagLabels(art: any): string[] {
@@ -131,9 +124,9 @@ export function registerPauartTools(server: McpServer, env: Env): void {
       "The UI is at http://www.pauart.pl/app — API is served over HTTP on the same host.",
     ].join(" "),
     {
-      query: z.string().min(1).describe("Search terms (Polish or English)."),
-      page: z.number().int().min(0).default(0).describe("Page number — 0-based"),
-      size: z.number().int().min(1).max(50).default(15).describe("Page size (1–50)"),
+      query: z.string().min(1).describe("Wyrażenia wyszukiwania (polskie lub angielskie)."),
+      page: z.number().int().min(0).default(0).describe("Numer strony liczony od zera"),
+      size: z.number().int().min(1).max(50).default(15).describe("Liczba wyników na stronę (wartość 1–50)."),
       artworks_only: z
         .boolean()
         .default(true)
@@ -142,115 +135,83 @@ export function registerPauartTools(server: McpServer, env: Env): void {
         ),
     },
     async ({ query, page, size, artworks_only }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "pauart_search",
-          params: { query, page, size, artworks_only } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(query),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "pauart");
-          try {
-            const body = buildSearchBody(
-              { multi_match: { query, fields: ["_all"] } },
-              page,
-              size,
-            );
-            const cacheKey = makeCacheKey("pauart_search", { query, page, size, artworks_only });
-            const data = await cachedFetch(
-              env.CACHE_KV,
-              cacheKey,
-              SEARCH_URL,
-              { method: "POST", headers: JSON_HEADERS, body },
-              CACHE_TTL,
-            );
-            return { content: [{ type: "text", text: summarizeSearch(data, artworks_only) }] };
-          } catch (err) {
-            const report = createToolErrorReport(err, {
-              toolName: "pauart_search",
-              operation: "POST /api/search",
-              url: SEARCH_URL,
-              params: { query, page, size, artworks_only },
-              responseBody:
-                err instanceof Error && "responseBody" in err
-                  ? (err as CacheError).responseBody
-                  : undefined,
-              httpStatus:
-                err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
-              headers:
-                err instanceof Error && "headers" in err
-                  ? (err as CacheError).headers
-                  : undefined,
-            });
-            recordErrorToSpan(span, report);
-            return formatToolErrorResponse(report, true);
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const body = buildSearchBody({ multi_match: { query, fields: ["_all"] } }, page, size);
+          const cacheKey = makeCacheKey("pauart_search", { query, page, size, artworks_only });
+          const data = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            SEARCH_URL,
+            { method: "POST", headers: JSON_HEADERS, body },
+            CACHE_TTL,
+          );
+          return { content: [{ type: "text", text: summarizeSearch(data, artworks_only) }] };
+        } catch (err) {
+          const report = createToolErrorReport(err, {
+            toolName: "pauart_search",
+            operation: "POST /api/search",
+            url: SEARCH_URL,
+            params: { query, page, size, artworks_only },
+            responseBody:
+              err instanceof Error && "responseBody" in err
+                ? (err as CacheError).responseBody
+                : undefined,
+            httpStatus:
+              err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
+            headers:
+              err instanceof Error && "headers" in err ? (err as CacheError).headers : undefined,
+          });
+          return formatToolErrorResponse(report, true);
+        }
+      })();
     },
   );
 
   server.tool(
     "pauart_get_artwork",
     [
-      "Fetch one artwork record from PAUart by its catalogue id (e.g. AN_KIII_150_16476).",
-      "Returns compact metadata (title, inventory, tags, preview path).",
-      "Use ids returned by pauart_search.",
+      "Pobiera jeden rekord dzieła z PAUart po identyfikatorze katalogowym (np. AN_KIII_150_16476).",
+      "Zwraca skrócone metadane (tytuł, inwentarz, tagi, ścieżka podglądu).",
+      "Użyj identyfikatorów zwróconych przez pauart_search.",
     ].join(" "),
     {
       artwork_id: z
         .string()
         .min(1)
-        .describe("Artwork _id from pauart_search results, e.g. AN_KIII_150_16476"),
+        .describe("Identyfikator _id dzieła z wyników pauart_search, np. AN_KIII_150_16476"),
     },
     async ({ artwork_id }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "pauart_get_artwork",
-          params: { artwork_id } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(artwork_id),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "pauart");
-          try {
-            const body = buildSearchBody({ ids: { values: [artwork_id] } }, 0, 1);
-            const cacheKey = makeCacheKey("pauart_artwork", { artwork_id });
-            const data = await cachedFetch(
-              env.CACHE_KV,
-              cacheKey,
-              SEARCH_URL,
-              { method: "POST", headers: JSON_HEADERS, body },
-              CACHE_TTL,
-            );
-            return { content: [{ type: "text", text: summarizeArtwork(data) }] };
-          } catch (err) {
-            const report = createToolErrorReport(err, {
-              toolName: "pauart_get_artwork",
-              operation: "POST /api/search",
-              url: SEARCH_URL,
-              params: { artwork_id },
-              responseBody:
-                err instanceof Error && "responseBody" in err
-                  ? (err as CacheError).responseBody
-                  : undefined,
-              httpStatus:
-                err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
-              headers:
-                err instanceof Error && "headers" in err
-                  ? (err as CacheError).headers
-                  : undefined,
-            });
-            recordErrorToSpan(span, report);
-            return formatToolErrorResponse(report, true);
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const body = buildSearchBody({ ids: { values: [artwork_id] } }, 0, 1);
+          const cacheKey = makeCacheKey("pauart_artwork", { artwork_id });
+          const data = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            SEARCH_URL,
+            { method: "POST", headers: JSON_HEADERS, body },
+            CACHE_TTL,
+          );
+          return { content: [{ type: "text", text: summarizeArtwork(data) }] };
+        } catch (err) {
+          const report = createToolErrorReport(err, {
+            toolName: "pauart_get_artwork",
+            operation: "POST /api/search",
+            url: SEARCH_URL,
+            params: { artwork_id },
+            responseBody:
+              err instanceof Error && "responseBody" in err
+                ? (err as CacheError).responseBody
+                : undefined,
+            httpStatus:
+              err instanceof Error && "status" in err ? (err as CacheError).status : undefined,
+            headers:
+              err instanceof Error && "headers" in err ? (err as CacheError).headers : undefined,
+          });
+          return formatToolErrorResponse(report, true);
+        }
+      })();
     },
   );
 }

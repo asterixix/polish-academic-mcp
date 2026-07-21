@@ -1,0 +1,45 @@
+name: live-smoke
+
+on:
+  schedule:
+    # Codziennie o 4:00 UTC (poza godzinami szczytu w PL)
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      tool_name:
+        description: "Opcjonalnie: nazwa narzędzia do przetestowania (np. bn_search_publications). Puste = wszystkie."
+        required: false
+        type: string
+
+jobs:
+  smoke:
+    name: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Run live smoke
+        env:
+          # Live smoke hits external APIs; PBN tools report conditional-unavailable
+          # (source_unavailable for UAFM/eRIKA, configuration_required for PBN).
+          # Daily cron uses --max-tools to keep runtime bounded; workflow_dispatch
+          # accepts a single tool name via --include.
+        run: |
+          if [ -n "${{ inputs.tool_name }}" ]; then
+            node --import tsx scripts/smoke-tools.ts --include "${{ inputs.tool_name }}" 2>&1 | tee smoke.log
+          else
+            node --import tsx scripts/smoke-tools.ts --max-tools 12 --quiet 2>&1 | tee smoke.log
+          fi
+      - name: Upload smoke log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-log
+          path: smoke.log
+          if-no-files-found: ignore

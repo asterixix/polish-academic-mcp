@@ -18,24 +18,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 /** JSON HAL API lives on api.* — repo.agh.edu.pl/server/api serves the SPA (HTML), not REST. */
 const API_BASE = "https://api.repo.agh.edu.pl/server/api";
 const HANDLE_BASE = "https://repo.agh.edu.pl/handle";
 const JSON_HEADERS = { Accept: "application/json" };
 const CACHE_TTL = 86_400; // 24 h
-
-const API_FIELDS = [
-  "title",
-  "author",
-  "subject",
-  "abstract",
-  "date",
-  "language",
-  "doi",
-  "keywords",
-];
 
 /**
  * Append a DSpace discovery filter parameter.
@@ -165,19 +153,19 @@ export function registerAghTools(server: McpServer, env: Env): void {
   server.tool(
     "agh_search",
     [
-      "Search publications in the AGH University of Krakow Repository (repo.agh.edu.pl) via DSpace 7 discovery.",
-      "Covers theses, dissertations, articles, technical reports, and monographs from AGH.",
-      "Supports full-text search with filter fields, sort options, and 0-based pagination.",
-      "Results are HAL+JSON with full Dublin Core metadata, compacted into a readable summary.",
-      "Each filter value may include an explicit operator suffix separated by a comma",
-      "(e.g. 'Kowalski,equals'); if omitted the documented default operator is applied.",
-      "Supported operators: equals, notequals, contains, notcontains, authority, notauthority, query.",
+      "Wyszukiwanie publikacji w repozytorium Akademii Górniczo-Hutniczej (repo.agh.edu.pl) przez mechanizm discovery DSpace 7.",
+      "Obejmuje prace dyplomowe, rozprawy doktorskie, artykuły, raporty techniczne i monografie AGH.",
+      "Wspiera wyszukiwanie pełnotekstowe z filtrami, sortowaniem i paginacją liczoną od zera.",
+      "Wyniki zwracane w formacie HAL+JSON z metadanymi Dublin Core, skondensowane do czytelnego podsumowania.",
+      "Każda wartość filtra może zawierać operator po przecinku, na przykład 'Kowalski,equals'.",
+      "Jeśli operator nie jest podany, stosowany jest operator domyślny dla danego pola.",
+      "Obsługiwane operatory: equals, notequals, contains, notcontains, authority, notauthority, query.",
     ].join(" "),
     {
       // ── Core ───────────────────────────────────────────────────────────────
-      query: z.string().describe("Full-text search terms"),
-      page: z.number().int().min(0).default(0).describe("Page number — 0-based"),
-      size: z.number().int().min(1).max(50).default(10).describe("Results per page (1–50)"),
+      query: z.string().describe("Wyrażenie do wyszukiwania pełnotekstowego"),
+      page: z.number().int().min(0).default(0).describe("Numer strony liczony od zera"),
+      size: z.number().int().min(1).max(50).default(10).describe("Liczba wyników na stronę (1–50)"),
       sort: z
         .enum([
           "score,desc",
@@ -189,44 +177,45 @@ export function registerAghTools(server: McpServer, env: Env): void {
           "dc.date.accessioned,desc",
         ])
         .default("score,desc")
-        .describe("Sort field and direction"),
+        .describe("Pole i kierunek sortowania"),
 
-      // ── Filters (all optional) ─────────────────────────────────────────────
-      author: z.string().optional().describe("Author name filter (default op: contains)."),
-      subject: z.string().optional().describe("Subject / keyword filter (default op: equals)."),
+      // ── Filtry (wszystkie opcjonalne) ─────────────────────────────────────────
+      author: z.string().optional().describe("Filtr autora (domyślnie: contains)."),
+      subject: z.string().optional().describe("Filtr tematu lub słowa kluczowego (domyślnie: equals)."),
       language: z
         .string()
         .optional()
-        .describe("Language code filter (default op: equals). E.g. 'pl', 'en'."),
+        .describe("Kod języka, na przykład 'pl', 'en' (domyślnie: equals)."),
       itemtype: z
         .string()
         .optional()
         .describe(
-          "Item type filter (default op: equals). " +
-            "Common values: Thesis, Article, Book, Technical Report.",
+          "Typ dokumentu (domyślnie: equals). " +
+            "Najczęstsze wartości: Thesis, Article, Book, Technical Report.",
         ),
       date_issued: z
         .string()
         .optional()
         .describe(
-          "Issue date filter (default op: equals). " +
-            "For ranges use the query operator with Solr syntax, " +
-            "e.g. '[2020-01-01 TO 2023-12-31],query'. " +
-            "Maps to DSpace field dateIssued.",
+          "Filtr daty wydania (domyślnie: equals). " +
+            "Dla zakresów użyj operatora query z notacją Solr, " +
+            "na przykład '[2020-01-01 TO 2023-12-31],query'. " +
+            "Mapowane na pole DSpace dateIssued.",
         ),
       date_accessioned: z
         .string()
         .optional()
         .describe(
-          "Accession date filter (default op: equals). " + "Maps to DSpace field dateAccessioned.",
+          "Filtr daty zdeponowania w repozytorium (domyślnie: equals). " +
+            "Mapowane na pole DSpace dateAccessioned.",
         ),
       has_full_text: z
         .boolean()
         .optional()
         .describe(
-          "When true, restrict to items that have files in the original bundle " +
-            "(i.e. full-text available in the repository). " +
-            "Maps to DSpace field has_content_in_original_bundle.",
+          "Gdy true, ogranicza wyniki do obiektów z plikami w oryginalnym pakiecie " +
+            "(dostępny tekst w repozytorium). " +
+            "Mapowane na pole DSpace has_content_in_original_bundle.",
         ),
     },
     async ({
@@ -242,10 +231,32 @@ export function registerAghTools(server: McpServer, env: Env): void {
       date_accessioned,
       has_full_text,
     }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "agh_search",
-          params: {
+      return (async () => {
+        try {
+          const buildParams = (useAllFilters: boolean): URLSearchParams => {
+            const params = new URLSearchParams({
+              query,
+              page: String(page),
+              size: String(size),
+              sort,
+            });
+            if (!useAllFilters) return params;
+
+            if (author) addFilter(params, "author", author, "contains");
+            if (subject) addFilter(params, "subject", subject, "equals");
+            if (language) addFilter(params, "language", language, "equals");
+            if (itemtype) addFilter(params, "itemtype", itemtype, "equals");
+            if (date_issued) addFilter(params, "dateIssued", date_issued, "equals");
+            if (date_accessioned) addFilter(params, "dateAccessioned", date_accessioned, "equals");
+            if (has_full_text !== undefined) {
+              params.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
+            }
+            return params;
+          };
+
+          const searchParams = buildParams(true);
+          const url = `${API_BASE}/discover/search/objects?${searchParams}`;
+          const cacheKey = makeCacheKey("agh_search", {
             query,
             page,
             size,
@@ -257,130 +268,8 @@ export function registerAghTools(server: McpServer, env: Env): void {
             date_issued,
             date_accessioned,
             has_full_text,
-          } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(query),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "agh");
+          });
           try {
-            const buildParams = (useAllFilters: boolean): URLSearchParams => {
-              const params = new URLSearchParams({
-                query,
-                page: String(page),
-                size: String(size),
-                sort,
-              });
-              if (!useAllFilters) return params;
-
-              if (author) addFilter(params, "author", author, "contains");
-              if (subject) addFilter(params, "subject", subject, "equals");
-              if (language) addFilter(params, "language", language, "equals");
-              if (itemtype) addFilter(params, "itemtype", itemtype, "equals");
-              if (date_issued) addFilter(params, "dateIssued", date_issued, "equals");
-              if (date_accessioned)
-                addFilter(params, "dateAccessioned", date_accessioned, "equals");
-              if (has_full_text !== undefined) {
-                params.append("f.has_content_in_original_bundle", `${has_full_text},equals`);
-              }
-              return params;
-            };
-
-            const searchParams = buildParams(true);
-            const url = `${API_BASE}/discover/search/objects?${searchParams}`;
-            const cacheKey = makeCacheKey("agh_search", {
-              query,
-              page,
-              size,
-              sort,
-              author,
-              subject,
-              language,
-              itemtype,
-              date_issued,
-              date_accessioned,
-              has_full_text,
-            });
-            try {
-              const data = await cachedFetch(
-                env.CACHE_KV,
-                cacheKey,
-                url,
-                { headers: JSON_HEADERS },
-                CACHE_TTL,
-              );
-              return { content: [{ type: "text", text: summarizeSearch(data) }] };
-            } catch (err) {
-              const msg = toToolErrorText(err);
-              // Robustness fallback: some AGH discovery filter combos can return 404.
-              // Retry with only core query/page/size/sort to keep the tool usable.
-              if (/HTTP 404/i.test(msg) || /HTTP 400/i.test(msg)) {
-                span.setAttribute("mcp.fallback", "agh_search_core_query_only");
-                const fallbackParams = buildParams(false);
-                const fallbackUrl = `${API_BASE}/discover/search/objects?${fallbackParams}`;
-                const fallbackKey = makeCacheKey("agh_search_fallback", {
-                  query,
-                  page,
-                  size,
-                  sort,
-                });
-                const data = await cachedFetch(
-                  env.CACHE_KV,
-                  fallbackKey,
-                  fallbackUrl,
-                  { headers: JSON_HEADERS },
-                  CACHE_TTL,
-                );
-                return { content: [{ type: "text", text: summarizeSearch(data) }] };
-              }
-              throw err;
-            }
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error searching AGH repository: ${toToolErrorText(e)}`,
-                },
-              ],
-              isError: true,
-            };
-          }
-        },
-      );
-    },
-  );
-
-  // ── agh_get_item ──────────────────────────────────────────────────────────
-  server.tool(
-    "agh_get_item",
-    [
-      "Retrieve full metadata for a single item in the AGH University of Krakow Repository by its UUID.",
-      "The UUID is found in the 'uuid' field of agh_search results.",
-      "Returns Dublin Core metadata including title, authors, abstract, type, date, DOI, and handle URL.",
-    ].join(" "),
-    {
-      uuid: z
-        .string()
-        .describe("Item UUID from agh_search results, e.g. 3fa85f64-5717-4562-b3fc-2c963f66afa6"),
-    },
-    async ({ uuid }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "agh_get_item",
-          params: { uuid } as Record<string, unknown>,
-          fieldsRequested: API_FIELDS,
-          fieldsReturned: API_FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(uuid),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "agh");
-          try {
-            const url = `${API_BASE}/core/items/${uuid}`;
-            const cacheKey = makeCacheKey("agh_item", { uuid });
             const data = await cachedFetch(
               env.CACHE_KV,
               cacheKey,
@@ -388,20 +277,84 @@ export function registerAghTools(server: McpServer, env: Env): void {
               { headers: JSON_HEADERS },
               CACHE_TTL,
             );
-            return { content: [{ type: "text", text: summarizeItem(data) }] };
-          } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Error fetching AGH item ${uuid}: ${toToolErrorText(e)}`,
-                },
-              ],
-              isError: true,
-            };
+            return { content: [{ type: "text", text: summarizeSearch(data) }] };
+          } catch (err) {
+            const msg = toToolErrorText(err);
+            // Robustness fallback: some AGH discovery filter combos can return 404.
+            // Retry with only core query/page/size/sort to keep the tool usable.
+            if (/HTTP 404/i.test(msg) || /HTTP 400/i.test(msg)) {
+              const fallbackParams = buildParams(false);
+              const fallbackUrl = `${API_BASE}/discover/search/objects?${fallbackParams}`;
+              const fallbackKey = makeCacheKey("agh_search_fallback", {
+                query,
+                page,
+                size,
+                sort,
+              });
+              const data = await cachedFetch(
+                env.CACHE_KV,
+                fallbackKey,
+                fallbackUrl,
+                { headers: JSON_HEADERS },
+                CACHE_TTL,
+              );
+              return { content: [{ type: "text", text: summarizeSearch(data) }] };
+            }
+            throw err;
           }
-        },
-      );
+        } catch (e) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error searching AGH repository: ${toToolErrorText(e)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      })();
+    },
+  );
+
+  // ── agh_get_item ──────────────────────────────────────────────────────────
+  server.tool(
+    "agh_get_item",
+    [
+      "Pobiera pełne metadane pojedynczego obiektu w repozytorium Akademii Górniczo-Hutniczej na podstawie UUID.",
+      "UUID znajduje się w polu 'uuid' wyników agh_search.",
+      "Zwraca metadane Dublin Core, w tym tytuł, autorów, abstrakt, typ, datę, DOI i trwały adres handle.",
+    ].join(" "),
+    {
+      uuid: z
+        .string()
+        .describe("UUID obiektu z wyników agh_search, na przykład 3fa85f64-5717-4562-b3fc-2c963f66afa6"),
+    },
+    async ({ uuid }) => {
+      return (async () => {
+        try {
+          const url = `${API_BASE}/core/items/${uuid}`;
+          const cacheKey = makeCacheKey("agh_item", { uuid });
+          const data = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: JSON_HEADERS },
+            CACHE_TTL,
+          );
+          return { content: [{ type: "text", text: summarizeItem(data) }] };
+        } catch (e) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error fetching AGH item ${uuid}: ${toToolErrorText(e)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }

@@ -11,15 +11,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
-import { withToolExecutionSpan, estimateTokens } from "../tracing.js";
 
 const API_BASE = "https://wolnelektury.pl/api";
 const JSON_HEADERS = { Accept: "application/json" };
 const TAXONOMY_TTL = 86_400;
 const BOOK_TTL = 86_400;
 const FILTER_TTL = 86_400;
-
-const FIELDS = ["title", "author", "slug", "href"];
 
 function enc(slug: string): string {
   return encodeURIComponent(slug.trim());
@@ -47,14 +44,7 @@ function buildFilteredBooksPath(args: {
   return `${API_BASE}/${segments.join("")}${leaf}`;
 }
 
-const taxonomyKind = z.enum([
-  "authors",
-  "epochs",
-  "genres",
-  "kinds",
-  "themes",
-  "collections",
-]);
+const taxonomyKind = z.enum(["authors", "epochs", "genres", "kinds", "themes", "collections"]);
 
 export function registerWolneLekturyTools(server: McpServer, env: Env): void {
   server.tool(
@@ -68,34 +58,29 @@ export function registerWolneLekturyTools(server: McpServer, env: Env): void {
       slug: z
         .string()
         .min(1)
-        .describe("Book slug from /katalog/lektura/{slug}/ or API href, e.g. lalka."),
+        .describe("Identyfikator slug książki z URL /katalog/lektura/{slug}/ lub href API, np. lalka."),
     },
     async ({ slug }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "wolnelektury_get_book",
-          params: { slug } as Record<string, unknown>,
-          fieldsRequested: FIELDS,
-          fieldsReturned: FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(slug),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "wolne-lektury");
-          try {
-            const url = `${API_BASE}/books/${enc(slug)}/`;
-            const cacheKey = makeCacheKey("wolnelektury_book", { slug });
-            const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, BOOK_TTL);
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling wolnelektury_get_book: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const url = `${API_BASE}/books/${enc(slug)}/`;
+          const cacheKey = makeCacheKey("wolnelektury_book", { slug });
+          const text = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: JSON_HEADERS },
+            BOOK_TTL,
+          );
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling wolnelektury_get_book: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
@@ -106,34 +91,29 @@ export function registerWolneLekturyTools(server: McpServer, env: Env): void {
       "Use wolnelektury_list_taxonomy with kind=collections to list collection slugs and titles.",
     ].join(" "),
     {
-      slug: z.string().min(1).describe("Collection slug from API or site URL."),
+      slug: z.string().min(1).describe("Identyfikator slug kolekcji z API lub URL serwisu."),
     },
     async ({ slug }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "wolnelektury_get_collection",
-          params: { slug } as Record<string, unknown>,
-          fieldsRequested: ["title", "books"],
-          fieldsReturned: ["title", "books"],
-          tokensByField: {},
-          queryTokens: estimateTokens(slug),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "wolne-lektury");
-          try {
-            const url = `${API_BASE}/collections/${enc(slug)}/`;
-            const cacheKey = makeCacheKey("wolnelektury_collection", { slug });
-            const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, BOOK_TTL);
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling wolnelektury_get_collection: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const url = `${API_BASE}/collections/${enc(slug)}/`;
+          const cacheKey = makeCacheKey("wolnelektury_collection", { slug });
+          const text = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: JSON_HEADERS },
+            BOOK_TTL,
+          );
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling wolnelektury_get_collection: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
@@ -146,56 +126,49 @@ export function registerWolneLekturyTools(server: McpServer, env: Env): void {
       "Requires at least one filter. Filtering only by kind_slug can return a large JSON (~1MB+); prefer adding author or epoch when possible.",
     ].join(" "),
     {
-      author_slug: z.string().optional().describe("Author slug, e.g. boleslaw-prus."),
-      epoch_slug: z.string().optional().describe("Literary epoch slug, e.g. pozytywizm."),
-      genre_slug: z.string().optional().describe("Genre slug, e.g. powiesc."),
-      kind_slug: z.string().optional().describe("Literary kind slug, e.g. epika, liryka."),
+      author_slug: z.string().optional().describe("Identyfikator slug autora, np. boleslaw-prus."),
+      epoch_slug: z.string().optional().describe("Identyfikator slug epoki literackiej, np. pozytywizm."),
+      genre_slug: z.string().optional().describe("Identyfikator slug gatunku literackiego, np. powiesc."),
+      kind_slug: z.string().optional().describe("Identyfikator slug rodzaju literackiego, np. epika, liryka."),
       parent_only: z
         .boolean()
         .default(false)
-        .describe("Use parent_books/ instead of books/ (omit sub-volumes)."),
+        .describe("Użyj identyfikatora parent_books zamiast books (pomija pod-tomy)."),
     },
     async (params) => {
       const { author_slug, epoch_slug, genre_slug, kind_slug, parent_only } = params;
-      return withToolExecutionSpan(
-        {
-          toolName: "wolnelektury_filter_books",
-          params: params as Record<string, unknown>,
-          fieldsRequested: FIELDS,
-          fieldsReturned: FIELDS,
-          tokensByField: {},
-          queryTokens: estimateTokens(
-            [author_slug, epoch_slug, genre_slug, kind_slug].filter(Boolean).join(" "),
-          ),
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "wolne-lektury");
-          try {
-            const url = buildFilteredBooksPath({
-              author_slug,
-              epoch_slug,
-              genre_slug,
-              kind_slug,
-              parent_only,
-            });
-            const cacheKey = makeCacheKey("wolnelektury_filter_books", {
-              author_slug,
-              epoch_slug,
-              genre_slug,
-              kind_slug,
-              parent_only,
-            });
-            const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, FILTER_TTL);
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling wolnelektury_filter_books: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const url = buildFilteredBooksPath({
+            author_slug,
+            epoch_slug,
+            genre_slug,
+            kind_slug,
+            parent_only,
+          });
+          const cacheKey = makeCacheKey("wolnelektury_filter_books", {
+            author_slug,
+            epoch_slug,
+            genre_slug,
+            kind_slug,
+            parent_only,
+          });
+          const text = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: JSON_HEADERS },
+            FILTER_TTL,
+          );
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling wolnelektury_filter_books: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 
@@ -210,31 +183,26 @@ export function registerWolneLekturyTools(server: McpServer, env: Env): void {
       kind: taxonomyKind.describe("Which taxonomy endpoint to list."),
     },
     async ({ kind }) => {
-      return withToolExecutionSpan(
-        {
-          toolName: "wolnelektury_list_taxonomy",
-          params: { kind } as Record<string, unknown>,
-          fieldsRequested: ["name", "slug", "href"],
-          fieldsReturned: ["name", "slug", "href"],
-          tokensByField: {},
-          queryTokens: 0,
-        },
-        async (span) => {
-          span.setAttribute("mcp.source", "wolne-lektury");
-          try {
-            const url = `${API_BASE}/${kind}/`;
-            const cacheKey = makeCacheKey("wolnelektury_taxonomy", { kind });
-            const text = await cachedFetch(env.CACHE_KV, cacheKey, url, { headers: JSON_HEADERS }, TAXONOMY_TTL);
-            return { content: [{ type: "text", text }] };
-          } catch (err) {
-            const msg = toToolErrorText(err);
-            return {
-              content: [{ type: "text", text: `Error calling wolnelektury_list_taxonomy: ${msg}` }],
-              isError: true,
-            };
-          }
-        },
-      );
+      return (async () => {
+        try {
+          const url = `${API_BASE}/${kind}/`;
+          const cacheKey = makeCacheKey("wolnelektury_taxonomy", { kind });
+          const text = await cachedFetch(
+            env.CACHE_KV,
+            cacheKey,
+            url,
+            { headers: JSON_HEADERS },
+            TAXONOMY_TTL,
+          );
+          return { content: [{ type: "text", text }] };
+        } catch (err) {
+          const msg = toToolErrorText(err);
+          return {
+            content: [{ type: "text", text: `Error calling wolnelektury_list_taxonomy: ${msg}` }],
+            isError: true,
+          };
+        }
+      })();
     },
   );
 }
