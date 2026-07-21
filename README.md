@@ -1,6 +1,7 @@
 # Polish Academic MCP
 
-[![SafeSkill 82/100](https://img.shields.io/badge/SafeSkill-82%2F100_Passes%20with%20Notes-yellow)](https://safeskill.dev/scan/asterixix-polish-academic-mcp)
+[![npm version](https://img.shields.io/npm/v/polish-academic-mcp)](https://www.npmjs.com/package/polish-academic-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/polish-academic-mcp)](https://www.npmjs.com/package/polish-academic-mcp)
 
 Lokalny serwer MCP (Model Context Protocol) dla polskich baz naukowych, publicznych i kulturowych.
 Pakiet działa przez stdio (Node.js), więc można go podpiąć bezpośrednio do klientów MCP (Claude Desktop, Cursor i inne).
