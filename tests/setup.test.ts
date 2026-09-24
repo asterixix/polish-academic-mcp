@@ -7,6 +7,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,6 +22,7 @@ import {
   launchSpec,
   type HostContext,
 } from "../src/clients.js";
+import { writeConfigFile } from "../src/cli.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const entry = resolve(root, "dist/index.js");
@@ -203,6 +205,29 @@ function runCli(home: string, args: string[]) {
   });
 }
 
+test("zapis konfiguracji: kopia zapasowa, brak pliku tymczasowego, zachowane uprawnienia", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pam-write-"));
+  try {
+    const file = join(dir, ".claude.json");
+    writeFileSync(file, '{"numStartups": 1}', { mode: 0o600 });
+    const backup = writeConfigFile(file, '{"numStartups": 2}\n');
+    assert.ok(backup && existsSync(backup), "brak kopii zapasowej");
+    assert.equal(readFileSync(backup, "utf8"), '{"numStartups": 1}');
+    assert.equal(readFileSync(file, "utf8"), '{"numStartups": 2}\n');
+    assert.deepEqual(
+      readdirSync(dir).filter((f) => f.includes(".tmp-")),
+      [],
+      "plik tymczasowy nie został usunięty",
+    );
+    if (process.platform !== "win32") {
+      assert.equal(statSync(file).mode & 0o777, 0o600);
+    }
+    assert.equal(writeConfigFile(join(dir, "nowy", "mcp.json"), "{}\n"), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("setup --client cursor: --dry-run i tryb bez --yes niczego nie zapisują, --yes zapisuje z kopią", () => {
   const home = mkdtempSync(join(tmpdir(), "pam-setup-"));
   try {
@@ -213,6 +238,8 @@ test("setup --client cursor: --dry-run i tryb bez --yes niczego nie zapisują, -
     const dry = runCli(home, ["setup", "--client", "cursor", "--sources", "prawo", "--dry-run"]);
     assert.equal(dry.status, 0, dry.stderr);
     assert.match(dry.stdout, /--dry-run/);
+    assert.match(dry.stdout, /"POLISH_ACADEMIC_SOURCES": "prawo"/);
+    assert.doesNotMatch(dry.stdout, /"other"/, "--dry-run powinien pokazać tylko wpis serwera");
     assert.deepEqual(JSON.parse(readFileSync(cursorFile, "utf8")), {
       mcpServers: { other: { command: "uvx" } },
     });

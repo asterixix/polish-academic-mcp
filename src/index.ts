@@ -117,7 +117,10 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const exitCode = await handleCli(argv, version);
   if (exitCode !== null) {
-    process.exit(exitCode);
+    // Exit only after stdout is flushed: writes to a pipe are asynchronous on macOS,
+    // and an immediate exit could cut off output captured by scripts or AI agents.
+    process.stdout.write("", () => process.exit(exitCode));
+    return;
   }
 
   installProcessDiagnostics();

@@ -173,8 +173,15 @@ export function writeConfigFile(path: string, text: string): string | null {
     mode = statSync(path).mode;
   }
   const tmp = `${path}.tmp-${process.pid}`;
-  writeFileSync(tmp, text, "utf8");
-  if (mode !== undefined) chmodSync(tmp, mode);
+  try {
+    // Create with the original mode so a private file (e.g. ~/.claude.json, 0600) is never
+    // briefly world-readable; chmod afterwards restores bits the umask stripped.
+    writeFileSync(tmp, text, { encoding: "utf8", ...(mode !== undefined && { mode }) });
+    if (mode !== undefined) chmodSync(tmp, mode);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
   try {
     renameSync(tmp, path);
   } catch {
@@ -260,16 +267,19 @@ function printSnippet(ctx: HostContext, id: string, spec: LaunchSpec): number {
   }
   const path = client.configPath(ctx);
   print(`${client.name} — plik: ${path ? tilde(ctx, path) : "(niedostępne w tym systemie)"}`);
-  print(
-    client.format === "codex"
-      ? codexTomlBlock(spec)
-      : JSON.stringify(
-          { [topLevelKey(client.format)]: { [SERVER_KEY]: buildEntry(client.format, spec) } },
-          null,
-          2,
-        ),
-  );
+  print(entrySnippet(client, spec));
   return 0;
+}
+
+/** The server's entry as it appears in a client's config file. */
+function entrySnippet(client: ClientDef, spec: LaunchSpec): string {
+  return client.format === "codex"
+    ? codexTomlBlock(spec)
+    : JSON.stringify(
+        { [topLevelKey(client.format)]: { [SERVER_KEY]: buildEntry(client.format, spec) } },
+        null,
+        2,
+      );
 }
 
 function printClientList(ctx: HostContext): void {
@@ -433,7 +443,7 @@ export async function runSetup(argv: readonly string[], remove = false): Promise
       print("");
       for (const item of toWrite) {
         print(`--- ${tilde(ctx, item.path)} ---`);
-        print(item.text?.trimEnd());
+        print(spec ? entrySnippet(item.client, spec) : `(usunięcie wpisu ${SERVER_KEY})`);
       }
       return 0;
     }
