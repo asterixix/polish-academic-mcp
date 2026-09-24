@@ -115,12 +115,23 @@ function buildTimeoutSignal(existing: AbortSignal | null | undefined): AbortSign
   return AbortSignal.any([timeout, existing]);
 }
 
-// Opt-in request log (POLISH_ACADEMIC_DEBUG=1 or DEBUG=1). Goes to stderr because
-// stdout carries the MCP protocol; MCP clients show stderr in their server logs.
+// Opt-in request log (POLISH_ACADEMIC_DEBUG=1 only, not the generic DEBUG). Goes to
+// stderr because stdout carries the MCP protocol; MCP clients keep stderr in their logs.
 function debugLog(message: string): void {
-  const flag = (process.env.POLISH_ACADEMIC_DEBUG ?? process.env.DEBUG ?? "").trim();
-  if (/^(1|true|yes|\*)$|polish-academic/i.test(flag)) {
+  if (/^(1|true|yes)$/i.test((process.env.POLISH_ACADEMIC_DEBUG ?? "").trim())) {
     process.stderr.write(`[polish-academic-mcp] ${message}\n`);
+  }
+}
+
+// Query values carry the user's search terms, which do not belong in client logs:
+// keep origin, path and parameter names only.
+export function redactUrl(url: string): string {
+  try {
+    const { origin, pathname, searchParams } = new URL(url);
+    const keys = [...new Set(searchParams.keys())];
+    return `${origin}${pathname}${keys.length > 0 ? `?${keys.map((k) => `${k}=…`).join("&")}` : ""}`;
+  } catch {
+    return url.split("?")[0];
   }
 }
 
@@ -142,7 +153,7 @@ export async function cachedFetch(
 ): Promise<string> {
   const cached = await kv.get(cacheKey);
   if (cached !== null) {
-    debugLog(`cache ${url}`);
+    debugLog(`cache ${redactUrl(url)}`);
     return cached;
   }
   const method = (options.method ?? "GET").toUpperCase();
@@ -161,11 +172,11 @@ export async function cachedFetch(
     } catch (err) {
       const networkErr = err instanceof Error ? err : new Error(String(err));
       if (isTransientNetworkError(networkErr) && attempt < FETCH_MAX_ATTEMPTS) {
-        debugLog(`${method} ${url} -> ${networkErr.message}; retrying`);
+        debugLog(`${method} ${redactUrl(url)} -> ${networkErr.message}; retrying`);
         lastTransient = networkErr;
         continue;
       }
-      debugLog(`${method} ${url} -> ${networkErr.message} (${Date.now() - startedAt} ms)`);
+      debugLog(`${method} ${redactUrl(url)} -> ${networkErr.message} (${Date.now() - startedAt} ms)`);
       // Non-transient, or retries exhausted: surface the typed error.
       throw buildNetworkError(url, lastTransient ?? networkErr);
     }
@@ -176,7 +187,7 @@ export async function cachedFetch(
     throw buildNetworkError(url, lastTransient ?? new Error("fetch returned no response"));
   }
 
-  debugLog(`${method} ${url} -> ${response.status} (${Date.now() - startedAt} ms)`);
+  debugLog(`${method} ${redactUrl(url)} -> ${response.status} (${Date.now() - startedAt} ms)`);
 
   if (!response.ok) {
     // Collect headers for debugging (credentials redacted).

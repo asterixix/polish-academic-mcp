@@ -47,7 +47,9 @@ Kreator `setup` wykrywa obie sytuacje i zapisuje właściwy wariant.
 
 **Wybór baz.** Wszystkie 85 narzędzi to ok. 26 tys. tokenów. Przy małych modelach lokalnych i w aplikacjach z limitem narzędzi (Cursor ok. 40, Windsurf 100, VS Code 128 łącznie ze wszystkich serwerów) ustaw `POLISH_ACADEMIC_SOURCES`, np. `nauka` albo `prawo,dane`. Grupy: `nauka`, `dane`, `prawo`, `normy`, `kultura`; pełna lista: `npx -y polish-academic-mcp --list-sources`.
 
-**Sekrety PBN.** Trzy narzędzia `pbn_*` wymagają `PBN_APP_ID` i `PBN_APP_TOKEN` w sekcji `env`. Bez nich zwracają instrukcję, a pozostałe 82 narzędzia działają normalnie.
+**Sekrety PBN.** Trzy narzędzia `pbn_*` wymagają `PBN_APP_ID` i `PBN_APP_TOKEN` w sekcji `env`. Bez nich zwracają instrukcję, a pozostałe 82 narzędzia działają normalnie. Ponowne uruchomienie `setup` zachowuje te zmienne (i inne, które dopiszesz ręcznie).
+
+**Wersja.** Wpis bez numeru wersji (`polish-academic-mcp`) sprawia, że npx przy starcie pobiera nowsze wydania. Aby przypiąć sprawdzoną wersję, użyj `polish-academic-mcp@<wersja>` albo `setup --pin`.
 
 **Pierwszy test.** Po ponownym uruchomieniu aplikacji zapytaj: „Wyszukaj w Bibliotece Nauki artykuły o uczeniu maszynowym z 2024 roku.” Model powinien wywołać `bn_search_publications`.
 
@@ -449,6 +451,6 @@ Sprawdza wersję Node.js, obecność `npx`, połączenie z bazami, zmienne środ
 Inne kroki:
 
 1. **Ręczne uruchomienie:** `npx -y polish-academic-mcp --version` powinno wypisać numer wersji.
-2. **Log zapytań:** dodaj do `env` serwera `"POLISH_ACADEMIC_DEBUG": "1"`. Każde zapytanie HTTP (adres, status, czas) trafi do logu serwera w aplikacji.
+2. **Log zapytań:** dodaj do `env` serwera `"POLISH_ACADEMIC_DEBUG": "1"`. Każde zapytanie HTTP (adres bez wartości parametrów, status, czas) trafi do logu serwera w aplikacji.
 3. **Inspektor MCP:** `npx @modelcontextprotocol/inspector npx -y polish-academic-mcp` otwiera w przeglądarce panel do ręcznego wywoływania narzędzi.
 4. **Tabela typowych błędów:** [README → Rozwiązywanie problemów](../README.md#rozwiązywanie-problemów).

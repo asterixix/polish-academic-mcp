@@ -94,10 +94,14 @@ const STANDARD_BIN_DIRS = new Set([
   "/home/linuxbrew/.linuxbrew/bin",
 ]);
 
-export function launchSpec(ctx: HostContext, sources?: string): LaunchSpec {
+/**
+ * Command that starts the server. `pinVersion` writes `polish-academic-mcp@<version>`;
+ * without it npx checks the registry for a newer release on every start.
+ */
+export function launchSpec(ctx: HostContext, sources?: string, pinVersion?: string): LaunchSpec {
   const env: Record<string, string> = {};
   if (sources) env[SOURCES_ENV] = sources;
-  const npxArgs = ["-y", PACKAGE_NAME];
+  const npxArgs = ["-y", pinVersion ? `${PACKAGE_NAME}@${pinVersion}` : PACKAGE_NAME];
   const withEnv = (spec: LaunchSpec): LaunchSpec =>
     Object.keys(env).length > 0 ? { ...spec, env: { ...spec.env, ...env } } : spec;
 
@@ -114,6 +118,19 @@ export function launchSpec(ctx: HostContext, sources?: string): LaunchSpec {
     args: npxArgs,
     env: { PATH: [ctx.nodeBinDir, ...SYSTEM_BIN_DIRS].join(":") },
   });
+}
+
+/**
+ * For apps that accept only a command line (no env fields): the source selection
+ * becomes `--sources=…` and other variables (PATH for nvm installs) go through
+ * /usr/bin/env. PATH is only ever set on macOS/Linux, where /usr/bin/env exists.
+ */
+export function inlineEnv(spec: LaunchSpec): LaunchSpec {
+  const { [SOURCES_ENV]: sources, ...rest } = spec.env ?? {};
+  const args = sources ? [...spec.args, `--sources=${sources}`] : spec.args;
+  const vars = Object.entries(rest).map(([k, v]) => `${k}=${v}`);
+  if (vars.length === 0) return { command: spec.command, args };
+  return { command: "/usr/bin/env", args: [...vars, spec.command, ...args] };
 }
 
 /** Human-readable one-line command, e.g. for GUI forms. */
@@ -358,7 +375,7 @@ export const MANUAL_CLIENTS: readonly ManualClientDef[] = [
     instructions: (spec) =>
       [
         "Uruchom `goose configure` → Add Extension → Command-line Extension i podaj polecenie:",
-        `  ${commandLine(spec)}`,
+        `  ${commandLine(inlineEnv(spec))}`,
         "albo dopisz do ~/.config/goose/config.yaml:",
         [
           "extensions:",
@@ -415,7 +432,7 @@ export const MANUAL_CLIENTS: readonly ManualClientDef[] = [
       [
         "Settings → Connectors → zainstaluj pomocnika PerplexityXPC → Add Connector → zakładka Simple:",
         `  Server Name: ${SERVER_KEY}`,
-        `  Command: ${commandLine(spec)}`,
+        `  Command: ${commandLine(inlineEnv(spec))}`,
         "Poczekaj, aż status zmieni się na Running.",
       ].join("\n"),
   },
@@ -425,7 +442,7 @@ export const MANUAL_CLIENTS: readonly ManualClientDef[] = [
     instructions: (spec) =>
       [
         "Open WebUI obsługuje natywnie tylko MCP po HTTP. Uruchom lokalny most mcpo (wymaga uv):",
-        `  uvx mcpo --port 8000 -- ${commandLine(spec)}`,
+        `  uvx mcpo --port 8000 -- ${commandLine(inlineEnv(spec))}`,
         "Następnie w Open WebUI: Settings → Tools → „+” i adres http://localhost:8000",
         "(z kontenera Docker: http://host.docker.internal:8000).",
       ].join("\n"),
@@ -433,12 +450,14 @@ export const MANUAL_CLIENTS: readonly ManualClientDef[] = [
   {
     id: "generic",
     name: "Inna aplikacja (Msty, Cherry Studio, 5ire, Kiro…)",
-    instructions: (spec) =>
-      [
+    instructions: (spec) => {
+      const form = inlineEnv(spec);
+      return [
         "Większość aplikacji przyjmuje wpis w formacie mcpServers (JSON):",
         jsonBlock({ mcpServers: { [SERVER_KEY]: buildEntry("mcpServers", spec) } }),
-        `Jeśli aplikacja ma formularz: polecenie „${spec.command}”, argumenty „${spec.args.join(" ")}”.`,
-      ].join("\n"),
+        `Jeśli aplikacja ma tylko formularz: polecenie „${form.command}”, argumenty „${form.args.join(" ")}”.`,
+      ].join("\n");
+    },
   },
 ];
 
@@ -494,6 +513,40 @@ export function launchesPackage(entry: unknown): boolean {
 }
 
 // ─── Config file edits ───────────────────────────────────────────────────────
+
+/** Env variables setup owns. Anything else a user added (PBN keys, proxy settings) is kept. */
+const MANAGED_ENV = new Set(["PATH", SOURCES_ENV]);
+const ENV_FIELDS = ["env", "environment"];
+
+/**
+ * New entry = previous entries (the current one last, so it wins) + generated fields.
+ * Env objects are merged key by key: setup-managed variables come only from the
+ * generated entry, every other variable survives a re-run.
+ */
+function mergeEntry(
+  previous: Record<string, unknown>[],
+  generated: Record<string, unknown>,
+): { entry: Record<string, unknown>; kept: string[] } {
+  const entry: Record<string, unknown> = Object.assign({}, ...previous, generated);
+  const kept = new Set<string>();
+  for (const field of ENV_FIELDS) {
+    const env: Record<string, unknown> = {};
+    for (const prev of previous) {
+      const prevEnv = prev[field];
+      if (!isPlainObject(prevEnv)) continue;
+      for (const [k, v] of Object.entries(prevEnv)) {
+        if (MANAGED_ENV.has(k)) continue;
+        env[k] = v;
+        kept.add(k);
+      }
+    }
+    const generatedEnv = generated[field];
+    Object.assign(env, isPlainObject(generatedEnv) ? generatedEnv : {});
+    if (Object.keys(env).length > 0 || field in generated) entry[field] = env;
+    else delete entry[field];
+  }
+  return { entry, kept: [...kept] };
+}
 
 export type EditResult =
   | { status: "changed" | "unchanged"; text: string; notes: string[] }
@@ -553,7 +606,7 @@ export function editJsonConfig(
   topKey: string,
   entry: Record<string, unknown> | null,
 ): EditResult {
-  const text = (original ?? "").replace(/^﻿/, "");
+  const text = (original ?? "").replace(/^\uFEFF/, "");
   let data: unknown = {};
   if (text.trim() !== "") {
     try {
@@ -564,7 +617,7 @@ export function editJsonConfig(
         return {
           status: "error",
           reason:
-            "plik zawiera komentarze lub końcowe przecinki (JSONC); aby ich nie utracić, dopisz wpis ręcznie",
+            "plik zawiera komentarze lub końcowe przecinki (JSONC); aby ich nie utracić, zmień go ręcznie",
         };
       } catch {
         return {
@@ -584,20 +637,28 @@ export function editJsonConfig(
 
   const notes: string[] = [];
   const servers: Record<string, unknown> = { ...section };
+  const previous: Record<string, unknown>[] = [];
   for (const [key, value] of Object.entries(servers)) {
     if (key !== SERVER_KEY && launchesPackage(value)) {
+      if (isPlainObject(value)) previous.push(value);
       delete servers[key];
       notes.push(`usunięto zdublowany wpis "${key}"`);
     }
   }
+  const current = servers[SERVER_KEY];
+  if (isPlainObject(current)) previous.push(current);
+  let kept: string[] = [];
   if (entry === null) {
     if (SERVER_KEY in servers) delete servers[SERVER_KEY];
   } else {
-    servers[SERVER_KEY] = entry;
+    const merged = mergeEntry(previous, entry);
+    servers[SERVER_KEY] = merged.entry;
+    kept = merged.kept;
   }
 
   const before = stableStringify(section ?? {});
   if (stableStringify(servers) === before) return { status: "unchanged", text, notes };
+  if (kept.length > 0) notes.push(`zachowano Twoje zmienne: ${kept.join(", ")}`);
 
   const next = { ...data, [topKey]: servers };
   const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
@@ -606,46 +667,94 @@ export function editJsonConfig(
   return { status: "changed", text: out, notes };
 }
 
+// Group 1 is the sub-table path after the server name: "" (main table), ".env", ….
 const TOML_OUR_HEADER = new RegExp(
-  String.raw`^\s*\[\s*mcp_servers\s*\.\s*(?:"${SERVER_KEY}"|'${SERVER_KEY}'|${SERVER_KEY})\s*(?:\.[^\]]*)?\]\s*(?:#.*)?$`,
+  String.raw`^\s*\[\s*mcp_servers\s*\.\s*(?:"${SERVER_KEY}"|'${SERVER_KEY}'|${SERVER_KEY})\s*((?:\.[^\]]*)?)\]\s*(?:#.*)?$`,
 );
 
 function tomlKey(key: string): string {
   return /^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key);
 }
 
-/** TOML block for Codex. Timeouts are raised because the first npx run downloads the package. */
-export function codexTomlBlock(spec: LaunchSpec): string {
+/** Lines of an existing Codex entry that setup does not generate and must keep. */
+interface TomlKept {
+  main: string[];
+  env: string[];
+  /** Other sub-tables of the entry, verbatim (header included). */
+  other: string[];
+}
+
+const TOML_KEY = /^\s*("[^"]*"|'[^']*'|[A-Za-z0-9_-]+)\s*=/;
+
+function tomlKeyName(line: string): string | undefined {
+  return TOML_KEY.exec(line)?.[1].replace(/^["']|["']$/g, "");
+}
+
+/**
+ * TOML block for Codex. Timeouts are raised because the first npx run downloads the
+ * package; values the user set (timeouts, PBN keys, other settings) are kept.
+ */
+export function codexTomlBlock(
+  spec: LaunchSpec,
+  kept: TomlKept = { main: [], env: [], other: [] },
+): string {
+  const userKeys = new Set(kept.main.map(tomlKeyName));
   const lines = [
     `[mcp_servers.${SERVER_KEY}]`,
     `command = ${JSON.stringify(spec.command)}`,
     `args = [${spec.args.map((a) => JSON.stringify(a)).join(", ")}]`,
-    "startup_timeout_sec = 60",
-    "tool_timeout_sec = 120",
+    ...(userKeys.has("startup_timeout_sec") ? [] : ["startup_timeout_sec = 60"]),
+    ...(userKeys.has("tool_timeout_sec") ? [] : ["tool_timeout_sec = 120"]),
+    ...kept.main,
   ];
-  if (spec.env && Object.keys(spec.env).length > 0) {
+  const env = Object.entries(spec.env ?? {});
+  if (env.length > 0 || kept.env.length > 0) {
     lines.push("", `[mcp_servers.${SERVER_KEY}.env]`);
-    for (const [k, v] of Object.entries(spec.env))
-      lines.push(`${tomlKey(k)} = ${JSON.stringify(v)}`);
+    for (const [k, v] of env) lines.push(`${tomlKey(k)} = ${JSON.stringify(v)}`);
+    lines.push(...kept.env);
   }
+  if (kept.other.length > 0) lines.push("", ...kept.other);
   return lines.join("\n");
 }
 
 /** Add, replace (spec) or remove (spec === null) this server in Codex's config.toml. */
 export function editCodexToml(original: string | null, spec: LaunchSpec | null): EditResult {
-  const text = (original ?? "").replace(/^﻿/, "");
+  const text = (original ?? "").replace(/^\uFEFF/, "");
   const normalized = text.replace(/\r\n/g, "\n");
   const kept: string[] = [];
-  let inOurs = false;
+  const userLines: TomlKept = { main: [], env: [], other: [] };
+  let table: keyof TomlKept | null = null;
+  let keepValue = true;
   let found = false;
   for (const line of normalized.split("\n")) {
-    if (TOML_OUR_HEADER.test(line)) {
-      inOurs = true;
+    const header = TOML_OUR_HEADER.exec(line);
+    if (header) {
       found = true;
+      const sub = header[1].replace(/\s/g, "");
+      table = sub === "" ? "main" : sub === ".env" ? "env" : "other";
+      keepValue = true;
+      if (table === "other") userLines.other.push(line);
       continue;
     }
-    if (inOurs && /^\s*\[/.test(line)) inOurs = false;
-    if (!inOurs) kept.push(line);
+    if (table && /^\s*\[/.test(line)) table = null;
+    if (!table) {
+      kept.push(line);
+      continue;
+    }
+    if (table === "other") {
+      userLines.other.push(line);
+      continue;
+    }
+    if (line.trim() === "") continue;
+    // Continuation lines (multi-line arrays, comments) follow the key they belong to.
+    const key = tomlKeyName(line);
+    if (key !== undefined) {
+      keepValue = table === "main" ? key !== "command" && key !== "args" : !MANAGED_ENV.has(key);
+    }
+    if (keepValue) userLines[table].push(line);
+  }
+  while (userLines.other.length > 0 && userLines.other[userLines.other.length - 1].trim() === "") {
+    userLines.other.pop();
   }
   const rest = kept.join("\n").trimEnd();
   if (new RegExp(String.raw`^\s*["']?${SERVER_KEY}["']?\s*=`, "m").test(rest)) {
@@ -656,7 +765,7 @@ export function editCodexToml(original: string | null, spec: LaunchSpec | null):
   }
 
   if (!spec && !found) return { status: "unchanged", text, notes: [] };
-  let out = spec ? `${rest ? `${rest}\n\n` : ""}${codexTomlBlock(spec)}` : rest;
+  let out = spec ? `${rest ? `${rest}\n\n` : ""}${codexTomlBlock(spec, userLines)}` : rest;
   out = out ? `${out}\n` : "";
   if (out === normalized) return { status: "unchanged", text, notes: [] };
   if (text.includes("\r\n")) out = out.replace(/\n/g, "\r\n");
@@ -690,7 +799,14 @@ export function findConfiguredEntry(client: ClientDef, text: string): unknown {
     return text.split(/\r?\n/).some((line) => TOML_OUR_HEADER.test(line)) ? {} : undefined;
   }
   try {
-    const data = JSON.parse(text.replace(/^﻿/, "")) as Record<string, unknown>;
+    const clean = text.replace(/^\uFEFF/, "");
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(clean) as Record<string, unknown>;
+    } catch {
+      // doctor/uninstall must see entries in JSONC files too (setup only refuses to rewrite them).
+      data = JSON.parse(stripJsonc(clean)) as Record<string, unknown>;
+    }
     const section = data[topLevelKey(client.format)];
     if (!isPlainObject(section)) return undefined;
     return section[SERVER_KEY] ?? Object.values(section).find(launchesPackage);

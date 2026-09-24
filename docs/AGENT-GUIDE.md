@@ -50,7 +50,7 @@ npx -y polish-academic-mcp setup --client <id> [--sources nauka,prawo] --dry-run
 npx -y polish-academic-mcp setup --client <id> [--sources nauka,prawo] --yes       # zapis
 ```
 
-Bez `--yes` w nieinteraktywnej powłoce kreator niczego nie zapisuje. Przed zapisem poproś użytkownika o całkowite zamknięcie aplikacji docelowej (niektóre nadpisują konfigurację przy zamykaniu).
+Bez `--yes` w nieinteraktywnej powłoce kreator niczego nie zapisuje. Jeśli użytkownik chce kontrolować aktualizacje, dodaj `--pin` (zapisze `polish-academic-mcp@<wersja>`). Przed zapisem poproś użytkownika o całkowite zamknięcie aplikacji docelowej (niektóre nadpisują konfigurację przy zamykaniu).
 
 Dla aplikacji z prawej kolumny tabeli uruchom `npx -y polish-academic-mcp setup --print <id>` i przekaż użytkownikowi wypisaną instrukcję (albo wykonaj ją, jeśli to polecenie terminala, np. `openclaw mcp set …`).
 
@@ -58,7 +58,7 @@ Jeśli kreator zgłosi `[!] … pomijam` (np. plik z komentarzami), wypisz wpis 
 
 ### 5. Sekrety PBN (tylko na prośbę użytkownika)
 
-Nie pytaj o PBN, jeśli użytkownik o nim nie wspomniał. Jeśli poda klucze, **za jego wyraźną zgodą** dopisz do wpisu `polish-academic` sekcję `env` z `PBN_APP_ID` i `PBN_APP_TOKEN` (w Codeksie: tabela `[mcp_servers.polish-academic.env]`). Nie zapisuj sekretów w repozytoriach ani w plikach projektu (`.mcp.json`, `.vscode/mcp.json`).
+Nie pytaj o PBN, jeśli użytkownik o nim nie wspomniał. Jeśli poda klucze, **za jego wyraźną zgodą** dopisz do wpisu `polish-academic` sekcję `env` z `PBN_APP_ID` i `PBN_APP_TOKEN` (w Codeksie: tabela `[mcp_servers.polish-academic.env]`). Nie zapisuj sekretów w repozytoriach ani w plikach projektu (`.mcp.json`, `.vscode/mcp.json`). Kolejne uruchomienia `setup` zachowują te zmienne.
 
 ### 6. Weryfikacja
 

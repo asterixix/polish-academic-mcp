@@ -84,6 +84,7 @@ export function helpText(version: string): string {
     "      --sources <grupy>                      tylko wybrane bazy, np. nauka,prawo",
     "      --yes                                  bez pytań (np. dla agentów AI)",
     "      --dry-run                              pokaż zmiany bez zapisywania",
+    "      --pin                                  przypnij bieżącą wersję pakietu (bez automatycznych aktualizacji)",
     "      --print <id>                           wypisz konfigurację do ręcznego wklejenia",
     "      --list                                 lista obsługiwanych aplikacji i plików konfiguracyjnych",
     `  ${PACKAGE_NAME} uninstall              usuwa serwer z konfiguracji aplikacji (opcje jak w setup)`,
@@ -316,7 +317,11 @@ function plan(ctx: HostContext, clients: ClientDef[], spec: LaunchSpec | null): 
   });
 }
 
-export async function runSetup(argv: readonly string[], remove = false): Promise<number> {
+export async function runSetup(
+  argv: readonly string[],
+  remove = false,
+  version?: string,
+): Promise<number> {
   const ctx = currentHost();
   const verb = remove ? "uninstall" : "setup";
 
@@ -344,8 +349,10 @@ export async function runSetup(argv: readonly string[], remove = false): Promise
     }
   }
 
+  // --pin writes polish-academic-mcp@<this version>; to update, run a newer version's setup --pin.
+  const pin = hasFlag(argv, "--pin") ? version : undefined;
   const printId = readOption(argv, "--print");
-  if (printId !== undefined) return printSnippet(ctx, printId, launchSpec(ctx, sources));
+  if (printId !== undefined) return printSnippet(ctx, printId, launchSpec(ctx, sources, pin));
 
   const dryRun = hasFlag(argv, "--dry-run");
   const assumeYes = hasFlag(argv, "--yes", "-y");
@@ -369,7 +376,7 @@ export async function runSetup(argv: readonly string[], remove = false): Promise
           return 1;
         }
         if (isAutoClient(client)) targets.push(client);
-        else if (!remove) printManual(client, launchSpec(ctx, sources));
+        else if (!remove) printManual(client, launchSpec(ctx, sources, pin));
         else print(`${client.name}: usuń wpis ${SERVER_KEY} ręcznie w ustawieniach aplikacji.`);
       }
       if (targets.length === 0) return 0;
@@ -399,7 +406,7 @@ export async function runSetup(argv: readonly string[], remove = false): Promise
     // Which sources?
     const bySource = toolsBySource();
     if (!remove && sources === undefined && rl) sources = await askSources(rl, bySource);
-    const spec = remove ? null : launchSpec(ctx, sources);
+    const spec = remove ? null : launchSpec(ctx, sources, pin);
     const toolCount = countTools(parseSourceSelection(sources).ids, bySource);
 
     const planned = plan(ctx, targets, spec);
@@ -409,8 +416,11 @@ export async function runSetup(argv: readonly string[], remove = false): Promise
       const where = tilde(ctx, item.path);
       if (item.status === "error") {
         print(`  [!] ${item.client.name}: pomijam — ${item.reason} (${where})`);
-        if (!remove)
-          print(`      wpis do wklejenia: npx -y ${PACKAGE_NAME} setup --print ${item.client.id}`);
+        print(
+          remove
+            ? `      usuń ręcznie wpis "${SERVER_KEY}" z tego pliku`
+            : `      wpis do wklejenia: npx -y ${PACKAGE_NAME} setup --print ${item.client.id}`,
+        );
       } else if (item.status === "unchanged")
         print(`  [=] ${item.client.name}: bez zmian (${where})`);
       else print(`  [+] ${item.client.name}: ${remove ? "usunę wpis" : "zapiszę wpis"} → ${where}`);

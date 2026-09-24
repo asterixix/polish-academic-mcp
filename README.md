@@ -77,12 +77,13 @@ npx -y polish-academic-mcp setup                          # interaktywnie
 npx -y polish-academic-mcp setup --list                   # obsługiwane aplikacje i ścieżki plików
 npx -y polish-academic-mcp setup --client cursor --sources nauka --yes   # bez pytań
 npx -y polish-academic-mcp setup --dry-run                # pokaż zmiany, nic nie zapisuj
+npx -y polish-academic-mcp setup --pin                    # przypnij bieżącą wersję (zob. Aktualizacje)
 npx -y polish-academic-mcp setup --print zed              # konfiguracja do wklejenia ręcznie
 npx -y polish-academic-mcp uninstall                      # usuń serwer z aplikacji
 npx -y polish-academic-mcp doctor                         # diagnostyka
 ```
 
-Kreator zachowuje inne serwery i ustawienia w plikach, przed każdą zmianą robi kopię (`*.bak-<data>`) i nie rusza plików z komentarzami (JSONC); dla nich wypisuje wpis do wklejenia. Na Windows zapisuje polecenie `cmd /c npx …`, a przy Node.js zainstalowanym przez nvm, fnm lub volta pełną ścieżkę do `npx`. Dzięki temu aplikacje okienkowe znajdą Node.js.
+Kreator zachowuje inne serwery i ustawienia w plikach (także Twoje zmienne we wpisie serwera, np. klucze PBN, przy ponownym uruchomieniu), przed każdą zmianą robi kopię (`*.bak-<data>`) i nie rusza plików z komentarzami (JSONC); dla nich wypisuje wpis do wklejenia. Na Windows zapisuje polecenie `cmd /c npx …`, a przy Node.js zainstalowanym przez nvm, fnm lub volta pełną ścieżkę do `npx`. Dzięki temu aplikacje okienkowe znajdą Node.js.
 
 ---
 
@@ -119,7 +120,7 @@ albo argumentem: `"args": ["-y", "polish-academic-mcp", "--sources=nauka,prawo"]
 ## Wszystkie bazy i narzędzia
 
 | Narzędzie                           | Baza danych                                                                                            | Opis                                                                                                                                      |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `bn_search_publications`            | [Biblioteka Nauki](https://bibliotekanauki.pl)                                                         | Wyszukiwanie pełnotekstowe (API JSON portalu — frazy, tytuły, abstrakty)                                                                  |
 | `bn_search_articles`                | Biblioteka Nauki                                                                                       | Listowanie rekordów OAI-PMH (`ListRecords`) po datach i/lub zbiorze czasopisma — **bez** zapytań słownych                                 |
 | `bn_get_article`                    | Biblioteka Nauki                                                                                       | Pobranie metadanych pojedynczego artykułu po ID (OAI-PMH `GetRecord`)                                                                     |
@@ -196,7 +197,7 @@ albo argumentem: `"args": ["-y", "polish-academic-mcp", "--sources=nauka,prawo"]
 | `fototeka_search`                   | [Fototeka — FN INA](https://fototeka.fn.org.pl/)                                                       | Wyszukiwanie fotosów i zdjęć (`wyszukiwarka.html` — tytuł / osoba / reżyseria / słowa kluczowe; HTML, paginacja `pageNumber` / `howmany`) |
 | `fototeka_get_photo`                | Fototeka                                                                                               | Strona pojedynczego zdjęcia po id (`/pl/foto/view/{id}.html` — HTML)                                                                      |
 | `filmpolski_search`                 | [FilmPolski.pl](https://www.filmpolski.pl/fp/) (PWSFTviT)                                              | Wyszukiwarka bazy filmu (`index.php?szukaj=&rodzaj=` — HTML parsowane do JSON: osoby, filmy; tryby fragment / początek / dokładnie)       |
-| `filmpolski_get_item`               | FilmPolski.pl                                                                                          | Karta rekordu po id (`index.php/{id}`) — tekst z `<article id="film                                                                       | osoba">` (obcięty) |
+| `filmpolski_get_item`               | FilmPolski.pl                                                                                          | Karta rekordu po id (`index.php/{id}`) — tekst z elementu `<article>` filmu lub osoby (obcięty)                                           |
 | `fototekaslaska_search`             | [Fototeka Śląska](https://fototekaslaska.pl/) (MWO Opole)                                              | Wyszukiwanie zdjęć (WordPress GET `?s=&t=&y=`; HTML z `.search-list` → JSON: slug, URL, podpis, miniatura)                                |
 | `fototekaslaska_get_photo`          | Fototeka Śląska                                                                                        | Strona rekordu `/galeria/{slug}/` — tytuł, nr katalogowy, URL zdjęcia, opis i tabela (tekst)                                              |
 | `fn_repo_search`                    | [Repozytorium FN](https://repozytorium.fn.org.pl/)                                                     | Wyszukiwanie Solr (HTML — kafelki wyników; brak publicznego JSON API)                                                                     |
@@ -251,9 +252,9 @@ Najpierw uruchom `npx -y polish-academic-mcp doctor`. Sprawdza wersję Node.js, 
 | Sieć firmowa z proxy                                                   | Wbudowany `fetch` w Node.js domyślnie ignoruje proxy. W aktualnych Node.js 22/24 dodaj do `env` serwera `"NODE_USE_ENV_PROXY": "1"` oraz `"HTTPS_PROXY": "http://proxy:port"`.                                                 |
 | Po zmianie wersji Node.js serwer przestał działać                      | Uruchom ponownie `npx -y polish-academic-mcp setup` (`doctor` pokaże nieaktualną ścieżkę).                                                                                                                                     |
 
-**Logi.** Komunikaty serwera trafiają do logów aplikacji, np. Claude Desktop: `~/Library/Logs/Claude/mcp-server-polish-academic.log` (macOS) lub `%APPDATA%\Claude\logs\` (Windows). Aby zobaczyć każde zapytanie HTTP do baz, dodaj do `env` serwera `"POLISH_ACADEMIC_DEBUG": "1"`.
+**Logi.** Komunikaty serwera trafiają do logów aplikacji, np. Claude Desktop: `~/Library/Logs/Claude/mcp-server-polish-academic.log` (macOS) lub `%APPDATA%\Claude\logs\` (Windows). Aby zobaczyć każde zapytanie HTTP do baz (adres bez wartości parametrów, status, czas), dodaj do `env` serwera `"POLISH_ACADEMIC_DEBUG": "1"`.
 
-**Aktualizacje.** Aby aplikacja zawsze uruchamiała najnowszą wersję serwera, zamień w konfiguracji `polish-academic-mcp` na `polish-academic-mcp@latest`.
+**Aktualizacje.** Przy wpisie `npx -y polish-academic-mcp` (bez numeru wersji) npx przy starcie aplikacji sprawdza, czy jest nowsza wersja, i ją pobiera. Jeśli wolisz aktualizować świadomie (np. w pracowni lub firmie), przypnij wersję: `npx -y polish-academic-mcp setup --pin` zapisze `polish-academic-mcp@<wersja>`. Aktualizacja to wtedy `npx -y polish-academic-mcp@<nowa-wersja> setup --pin` po sprawdzeniu nowej wersji.
 
 **Odinstalowanie.** `npx -y polish-academic-mcp uninstall` usuwa wpis z aplikacji (z kopią zapasową pliku).
 
@@ -269,7 +270,7 @@ Wszystkie są opcjonalne. Ustawia się je w sekcji `env` wpisu serwera w konfigu
 | `PBN_APP_ID`, `PBN_APP_TOKEN` | dostęp do API PBN (narzędzia `pbn_*`); przyznawany instytucjom przez [PBN](https://pbn.nauka.gov.pl/centrum-pomocy/kategoria/api/) |
 | `PBN_USER_TOKEN`              | token użytkownika PBN dla operacji wymagających kontekstu użytkownika                                                              |
 | `BDL_CLIENT_ID`               | klucz [API GUS BDL](https://api.stat.gov.pl/home/bdlapi): wyższe limity zapytań                                                    |
-| `POLISH_ACADEMIC_DEBUG`       | `1` = log każdego zapytania HTTP na stderr (widoczny w logach aplikacji)                                                           |
+| `POLISH_ACADEMIC_DEBUG`       | `1` = log każdego zapytania HTTP na stderr: adres bez wartości parametrów, status, czas (widoczny w logach aplikacji)              |
 
 ---
 

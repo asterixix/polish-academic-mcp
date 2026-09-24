@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, before, test } from "node:test";
-import {
-  cachedFetch,
-  createMemoryCacheStore,
-  FETCH_TIMEOUT_MS,
-} from "../src/cache.js";
+import { cachedFetch, createMemoryCacheStore, FETCH_TIMEOUT_MS, redactUrl } from "../src/cache.js";
 
 type FetchCall = { url: string; signal?: AbortSignal };
 
@@ -136,4 +132,40 @@ test("nagłówki CacheError nie ujawniają sekretów (Authorization, Cookie)", a
       return true;
     },
   );
+});
+
+test("log diagnostyczny: tylko POLISH_ACADEMIC_DEBUG, bez wartości parametrów zapytania", async () => {
+  assert.equal(
+    redactUrl("https://api.example.org/search?q=moje+badania&page=2&q=x"),
+    "https://api.example.org/search?q=…&page=…",
+  );
+  assert.equal(redactUrl("https://api.example.org/items/42"), "https://api.example.org/items/42");
+
+  const logged: string[] = [];
+  const originalWrite = process.stderr.write.bind(process.stderr);
+  const saved = { debug: process.env.DEBUG, own: process.env.POLISH_ACADEMIC_DEBUG };
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    logged.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    installFetchStub(stubSequence([makeOkResponse("a"), makeOkResponse("b")]));
+    process.env.DEBUG = "1";
+    delete process.env.POLISH_ACADEMIC_DEBUG;
+    await cachedFetch(createMemoryCacheStore(), "k1", "https://api.example.org/s?q=tajne");
+    assert.deepEqual(logged, [], "ogólne DEBUG=1 nie powinno włączać logu");
+
+    delete process.env.DEBUG;
+    process.env.POLISH_ACADEMIC_DEBUG = "1";
+    await cachedFetch(createMemoryCacheStore(), "k2", "https://api.example.org/s?q=tajne");
+    assert.equal(logged.length, 1);
+    assert.match(logged[0], /GET https:\/\/api\.example\.org\/s\?q=… -> 200/);
+    assert.doesNotMatch(logged[0], /tajne/);
+  } finally {
+    process.stderr.write = originalWrite;
+    if (saved.debug === undefined) delete process.env.DEBUG;
+    else process.env.DEBUG = saved.debug;
+    if (saved.own === undefined) delete process.env.POLISH_ACADEMIC_DEBUG;
+    else process.env.POLISH_ACADEMIC_DEBUG = saved.own;
+  }
 });

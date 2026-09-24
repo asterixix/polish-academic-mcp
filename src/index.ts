@@ -38,10 +38,10 @@ async function handleCli(argv: readonly string[], version: string): Promise<numb
   switch (argv[0]) {
     case "setup":
     case "install":
-      return runSetup(argv.slice(1));
+      return runSetup(argv.slice(1), false, version);
     case "uninstall":
     case "remove":
-      return runSetup(argv.slice(1), true);
+      return runSetup(argv.slice(1), true, version);
     case "doctor":
       return runDoctor(argv.slice(1));
     default:

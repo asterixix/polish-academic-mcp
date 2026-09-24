@@ -19,6 +19,8 @@ import {
   SERVER_KEY,
   editCodexToml,
   editJsonConfig,
+  findConfiguredEntry,
+  inlineEnv,
   launchSpec,
   type HostContext,
 } from "../src/clients.js";
@@ -171,6 +173,8 @@ test("edycja config.toml Codeksa: dopisanie, podmiana, usunięcie", () => {
       "",
       "[mcp_servers.polish-academic.env]",
       'POLISH_ACADEMIC_SOURCES = "nauka"',
+      // User variables in the entry survive a re-run of setup.
+      'X = "1"',
       "",
     ].join("\n"),
   );
@@ -286,6 +290,128 @@ test("setup odrzuca nieznane aplikacje i bazy; --print działa dla aplikacji kon
     assert.match(zed.stdout, /"context_servers"/);
     const webui = runCli(home, ["setup", "--print", "open-webui"]);
     assert.match(webui.stdout, /mcpo/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("ponowny setup zachowuje zmienne użytkownika (PBN, proxy), a nadpisuje tylko własne", () => {
+  const original = JSON.stringify({
+    mcpServers: {
+      "polish-academic-mcp": {
+        command: "npx",
+        args: ["-y", "polish-academic-mcp"],
+        env: { PBN_APP_ID: "id-1", PBN_APP_TOKEN: "tok-1" },
+      },
+      [SERVER_KEY]: {
+        command: "/old/nvm/bin/npx",
+        args: ["-y", "polish-academic-mcp"],
+        env: {
+          PATH: "/old/nvm/bin:/usr/bin",
+          POLISH_ACADEMIC_SOURCES: "kultura",
+          NODE_USE_ENV_PROXY: "1",
+        },
+        timeout: 300,
+      },
+    },
+  });
+  const result = editJsonConfig(original, "mcpServers", spec);
+  assert.equal(result.status, "changed");
+  if (result.status === "error") return;
+  assert.deepEqual(JSON.parse(result.text).mcpServers, {
+    [SERVER_KEY]: {
+      command: "npx",
+      args: ["-y", "polish-academic-mcp"],
+      env: { PBN_APP_ID: "id-1", PBN_APP_TOKEN: "tok-1", NODE_USE_ENV_PROXY: "1" },
+      timeout: 300,
+    },
+  });
+  assert.ok(result.notes.some((n) => n.includes("PBN_APP_ID") && !n.includes("tok-1")));
+  assert.equal(editJsonConfig(result.text, "mcpServers", spec).status, "unchanged");
+
+  const toml = [
+    "[mcp_servers.polish-academic]",
+    'command = "/old/npx"',
+    "args = [",
+    '  "-y",',
+    '  "polish-academic-mcp",',
+    "]",
+    "startup_timeout_sec = 90",
+    "enabled = true",
+    "",
+    "[mcp_servers.polish-academic.env]",
+    'PATH = "/old/bin"',
+    'PBN_APP_ID = "id-1"',
+    "",
+    "[mcp_servers.polish-academic.tools.bn_search_publications]",
+    'approval_mode = "approve"',
+    "",
+  ].join("\n");
+  const updated = editCodexToml(toml, { ...spec, env: { POLISH_ACADEMIC_SOURCES: "nauka" } });
+  assert.equal(updated.status, "changed");
+  if (updated.status === "error") return;
+  assert.equal(
+    updated.text,
+    [
+      "[mcp_servers.polish-academic]",
+      'command = "npx"',
+      'args = ["-y", "polish-academic-mcp"]',
+      "tool_timeout_sec = 120",
+      "startup_timeout_sec = 90",
+      "enabled = true",
+      "",
+      "[mcp_servers.polish-academic.env]",
+      'POLISH_ACADEMIC_SOURCES = "nauka"',
+      'PBN_APP_ID = "id-1"',
+      "",
+      "[mcp_servers.polish-academic.tools.bn_search_publications]",
+      'approval_mode = "approve"',
+      "",
+    ].join("\n"),
+  );
+  assert.equal(
+    editCodexToml(updated.text, { ...spec, env: { POLISH_ACADEMIC_SOURCES: "nauka" } }).status,
+    "unchanged",
+  );
+});
+
+test("aplikacje z samym poleceniem dostają wybór baz jako --sources, a PATH przez env", () => {
+  assert.deepEqual(inlineEnv({ ...spec, env: { POLISH_ACADEMIC_SOURCES: "nauka,prawo" } }), {
+    command: "npx",
+    args: ["-y", "polish-academic-mcp", "--sources=nauka,prawo"],
+  });
+  assert.deepEqual(
+    inlineEnv({ command: "/nvm/bin/npx", args: spec.args, env: { PATH: "/nvm/bin:/usr/bin" } }),
+    {
+      command: "/usr/bin/env",
+      args: ["PATH=/nvm/bin:/usr/bin", "/nvm/bin/npx", "-y", "polish-academic-mcp"],
+    },
+  );
+});
+
+test("--pin przypina wersję pakietu, a doctor/uninstall widzą wpis w pliku JSONC", () => {
+  assert.deepEqual(launchSpec(host("darwin"), undefined, "1.2.3").args, [
+    "-y",
+    "polish-academic-mcp@1.2.3",
+  ]);
+  const vscode = CLIENTS.find((c) => c.id === "vscode");
+  assert.ok(vscode);
+  const jsonc = `{\n  // moje serwery\n  "servers": {\n    "${SERVER_KEY}": { "command": "npx", "args": ["-y", "polish-academic-mcp"] },\n  },\n}\n`;
+  assert.ok(findConfiguredEntry(vscode, jsonc));
+});
+
+test("--print dla aplikacji z samym poleceniem przenosi wybór baz, setup --pin zapisuje wersję", () => {
+  const home = mkdtempSync(join(tmpdir(), "pam-setup-"));
+  try {
+    const perplexity = runCli(home, ["setup", "--print", "perplexity", "--sources", "nauka"]);
+    assert.equal(perplexity.status, 0, perplexity.stderr);
+    assert.match(perplexity.stdout, /--sources=nauka/);
+
+    const version = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).version;
+    const pinned = runCli(home, ["setup", "--client", "cursor", "--pin", "--yes"]);
+    assert.equal(pinned.status, 0, pinned.stdout + pinned.stderr);
+    const written = JSON.parse(readFileSync(join(home, ".cursor", "mcp.json"), "utf8"));
+    assert.ok(written.mcpServers[SERVER_KEY].args.includes(`polish-academic-mcp@${version}`));
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
