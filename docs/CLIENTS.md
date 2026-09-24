@@ -1,73 +1,118 @@
-# Przewodnik konfiguracji klientów MCP
+# Konfiguracja aplikacji AI
 
-> Weryfikacja: 2026-07-20. Aktualne dla `polish-academic-mcp@1.1.0`.
->
-> Wszystkie snippety poniżej uruchamiają serwer lokalnie przez **stdio** (`npx -y polish-academic-mcp`). Żaden klient w tej wersji nie wymaga zdalnego HTTP ani tunelu.
+> Stan na 2026-09-24. Najprostsza droga to kreator: `npx -y polish-academic-mcp setup`. Ten dokument opisuje, co kreator robi w każdej aplikacji, oraz jak skonfigurować ją ręcznie.
 
 ## Spis treści
 
-1. [Wspólne zasady](#wspolne-zasady)
-2. [Claude Desktop](#claude-desktop)
-3. [Claude Code (CLI)](#claude-code-cli)
-4. [Cursor](#cursor)
-5. [LM Studio](#lm-studio)
-6. [AnythingLLM](#anythingllm)
-7. [Perplexity (macOS)](#perplexity-macos)
-8. [Open WebUI](#open-webui)
-9. [OpenClaw](#openclaw)
-10. [Hermes Agent](#hermes-agent)
-11. [Cline / Continue / Roo Code (VS Code)](#cline--continue--roo-code-vs-code)
-12. [Zmienne środowiskowe](#zmienne-srodowiskowe)
-13. [Diagnostyka problemów](#diagnostyka-problemow)
+- [Zasady wspólne](#zasady-wspólne)
+- Aplikacje okienkowe: [Claude Desktop](#claude-desktop) · [LM Studio](#lm-studio) · [AnythingLLM](#anythingllm-desktop) · [Jan](#jan) · [Perplexity](#perplexity-macos) · [Msty, Cherry Studio i inne](#msty-cherry-studio-i-inne)
+- Edytory: [Cursor](#cursor) · [VS Code](#vs-code-github-copilot) · [Windsurf](#windsurf) · [Cline](#cline) · [Roo Code](#roo-code) · [Continue](#continue) · [Zed](#zed)
+- Terminal: [Claude Code](#claude-code) · [Gemini CLI](#gemini-cli) · [Codex CLI](#openai-codex-cli) · [opencode](#opencode) · [GitHub Copilot CLI](#github-copilot-cli) · [Goose](#goose) · [Hermes Agent](#hermes-agent) · [OpenClaw](#openclaw)
+- Serwery i przeglądarka: [Open WebUI](#open-webui) · [ChatGPT i Claude.ai](#chatgpt-i-claudeai-w-przeglądarce)
+- [Diagnostyka](#diagnostyka)
 
 ---
 
-## Wspólne zasady
+## Zasady wspólne
 
-### Minimalny wpis konfiguracyjny (każdy klient)
+**Wymagania:** Node.js 18.17 lub nowszy (zalecana wersja LTS z [nodejs.org](https://nodejs.org)). Sprawdzisz ją poleceniem `node --version`.
 
-Każdy klient MCP komunikujący się przez stdio potrzebuje trzech informacji:
+**Wpis serwera.** Prawie każda aplikacja potrzebuje tych samych trzech informacji:
 
-| Pole | Wartość dla `polish-academic-mcp` |
-| --- | --- |
-| Polecenie (command) | `npx` |
-| Argumenty (args) | `["-y", "polish-academic-mcp"]` |
-| Zmienne środowiskowe | (opcjonalne, patrz [Zmienne środowiskowe](#zmienne-srodowiskowe)) |
+| Pole                         | Wartość                                          |
+| ---------------------------- | ------------------------------------------------ |
+| polecenie (`command`)        | `npx`                                            |
+| argumenty (`args`)           | `["-y", "polish-academic-mcp"]`                  |
+| zmienne (`env`, opcjonalnie) | np. `{"POLISH_ACADEMIC_SOURCES": "nauka,prawo"}` |
 
-Większość klientów używa formatu JSON z polem `command`, `args`, `env`. Niektóre (LM Studio, AnythingLLM) mają własne GUI.
+Jako nazwę serwera stosujemy `polish-academic`. Nie dodawaj serwera dwa razy pod różnymi nazwami, bo narzędzia się zdublują (kreator usuwa takie duplikaty).
 
-### Pierwszy test po konfiguracji
+**Windows.** `npx` jest tam skryptem `.cmd` i część aplikacji nie potrafi go uruchomić bezpośrednio („spawn npx ENOENT”). Pewny wariant:
 
-Po dodaniu serwera wykonaj w kliencie jedno z poniższych:
+```json
+{ "command": "cmd", "args": ["/c", "npx", "-y", "polish-academic-mcp"] }
+```
 
-- **Rozmowa:** „Wyszukaj w Bibliotece Nauki artykuły o uczeniu maszynowym z 2024 roku."
-- **Bezpośrednie wywołanie (jeśli klient pozwala):** `bn_search_publications` z `query="uczenie maszynowe"` i `published_date_from="2024-01-01"`.
+**macOS/Linux z nvm, fnm, volta lub asdf.** Aplikacje uruchamiane z Docka lub menu nie widzą Node.js zainstalowanego tymi narzędziami. Podaj pełną ścieżkę do `npx` (wynik `which npx`) i uzupełnij `PATH`:
 
-Oczekiwany wynik: lista trafień z tytułami, autorami, abstraktami (JSON, surowy tekst). Brak odpowiedzi oznacza, że klient nie uruchomił serwera — sprawdź logi.
+```json
+{
+  "command": "/Users/ala/.nvm/versions/node/v22.11.0/bin/npx",
+  "args": ["-y", "polish-academic-mcp"],
+  "env": { "PATH": "/Users/ala/.nvm/versions/node/v22.11.0/bin:/usr/local/bin:/usr/bin:/bin" }
+}
+```
 
-### Co wymaga konfiguracji warunkowej
+Kreator `setup` wykrywa obie sytuacje i zapisuje właściwy wariant.
 
-Tylko **trzy narzędzia** wymagają sekretów w zmiennych środowiskowych:
+**Wybór baz.** Wszystkie 85 narzędzi to ok. 26 tys. tokenów. Przy małych modelach lokalnych i w aplikacjach z limitem narzędzi (Cursor ok. 40, Windsurf 100, VS Code 128 łącznie ze wszystkich serwerów) ustaw `POLISH_ACADEMIC_SOURCES`, np. `nauka` albo `prawo,dane`. Grupy: `nauka`, `dane`, `prawo`, `normy`, `kultura`; pełna lista: `npx -y polish-academic-mcp --list-sources`.
 
-- `pbn_search_publications`, `pbn_search_persons`, `pbn_get_publication` — wymagają `PBN_APP_ID` i `PBN_APP_TOKEN` (zapytaj swój instytut o token API PBN).
+**Sekrety PBN.** Trzy narzędzia `pbn_*` wymagają `PBN_APP_ID` i `PBN_APP_TOKEN` w sekcji `env`. Bez nich zwracają instrukcję, a pozostałe 82 narzędzia działają normalnie.
 
-Bez tych zmiennych trzy narzędzia PBN zwracają czytelny komunikat po polsku z instrukcją. Pozostałe 82 narzędzia działają bez żadnej konfiguracji.
+**Pierwszy test.** Po ponownym uruchomieniu aplikacji zapytaj: „Wyszukaj w Bibliotece Nauki artykuły o uczeniu maszynowym z 2024 roku.” Model powinien wywołać `bn_search_publications`.
 
 ---
 
 ## Claude Desktop
 
-**Platforma:** macOS, Windows, Linux.
-**Format:** JSON w pliku konfiguracyjnym.
-**Dokumentacja:** <https://modelcontextprotocol.io/docs/develop/build-server>
+**Kreator:** `npx -y polish-academic-mcp setup --client claude-desktop`
 
-### Lokalizacja pliku
+**Ręcznie:** Claude → Settings → Developer → **Edit Config** otwiera właściwy plik:
 
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-- Linux: `~/.config/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`; wersja z Microsoft Store: `%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming\Claude\claude_desktop_config.json`
+- Linux (kompilacje nieoficjalne): `~/.config/Claude/claude_desktop_config.json`
 
-### Snippet
+```json
+{
+  "mcpServers": {
+    "polish-academic": {
+      "command": "npx",
+      "args": ["-y", "polish-academic-mcp"]
+    }
+  }
+}
+```
+
+Na Windows użyj wariantu `cmd /c` z [zasad wspólnych](#zasady-wspólne).
+
+**Weryfikacja:** zamknij Claude całkowicie (także z zasobnika / paska menu) i otwórz ponownie. W oknie rozmowy menu narzędzi powinno pokazywać `polish-academic`. Logi: `~/Library/Logs/Claude/mcp-server-polish-academic.log` (macOS), `%APPDATA%\Claude\logs\` (Windows).
+
+---
+
+## Claude Code
+
+**Kreator:** `npx -y polish-academic-mcp setup --client claude-code` (zapisuje w zakresie użytkownika, w `~/.claude.json`).
+
+**Ręcznie**, poleceniem Claude Code:
+
+```bash
+claude mcp add --scope user polish-academic -- npx -y polish-academic-mcp
+# z wyborem baz:
+claude mcp add --scope user -e POLISH_ACADEMIC_SOURCES=nauka,prawo polish-academic -- npx -y polish-academic-mcp
+# Windows bez WSL:
+claude mcp add --scope user polish-academic -- cmd /c npx -y polish-academic-mcp
+```
+
+Dla jednego projektu zapisz plik `.mcp.json` w katalogu projektu (wtedy korzysta z niego cały zespół):
+
+```json
+{
+  "mcpServers": {
+    "polish-academic": { "command": "npx", "args": ["-y", "polish-academic-mcp"] }
+  }
+}
+```
+
+**Weryfikacja:** `claude mcp list` w terminalu albo `/mcp` w sesji Claude Code.
+
+---
+
+## Cursor
+
+**Kreator:** `npx -y polish-academic-mcp setup --client cursor`, albo przycisk „Add to Cursor” w [README](../README.md#instalacja-jednym-kliknięciem).
+
+**Ręcznie:** `~/.cursor/mcp.json` (wszystkie projekty) lub `.cursor/mcp.json` (jeden projekt):
 
 ```json
 {
@@ -75,234 +120,29 @@ Bez tych zmiennych trzy narzędzia PBN zwracają czytelny komunikat po polsku z 
     "polish-academic": {
       "command": "npx",
       "args": ["-y", "polish-academic-mcp"],
-      "env": {
-        "PBN_APP_ID": "twój_pbn_id",
-        "PBN_APP_TOKEN": "twój_pbn_token"
-      }
+      "env": { "POLISH_ACADEMIC_SOURCES": "nauka" }
     }
   }
 }
 ```
 
-### Weryfikacja
+**Limit narzędzi:** Cursor ostrzega powyżej ok. 40 narzędzi i część z nich przestaje być dostępna dla agenta. Włącz jedną lub dwie grupy baz albo wyłącz pojedyncze narzędzia w ustawieniach MCP.
 
-1. Uruchom Claude Desktop.
-2. Kliknij ikonę narzędzi (🔨) w polu rozmowy. Powinna pojawić się lista 85 narzędzi `polish-academic-mcp`.
-3. Zadaj pytanie: „Znajdź w repozytorium AGH prace o grafenie z 2023 roku."
-4. Claude wywoła `agh_search` automatycznie.
+**Weryfikacja:** Cursor Settings → sekcja MCP: serwer powinien mieć zielony status i listę narzędzi. Narzędzia działają w trybie Agent.
 
 ---
 
-## Claude Code (CLI)
+## VS Code (GitHub Copilot)
 
-**Platforma:** macOS, Linux, Windows (WSL).
-**Format:** JSON w `.mcp.json` w katalogu projektu lub w konfiguracji użytkownika.
-**Dokumentacja:** <https://docs.claude.com/en/docs/claude-code/mcp>
+**Kreator:** `npx -y polish-academic-mcp setup --client vscode`, albo przycisk „Zainstaluj w VS Code” w [README](../README.md#instalacja-jednym-kliknięciem).
 
-### Snippet (per projekt)
-
-Plik `.mcp.json` w katalogu głównym repo:
-
-```json
-{
-  "mcpServers": {
-    "polish-academic": {
-      "command": "npx",
-      "args": ["-y", "polish-academic-mcp"]
-    }
-  }
-}
-```
-
-### Snippet (globalnie)
-
-`~/.claude.json`:
-
-```json
-{
-  "mcpServers": {
-    "polish-academic": {
-      "command": "npx",
-      "args": ["-y", "polish-academic-mcp"]
-    }
-  }
-}
-```
-
-### Weryfikacja
-
-W terminalu:
-
-```bash
-claude mcp list
-# powinno wyświetlić polish-academic wraz z dostępnymi narzędziami
-```
-
-W rozmowie z Claude Code:
-
-```
-> Wyszukaj w Ludziach Nauki profile z dziedziny informatyki.
-```
-
----
-
-## Cursor
-
-**Platforma:** macOS, Windows, Linux.
-**Format:** JSON w `.cursor/mcp.json` w katalogu projektu lub globalnie `~/.cursor/mcp.json`.
-**Dokumentacja:** <https://docs.cursor.com/welcome/mcp>
-
-### Snippet
-
-`~/.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "polish-academic": {
-      "command": "npx",
-      "args": ["-y", "polish-academic-mcp"]
-    }
-  }
-}
-```
-
-### Weryfikacja
-
-1. Uruchom Cursor.
-2. Otwórz Composer (Ctrl/Cmd+I) i zapytaj o dane z polskich baz naukowych.
-3. Cursor wyświetli ikonę narzędzia przy każdym wywołaniu MCP.
-
----
-
-## LM Studio
-
-**Platforma:** macOS, Windows, Linux.
-**Format:** GUI — program wykrywa serwery MCP automatycznie.
-**Dokumentacja:** <https://lmstudio.ai/docs/developer/mcp>
-
-### Konfiguracja
-
-1. Otwórz LM Studio.
-2. Przejdź do zakładki **Program (Ctrl/Cmd+Shift+P)** → **Install → Edit mcp.json**.
-3. Wklej:
-
-```json
-{
-  "mcpServers": {
-    "polish-academic": {
-      "command": "npx",
-      "args": ["-y", "polish-academic-mcp"]
-    }
-  }
-}
-```
-
-4. Kliknij **Save**. LM Studio automatycznie pobierze pakiet i zarejestruje serwer.
-
-### Weryfikacja
-
-- W panelu **Program** przy nazwie modelu pojawi się ikona narzędzi MCP.
-- Po wpisaniu zapytania „Wyszukaj w BDL dane o populacji Krakowa" model powinien wywołać `bdl_search_units`.
-
----
-
-## AnythingLLM
-
-**Platforma:** macOS, Windows, Linux, Docker.
-**Format:** GUI w ustawieniach agentów MCP.
-**Dokumentacja:** <https://docs.anythingllm.com/mcp-compatibility/overview>
-
-### Konfiguracja
-
-1. Otwórz AnythingLLM.
-2. Przejdź do **Settings → Agent Skills → MCP Servers**.
-3. Kliknij **Add MCP Server**.
-4. Wypełnij:
-   - **Name:** `polish-academic`
-   - **Command:** `npx`
-   - **Args:** `-y,polish-academic-mcp` (oddzielone przecinkami)
-5. Zapisz.
-
-### Weryfikacja
-
-- W nowym workspace kliknij **Agents → MCP Servers**. Przy nazwie `polish-academic` powinny widnieć 85 narzędzi.
-- Zadaj pytanie agentowi włączonemu MCP — np. „Wyszukaj w PBN publikacje Kowalskiego".
-
----
-
-## Perplexity (macOS)
-
-**Platforma:** macOS (aplikacja desktop).
-**Format:** JSON w `~/Library/Application Support/Perplexity/...` (sprawdź najnowszą lokalizację).
-**Dokumentacja:** <https://docs.perplexity.ai/guides/mcp>
-
-### Konfiguracja
-
-Perplexity Desktop korzysta z tego samego formatu co Claude Desktop:
-
-```json
-{
-  "mcpServers": {
-    "polish-academic": {
-      "command": "npx",
-      "args": ["-y", "polish-academic-mcp"]
-    }
-  }
-}
-```
-
-Plik konfiguracyjny Perplexity jest zwykle obok pliku Claude Desktop.
-
-### Weryfikacja
-
-- W oknie czatu ikona narzędzi MCP powinna pokazać dostępne serwery.
-- Zadaj pytanie o dane z polskich baz.
-
----
-
-## Open WebUI
-
-**Platforma:** Linux (serwer WebUI), Docker.
-**Format:** zmienna środowiskowa przy uruchomieniu kontenera.
-**Dokumentacja:** <https://docs.openwebui.com/features/mcp>
-
-### Snippet (Docker)
-
-```bash
-docker run -d \
-  --name open-webui \
-  -p 3000:8080 \
-  -e OPENAI_API_KEY=... \
-  -e MCP_SERVERS='[
-    {
-      "name": "polish-academic",
-      "command": "npx",
-      "args": ["-y", "polish-academic-mcp"]
-    }
-  ]' \
-  ghcr.io/open-webui/open-webui:main
-```
-
-### Weryfikacja
-
-- Zaloguj się do Open WebUI.
-- W nowej rozmowie kliknij **Tools**. Powinna pojawić się pozycja `polish-academic` z listą narzędzi.
-
----
-
-## OpenClaw
-
-**Platforma:** Linux, macOS.
-**Format:** JSON w `~/.openclaw/config.json`.
-**Dokumentacja:** <https://openclaw.dev/docs/mcp>
-
-### Snippet
+**Ręcznie:** paleta poleceń (Ctrl/Cmd+Shift+P) → **MCP: Open User Configuration** (wszystkie projekty) lub plik `.vscode/mcp.json` (jeden projekt). VS Code używa klucza `servers` i pola `type`:
 
 ```json
 {
   "servers": {
     "polish-academic": {
+      "type": "stdio",
       "command": "npx",
       "args": ["-y", "polish-academic-mcp"]
     }
@@ -310,43 +150,102 @@ docker run -d \
 }
 ```
 
-### Weryfikacja
+Z terminala: `code --add-mcp '{"name":"polish-academic","command":"npx","args":["-y","polish-academic-mcp"]}'`.
 
-- W CLI OpenClaw wpisz `openclaw tools list` — powinno pokazać 85 narzędzi z `polish-academic-mcp`.
+Jeśli plik `mcp.json` zawiera komentarze, kreator go nie zmienia (żeby ich nie utracić) i wypisuje wpis do wklejenia.
+
+**Limit narzędzi:** 128 narzędzi na zapytanie łącznie ze wszystkich serwerów; w razie błędu wyłącz część narzędzi w oknie wyboru narzędzi czatu lub ogranicz bazy.
+
+**Weryfikacja:** **MCP: List Servers** → `polish-academic` → Start. W czacie Copilota wybierz tryb Agent i sprawdź listę narzędzi.
 
 ---
 
-## Hermes Agent
+## Windsurf
 
-**Platforma:** macOS, Linux, Windows.
-**Format:** YAML lub JSON w `~/.hermes/profiles/<profil>/config.yaml`.
-**Dokumentacja:** <https://hermes-agent.nousresearch.com/docs>
+**Kreator:** `npx -y polish-academic-mcp setup --client windsurf`
 
-### Snippet
+**Ręcznie:** `~/.codeium/windsurf/mcp_config.json` (Windows: `%USERPROFILE%\.codeium\windsurf\mcp_config.json`), format `mcpServers` jak w Cursorze.
 
-W pliku profilu:
+**Limit narzędzi:** 100 aktywnych narzędzi łącznie ze wszystkich serwerów. Przy innych serwerach ogranicz bazy lub wyłącz część narzędzi w panelu MCP.
+
+**Weryfikacja:** panel Cascade → ikona MCP → odśwież; serwer powinien pokazać listę narzędzi.
+
+---
+
+## Cline
+
+**Kreator:** `npx -y polish-academic-mcp setup --client cline`
+
+**Ręcznie:** panel Cline → MCP Servers → Configure (otwiera `cline_mcp_settings.json` w katalogu `globalStorage/saoudrizwan.claude-dev/settings/` ustawień VS Code):
+
+```json
+{
+  "mcpServers": {
+    "polish-academic": {
+      "command": "npx",
+      "args": ["-y", "polish-academic-mcp"],
+      "disabled": false
+    }
+  }
+}
+```
+
+---
+
+## Roo Code
+
+**Kreator:** `npx -y polish-academic-mcp setup --client roo-code`
+
+**Ręcznie:** panel Roo Code → MCP Servers → Edit Global MCP (`mcp_settings.json`) albo `.roo/mcp.json` w projekcie. Format jak w Cline.
+
+---
+
+## Continue
+
+Wypisanie instrukcji: `npx -y polish-academic-mcp setup --print continue`
+
+Dopisz do `~/.continue/config.yaml`:
 
 ```yaml
-mcp_servers:
+mcpServers:
   - name: polish-academic
+    type: stdio
     command: npx
     args: ["-y", "polish-academic-mcp"]
 ```
 
-### Weryfikacja
-
-- W CLI Hermes wpisz `hermes tools` — powinny być widoczne wszystkie 85 narzędzi.
+Narzędzia MCP działają w trybie Agent.
 
 ---
 
-## Cline / Continue / Roo Code (VS Code)
+## Zed
 
-**Platforma:** dowolna z VS Code.
-**Format:** JSON w konfiguracji rozszerzenia.
+Wypisanie instrukcji: `npx -y polish-academic-mcp setup --print zed`
 
-### Cline
+Settings → Open Settings (`settings.json`), w obiekcie głównym:
 
-`cline_mcp_settings.json`:
+```json
+{
+  "context_servers": {
+    "polish-academic": {
+      "source": "custom",
+      "command": "npx",
+      "args": ["-y", "polish-academic-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+Kreator nie edytuje tego pliku, bo zwykle zawiera komentarze. Status serwera (zielona kropka) widać w ustawieniach panelu Agent.
+
+---
+
+## Gemini CLI
+
+**Kreator:** `npx -y polish-academic-mcp setup --client gemini-cli`
+
+**Ręcznie:** `~/.gemini/settings.json` (wszystkie projekty) lub `.gemini/settings.json` (projekt), format `mcpServers`:
 
 ```json
 {
@@ -359,108 +258,197 @@ mcp_servers:
 }
 ```
 
-### Continue
+**Weryfikacja:** `/mcp` w sesji Gemini CLI.
 
-`~/.continue/config.json` → sekcja `experimental.mcpServers`:
+---
+
+## OpenAI Codex CLI
+
+**Kreator:** `npx -y polish-academic-mcp setup --client codex`
+
+**Ręcznie:** `codex mcp add polish-academic -- npx -y polish-academic-mcp` albo wpis w `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.polish-academic]
+command = "npx"
+args = ["-y", "polish-academic-mcp"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+
+[mcp_servers.polish-academic.env]
+POLISH_ACADEMIC_SOURCES = "nauka"
+```
+
+Domyślny limit startu serwera w Codeksie to 10 s, a pierwsze uruchomienie `npx` pobiera pakiet, dlatego warto go podnieść (kreator ustawia 60 s).
+
+**Weryfikacja:** `/mcp` w sesji Codeksa.
+
+---
+
+## opencode
+
+**Kreator:** `npx -y polish-academic-mcp setup --client opencode`
+
+**Ręcznie:** `~/.config/opencode/opencode.json` (lub `opencode.json` w projekcie). opencode podaje polecenie jako jedną tablicę:
 
 ```json
 {
-  "experimental": {
-    "mcpServers": [
-      {
-        "name": "polish-academic",
-        "command": "npx",
-        "args": ["-y", "polish-academic-mcp"]
-      }
-    ]
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "polish-academic": {
+      "type": "local",
+      "command": ["npx", "-y", "polish-academic-mcp"],
+      "enabled": true,
+      "environment": { "POLISH_ACADEMIC_SOURCES": "nauka" }
+    }
   }
 }
 ```
 
-### Roo Code
+---
 
-`roo_code_mcp_settings.json` (w ustawieniach rozszerzenia) — format identyczny jak Cline.
+## GitHub Copilot CLI
+
+**Kreator:** `npx -y polish-academic-mcp setup --client copilot-cli`
+
+**Ręcznie:** w sesji `copilot` wpisz `/mcp add` i wypełnij formularz (typ: Local/STDIO, polecenie `npx -y polish-academic-mcp`) albo edytuj `~/.copilot/mcp-config.json`:
+
+```json
+{
+  "mcpServers": {
+    "polish-academic": {
+      "type": "local",
+      "command": "npx",
+      "args": ["-y", "polish-academic-mcp"],
+      "tools": ["*"]
+    }
+  }
+}
+```
 
 ---
 
-## Zmienne środowiskowe
+## Goose
 
-| Zmienna | Narzędzia, które jej używają | Wymagana? | Skąd wziąć |
-| --- | --- | --- | --- |
-| `PBN_APP_ID` | `pbn_search_publications`, `pbn_search_persons`, `pbn_get_publication` | tylko dla PBN | <https://pbn.nauka.gov.pl/api/> — wniosek instytucjonalny |
-| `PBN_APP_TOKEN` | j.w. | tylko dla PBN | j.w. |
-| `BDL_CLIENT_ID` | `bdl_search_*`, `bdl_get_*` | opcjonalna (wyższe limity) | <https://api.stat.gov.pl> |
-| `PBN_OPENAIRE_TOKEN` | (zarezerwowane na przyszłość) | — | — |
+Wypisanie instrukcji: `npx -y polish-academic-mcp setup --print goose`
 
-### Jak ustawić zmienne w systemie
+`goose configure` → Add Extension → Command-line Extension, polecenie `npx -y polish-academic-mcp`. Albo w `~/.config/goose/config.yaml`:
 
-**Linux / macOS (jednorazowo w sesji):**
-
-```bash
-export PBN_APP_ID=twoje_id
-export PBN_APP_TOKEN=twoj_token
-npx -y polish-academic-mcp
+```yaml
+extensions:
+  polish-academic:
+    name: polish-academic
+    type: stdio
+    cmd: npx
+    args: ["-y", "polish-academic-mcp"]
+    enabled: true
+    timeout: 300
 ```
-
-**Linux / macOS (trwale w `~/.bashrc` lub `~/.zshrc`):**
-
-```bash
-echo 'export PBN_APP_ID=twoje_id' >> ~/.bashrc
-echo 'export PBN_APP_TOKEN=twoj_token' >> ~/.bashrc
-```
-
-**Windows (PowerShell):**
-
-```powershell
-$env:PBN_APP_ID="twoje_id"
-$env:PBN_APP_TOKEN="twoj_token"
-```
-
-**W pliku konfiguracyjnym klienta MCP:** większość klientów akceptuje pole `env` (zob. snippety wyżej).
 
 ---
 
-## Diagnostyka problemów
+## Hermes Agent
 
-### Serwer nie startuje
+Wypisanie instrukcji: `npx -y polish-academic-mcp setup --print hermes`
 
-1. **Sprawdź wersję Node:** `node --version` — musi być 18.0.0 lub nowsza.
-2. **Sprawdź ręczne uruchomienie:**
-   ```bash
-   npx -y polish-academic-mcp --version
-   # powinno wypisać: 1.1.0
-   ```
-3. **Sprawdź ścieżkę `npx`:** `which npx` (Linux/macOS) lub `where npx` (Windows).
-4. **Sprawdź logi klienta** — zwykle w `Help → Show Logs` lub przez `tail -f` na pliku logu.
+W `~/.hermes/config.yaml` (sekcja `mcp_servers`, klucz = nazwa serwera):
 
-### Narzędzia widoczne, ale wywołania się nie udają
-
-1. **Brak internetu** — serwer potrzebuje dostępu do oryginalnych API baz (ruj.uj.edu.pl, bibliotekanauki.pl itd.).
-2. **Proxy firmowe** — niektóre bazy (np. SAOS) nie odpowiadają przez proxy. Uruchom klienta poza siecią firmową.
-3. **Timeout** — domyślny limit to 30 sekund. Wolniejsze API (np. SAOS wyszukiwarka) zwracają wcześniej komunikat o konserwacji.
-4. **Źródło tymczasowo niedostępne** — UAFM/eRIKA i SAOS wyszukiwarka bywają wyłączone. Komunikat po polsku wyjaśnia, co zrobić.
-
-### Błędy autoryzacji PBN
-
-```
-PBN_APP_ID i PBN_APP_TOKEN nie są ustawione. Ustaw obie zmienne środowiskowe, aby używać pbn_*.
+```yaml
+mcp_servers:
+  polish-academic:
+    command: "npx"
+    args: ["-y", "polish-academic-mcp"]
 ```
 
-Ustaw obie zmienne (patrz wyżej) i zrestartuj klienta MCP.
+Uruchom Hermes ponownie.
 
-### Klient nie pokazuje MCP wcale
+---
 
-- Sprawdź, czy Twoja wersja klienta obsługuje MCP.
-- Claude Desktop < 1.0 nie wspiera MCP.
-- Cursor < 0.40 nie wspiera MCP.
-- VS Code wymaga zainstalowanego rozszerzenia Cline / Continue / Roo Code.
-
-### Tryb deweloperski
-
-Aby zobaczyć surowe logi serwera:
+## OpenClaw
 
 ```bash
-DEBUG=1 npx -y polish-academic-mcp 2> log.txt
+openclaw mcp set polish-academic '{"command":"npx","args":["-y","polish-academic-mcp"]}'
 ```
 
-Sprawdź `log.txt` — zawiera wszystkie wywołania HTTP z pełnymi URL i statusami.
+Następnie uruchom OpenClaw ponownie.
+
+---
+
+## LM Studio
+
+**Kreator:** `npx -y polish-academic-mcp setup --client lm-studio`
+
+**Ręcznie:** zakładka Program (prawy panel) → Install → **Edit mcp.json** (plik `~/.lmstudio/mcp.json`), format `mcpServers` jak w Cursorze.
+
+**Modele lokalne:** wybierz model obsługujący wywołania narzędzi (tool use) i włącz tylko potrzebną grupę baz, np. `"env": {"POLISH_ACADEMIC_SOURCES": "nauka"}`. Wszystkie 85 narzędzi (ok. 26 tys. tokenów) nie zmieści się w oknie kontekstu wielu małych modeli.
+
+**Weryfikacja:** w czacie włącz `mcp/polish-academic` na liście integracji i zadaj pytanie testowe. LM Studio pyta o zgodę przed każdym wywołaniem narzędzia.
+
+---
+
+## AnythingLLM Desktop
+
+**Kreator:** `npx -y polish-academic-mcp setup --client anythingllm`
+
+**Ręcznie:** plik `plugins/anythingllm_mcp_servers.json` w katalogu danych AnythingLLM:
+
+- macOS: `~/Library/Application Support/anythingllm-desktop/storage/plugins/`
+- Windows: `%APPDATA%\anythingllm-desktop\storage\plugins\`
+- Linux: `~/.config/anythingllm-desktop/storage/plugins/`
+
+Format `mcpServers` jak w Cursorze. W wersji Docker plik leży w katalogu `storage` kontenera, a sam kontener musi mieć Node.js.
+
+**Weryfikacja:** Agent Skills → MCP Servers → Refresh. Narzędzia działają w rozmowie z `@agent`.
+
+---
+
+## Jan
+
+Settings → MCP Servers → „+ Add MCP Server”: nazwa `polish-academic`, polecenie `npx`, argumenty `-y` i `polish-academic-mcp`. Wypisanie instrukcji: `npx -y polish-academic-mcp setup --print jan`.
+
+---
+
+## Perplexity (macOS)
+
+Settings → Connectors → zainstaluj pomocnika **PerplexityXPC** (wymagany dla serwerów lokalnych) → Add Connector → zakładka Simple: nazwa `polish-academic`, polecenie `npx -y polish-academic-mcp`. Poczekaj na status „Running”.
+
+---
+
+## Msty, Cherry Studio i inne
+
+Większość aplikacji przyjmuje wpis w formacie `mcpServers` (import JSON) albo formularz „polecenie + argumenty”. Wypisanie gotowego wpisu: `npx -y polish-academic-mcp setup --print generic`. Na Windows użyj wariantu `cmd /c` (Cherry Studio bywa potrzebne `npx.cmd`).
+
+---
+
+## Open WebUI
+
+Open WebUI obsługuje natywnie tylko serwery MCP po HTTP (Streamable HTTP), a ten serwer działa przez stdio. Użyj mostu [mcpo](https://github.com/open-webui/mcpo) (wymaga [uv](https://docs.astral.sh/uv/)):
+
+```bash
+uvx mcpo --port 8000 -- npx -y polish-academic-mcp
+```
+
+Następnie w Open WebUI: Settings → Tools → „+” → `http://localhost:8000` (z kontenera Docker: `http://host.docker.internal:8000`). Dokumentację wystawionych narzędzi zobaczysz pod `http://localhost:8000/docs`.
+
+---
+
+## ChatGPT i Claude.ai w przeglądarce
+
+ChatGPT (także w trybie deweloperskim) i Claude.ai w przeglądarce łączą się tylko ze **zdalnymi** serwerami MCP przez HTTPS. Ten pakiet jest serwerem lokalnym (stdio), więc nie da się go w nich bezpośrednio podłączyć. Użyj aplikacji desktopowej (Claude Desktop) albo jednego z edytorów lub narzędzi terminalowych powyżej.
+
+---
+
+## Diagnostyka
+
+```bash
+npx -y polish-academic-mcp doctor
+```
+
+Sprawdza wersję Node.js, obecność `npx`, połączenie z bazami, zmienne środowiskowe oraz to, które wykryte aplikacje mają skonfigurowany serwer (i czy zapisana ścieżka do `npx` nadal istnieje).
+
+Inne kroki:
+
+1. **Ręczne uruchomienie:** `npx -y polish-academic-mcp --version` powinno wypisać numer wersji.
+2. **Log zapytań:** dodaj do `env` serwera `"POLISH_ACADEMIC_DEBUG": "1"`. Każde zapytanie HTTP (adres, status, czas) trafi do logu serwera w aplikacji.
+3. **Inspektor MCP:** `npx @modelcontextprotocol/inspector npx -y polish-academic-mcp` otwiera w przeglądarce panel do ręcznego wywoływania narzędzi.
+4. **Tabela typowych błędów:** [README → Rozwiązywanie problemów](../README.md#rozwiązywanie-problemów).

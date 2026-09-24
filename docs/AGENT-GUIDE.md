@@ -1,240 +1,126 @@
 # Przewodnik dla agentów AI
 
-> Ten dokument jest pisany jako **prompt wejściowy** dla agenta AI (np. Claude Code, Hermes Agent), który ma za zadanie skonfigurować serwer MCP `polish-academic-mcp` w środowisku użytkownika. Zawiera minimalny, wystarczający zestaw instrukcji, by agent mógł wykonać zadanie bez dodatkowych pytań.
+> Ten dokument jest **promptem wejściowym** dla agenta AI (np. Claude Code, Codex, Gemini CLI, Hermes Agent), który ma skonfigurować serwer MCP `polish-academic-mcp` u użytkownika. Zawiera wszystko, czego agent potrzebuje, by wykonać zadanie bez zgadywania.
 
 ---
 
 ## Kontekst
 
-`polish-academic-mcp` to lokalny serwer MCP (Model Context Protocol) udostępniający **85 narzędzi** do wyszukiwania w polskich bazach naukowych, publicznych i kulturowych. Serwer:
+`polish-academic-mcp` to lokalny serwer MCP (stdio, Node.js 18.17+) z **85 narzędziami** do przeszukiwania polskich baz naukowych, publicznych i kulturowych. Dystrybucja wyłącznie przez npm (`npx -y polish-academic-mcp`). Nie wymaga zdalnego HTTP, OAuth ani tuneli. 82 narzędzia działają bez konfiguracji; 3 narzędzia `pbn_*` wymagają `PBN_APP_ID` i `PBN_APP_TOKEN`.
 
-- działa **lokalnie** (proces Node.js), komunikacja przez **stdio**,
-- jest dystrybuowany wyłącznie jako pakiet npm (`npx -y polish-academic-mcp`),
-- **nie wymaga** zdalnego HTTP, OAuth ani tuneli,
-- działa na Node.js 18+ (sprawdź `node --version`),
-- ma 82 narzędzia bez żadnej konfiguracji,
-- ma 3 narzędzia PBN, które wymagają sekretów `PBN_APP_ID` i `PBN_APP_TOKEN` w zmiennych środowiskowych.
-
-Wszystkie 85 nazw narzędzi jest **stabilne** — nie zmieniają się między wersjami.
-
----
-
-## Cel zadania
-
-Dodaj serwer `polish-academic-mcp` do klienta MCP użytkownika. Klient jest określony przez parametr `client` podany przez użytkownika (np. `claude-desktop`, `cursor`, `lm-studio`, `perplexity`, `open-webui`, `openclaw`, `hermes`, `cline`, `continue`, `roo-code`).
+Pakiet zawiera kreator, który sam edytuje konfigurację aplikacji: scala wpis z istniejącym plikiem, robi kopię zapasową, pomija pliki z komentarzami (JSONC), usuwa zdublowane wpisy tego pakietu oraz dobiera polecenie do systemu (`cmd /c npx` na Windows, pełna ścieżka do `npx` przy nvm/fnm/volta). **Używaj kreatora zamiast ręcznej edycji plików.**
 
 ---
 
 ## Kroki
 
-### 1. Wykryj klienta
+### 1. Ustal aplikację
 
-Jeśli klient nie jest podany jawnie, zapytaj użytkownika: „Z jakiego klienta MCP korzystasz (Claude Desktop, Cursor, LM Studio, AnythingLLM, Perplexity, Open WebUI, OpenClaw, Hermes Agent, Cline, Continue, Roo Code)?"
+Jeśli użytkownik jej nie podał, zapytaj: „W jakiej aplikacji AI chcesz używać polskich baz (np. Claude Desktop, Claude Code, Cursor, VS Code, LM Studio)?” Nie zgaduj na podstawie systemu operacyjnego.
 
-Nie próbuj odgadywać klienta po platformie — różni użytkownicy tej samej platformy mogą używać różnych klientów.
+Identyfikatory dla `--client`:
 
-### 2. Sprawdź wymagania wstępne
+| Konfigurowane automatycznie                                                                                                                                        | Tylko instrukcja (`--print`)                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `claude-desktop`, `claude-code`, `cursor`, `vscode`, `windsurf`, `cline`, `roo-code`, `lm-studio`, `anythingllm`, `gemini-cli`, `codex`, `opencode`, `copilot-cli` | `zed`, `continue`, `goose`, `hermes`, `openclaw`, `jan`, `perplexity`, `open-webui`, `generic` |
+
+`npx -y polish-academic-mcp setup --list` pokazuje, które aplikacje wykryto i gdzie leżą ich pliki.
+
+### 2. Sprawdź wymagania
 
 ```bash
-node --version          # wymaga ≥ 18
-npx --version           # zwykle w zestawie z node
+node --version   # wymagane >= 18.17
 ```
 
-Jeśli `node` jest starszy niż 18, przerwij i poinformuj użytkownika, że potrzebuje aktualizacji Node.
+Jeśli Node.js nie ma lub jest starszy, przerwij i poproś użytkownika o instalację wersji LTS z https://nodejs.org.
 
-### 3. Wybierz plik konfiguracyjny
+### 3. Ustal zakres baz (opcjonalnie)
 
-Dla każdego klienta użyj właściwej ścieżki i formatu. Poniższa tabela daje dokładne instrukcje:
+Wszystkie 85 narzędzi to ok. 26 tys. tokenów. Zaproponuj ograniczenie, gdy:
 
-| Klient | Ścieżka pliku konfiguracyjnego |
-| --- | --- |
-| Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-| Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
-| Claude Desktop (Linux) | `~/.config/Claude/claude_desktop_config.json` |
-| Claude Code (per projekt) | `.mcp.json` w katalogu projektu |
-| Claude Code (globalnie) | `~/.claude.json` |
-| Cursor (per projekt) | `.cursor/mcp.json` w projekcie |
-| Cursor (globalnie) | `~/.cursor/mcp.json` |
-| LM Studio | wykrywane przez GUI, edytuj przez **Program → Edit mcp.json** |
-| AnythingLLM | GUI: **Settings → Agent Skills → MCP Servers** |
-| Perplexity (macOS) | obok pliku Claude Desktop, zwykle `~/Library/Application Support/Perplexity/...` |
-| Open WebUI | zmienna `MCP_SERVERS` przy uruchomieniu kontenera Docker |
-| OpenClaw | `~/.openclaw/config.json` |
-| Hermes Agent | `~/.hermes/profiles/<profil>/config.yaml` |
-| Cline / Roo Code | plik ustawień rozszerzenia VS Code (otwórz przez GUI) |
-| Continue | `~/.continue/config.json` |
+- aplikacja to Cursor (limit ok. 40 narzędzi), Windsurf (100) lub VS Code (128 łącznie ze wszystkimi serwerami),
+- użytkownik korzysta z małego modelu lokalnego (LM Studio, Ollama, Jan).
 
-### 4. Wstaw konfigurację
+Grupy: `nauka` (30 narzędzi), `dane` (12), `prawo` (11), `normy` (3), `kultura` (29). Lista baz: `npx -y polish-academic-mcp --list-sources`.
 
-Dla klientów z plikiem JSON wstaw **obie** sekcje (scal z istniejącą zawartością, nie nadpisuj):
+### 4. Pokaż plan, potem zapisz
 
-```json
-{
-  "mcpServers": {
-    "polish-academic": {
-      "command": "npx",
-      "args": ["-y", "polish-academic-mcp"]
-    }
-  }
-}
+```bash
+npx -y polish-academic-mcp setup --client <id> [--sources nauka,prawo] --dry-run   # plan bez zapisu
+npx -y polish-academic-mcp setup --client <id> [--sources nauka,prawo] --yes       # zapis
 ```
 
-Jeśli użytkownik podał sekrety PBN, dodaj sekcję `env`:
+Bez `--yes` w nieinteraktywnej powłoce kreator niczego nie zapisuje. Przed zapisem poproś użytkownika o całkowite zamknięcie aplikacji docelowej (niektóre nadpisują konfigurację przy zamykaniu).
 
-```json
-{
-  "mcpServers": {
-    "polish-academic": {
-      "command": "npx",
-      "args": ["-y", "polish-academic-mcp"],
-      "env": {
-        "PBN_APP_ID": "<wartość>",
-        "PBN_APP_TOKEN": "<wartość>"
-      }
-    }
-  }
-}
+Dla aplikacji z prawej kolumny tabeli uruchom `npx -y polish-academic-mcp setup --print <id>` i przekaż użytkownikowi wypisaną instrukcję (albo wykonaj ją, jeśli to polecenie terminala, np. `openclaw mcp set …`).
+
+Jeśli kreator zgłosi `[!] … pomijam` (np. plik z komentarzami), wypisz wpis przez `--print <id>` i wklej go do pliku ręcznie, scalając z istniejącą zawartością.
+
+### 5. Sekrety PBN (tylko na prośbę użytkownika)
+
+Nie pytaj o PBN, jeśli użytkownik o nim nie wspomniał. Jeśli poda klucze, **za jego wyraźną zgodą** dopisz do wpisu `polish-academic` sekcję `env` z `PBN_APP_ID` i `PBN_APP_TOKEN` (w Codeksie: tabela `[mcp_servers.polish-academic.env]`). Nie zapisuj sekretów w repozytoriach ani w plikach projektu (`.mcp.json`, `.vscode/mcp.json`).
+
+### 6. Weryfikacja
+
+```bash
+npx -y polish-academic-mcp doctor
 ```
 
-**Nie zapisuj sekretów w pliku konfiguracyjnym bez wyraźnej zgody użytkownika.** Zamiast tego poproś o podanie wartości lub poleć ustawienie przez zmienną środowiskową (`export PBN_APP_ID=...`).
+Oczekiwane: `[OK]` przy Node.js, internecie i docelowej aplikacji. Następnie poproś użytkownika o ponowne uruchomienie aplikacji i zadanie pytania testowego: „Wyszukaj w Bibliotece Nauki artykuły o uczeniu maszynowym z 2024 roku.” (narzędzie `bn_search_publications`).
 
-### 5. Dla klientów YAML (Hermes Agent)
+Jeśli sam jesteś klientem MCP z dostępem do tego serwera (np. Claude Code po `setup --client claude-code` i restarcie sesji), wykonaj to wywołanie samodzielnie.
 
-```yaml
-mcp_servers:
-  - name: polish-academic
-    command: npx
-    args: ["-y", "polish-academic-mcp"]
-```
-
-### 6. Dla Open WebUI (Docker)
-
-Dodaj do zmiennej środowiskowej `MCP_SERVERS` kontenera:
-
-```json
-[
-  {
-    "name": "polish-academic",
-    "command": "npx",
-    "args": ["-y", "polish-academic-mcp"]
-  }
-]
-```
-
-### 7. Weryfikacja
-
-Po wstawieniu konfiguracji:
-
-1. **Zrestartuj klienta MCP** (nie zawsze wystarczy przeładowanie — pełen restart).
-2. **Sprawdź listę narzędzi** — powinno być widocznych 85 pozycji z prefiksem `bn_*`, `ruj_*`, `agh_*` itd.
-3. **Wykonaj jedno wywołanie testowe:**
-   ```
-   bn_search_publications z query="uczenie maszynowe"
-   ```
-   lub w języku naturalnym: „Wyszukaj artykuły o uczeniu maszynowym w Bibliotece Nauki."
-
-4. **Oczekiwany wynik:** JSON z listą trafień zawierającą tytuły, autorów i abstrakty.
-
-### 8. Raportowanie
-
-Po zakończeniu wygeneruj raport w formacie:
+### 7. Raport
 
 ```markdown
-## Konfiguracja polish-academic-mcp dla `<klient>`
+## Konfiguracja polish-academic-mcp dla `<aplikacja>`
 
 **Status:** ✅ gotowe / ⚠️ wymaga ręcznej akcji / ❌ błąd
-**Plik konfiguracyjny:** `<ścieżka>`
-**Sekrety:** ustawione (PBN_APP_ID, PBN_APP_TOKEN) / nie ustawione
-**Weryfikacja:** wykonano wywołanie `bn_search_publications` — sukces / błąd
-**Narzędzia widoczne w kliencie:** 85 / 0 / (nie sprawdzono)
+**Plik konfiguracyjny:** `<ścieżka z wyniku setup>` (kopia: `<ścieżka .bak>`)
+**Bazy:** wszystkie / `<POLISH_ACADEMIC_SOURCES>`
+**Sekrety PBN:** ustawione / nie ustawione
+**doctor:** `<podsumowanie>`
+**Test w aplikacji:** wykonano / czeka na restart aplikacji przez użytkownika
 
 ### Dalsze kroki dla użytkownika
-1. Zrestartuj klienta.
-2. Sprawdź listę narzędzi (ikona 🔨).
-3. [opcjonalnie] Ustaw sekrety PBN jeśli potrzebne.
+
+1. Zamknij aplikację całkowicie i uruchom ponownie.
+2. Zadaj pytanie testowe.
 ```
 
 ---
 
 ## Znane pułapki
 
-### 1. Ścieżka `npx` nie istnieje
-
-`which npx` (Linux/macOS) lub `where npx` (Windows). Jeśli brak — zainstaluj Node.js 18+.
-
-### 2. Pierwsze uruchomienie trwa długo
-
-`npx -y polish-academic-mcp` pobiera pakiet przy pierwszym uruchomieniu. Może trwać 5-30 sekund w zależności od łącza. Zachowaj cierpliwość.
-
-### 3. Uprawnienia do pliku konfiguracyjnego
-
-Pliki konfiguracyjne klientów są w katalogach użytkownika. Nie uruchamiaj `sudo` do ich edycji — wystarczy standardowe konto.
-
-### 4. Wielu użytkowników na tej samej maszynie
-
-Każdy użytkownik ma własny plik konfiguracyjny. Nie nadpisuj cudzych ustawień.
-
-### 5. Konflikt z innym serwerem MCP o tej samej nazwie
-
-Jeśli w pliku istnieje już wpis `polish-academic` — nie nadpisuj, scal. Użytkownik mógł mieć starszą wersję.
-
-### 6. Klient nie wspiera MCP
-
-Lista klientów, które **nie** wspierają MCP (stan na 2026-07-20):
-
-- ChatGPT web/desktop (wymaga SSE/HTTP, nie stdio)
-- Wszystkie edytory tekstu bez rozszerzenia MCP
-- Starsze wersje VS Code (< 1.85 bez Cline/Continue)
-
-Dla ChatGPT istnieje planowana integracja przez HTTP w przyszłej wersji MCP — w obecnej wersji 1.1.0 nie jest dostępna.
-
----
-
-## Pełna lista narzędzi (do rozpoznawania po nazwie)
-
-Narzędzia są pogrupowane tematycznie. Każda grupa ma spójny prefiks:
-
-| Prefiks | Baza |
-| --- | --- |
-| `bn_*` | Biblioteka Nauki |
-| `ruj_*` | Repozytorium UJ |
-| `agh_*` | Repozytorium AGH |
-| `amu_*` | Repozytorium UAM |
-| `uafm_*` | Repozytorium UAFM (obecnie niedostępne) |
-| `icm_*` | ICM Open UW |
-| `rodbuk_*` | RODBuK |
-| `repod_*` | RePOD |
-| `dane_*` | dane.gov.pl |
-| `polon_*` | POL-on |
-| `pbn_*` | PBN (wymaga sekretów) |
-| `bdl_*` | BDL / GUS |
-| `imgw_*` | IMGW-PIB |
-| `pkn_*`, `wiedza_*` | PKN |
-| `blz_*` | Baza Legalnych Źródeł |
-| `baztol_*` | BazTOL |
-| `nac_*` | Narodowe Archiwum Cyfrowe |
-| `sum_*` | Biblioteka ŚUM |
-| `ludzie_*` | Ludzie Nauki |
-| `pauart_*` | PAUart |
-| `isap_*` | ISAP / ELI |
-| `bs_sejm_*` | Biblioteka Sejmowa |
-| `saos_*` | SAOS |
-| `wolnelektury_*` | Wolne Lektury |
-| `ninateka_*` | Ninateka |
-| `gapla_*` | Gapla |
-| `fototeka_*` | Fototeka |
-| `filmpolski_*` | FilmPolski.pl |
-| `fototekaslaska_*` | Fototeka Śląska |
-| `filmoteka_repo_*` (prefix `fn_repo_*`) | Filmoteka Narodowa |
-| `rcin_*` | RCIN |
-| `dokumenty_slaska_*` | Dokumenty Śląska |
+1. **„spawn npx ENOENT” w aplikacji okienkowej:** Node.js z nvm/fnm/volta nie jest widoczny dla aplikacji z Docka. Rozwiązanie: uruchom `setup` ponownie; kreator zapisze pełną ścieżkę. Po zmianie wersji Node.js trzeba powtórzyć `setup`.
+2. **Windows:** zawsze `cmd /c npx …` (kreator robi to sam).
+3. **Pierwsze uruchomienie trwa dłużej:** `npx` pobiera pakiet (5–30 s). Codex ma domyślnie 10 s na start serwera; kreator podnosi ten limit do 60 s.
+4. **Duplikaty:** starsze instrukcje używały nazwy `polish-academic-mcp`. Kreator usuwa wpisy uruchamiające ten pakiet pod inną nazwą, żeby narzędzia nie pojawiły się dwa razy.
+5. **Uprawnienia:** pliki konfiguracyjne są w katalogu użytkownika. Nie używaj `sudo`.
+6. **Aplikacje bez lokalnego MCP:** ChatGPT i Claude.ai w przeglądarce obsługują tylko zdalne serwery MCP (HTTPS). Open WebUI wymaga mostu `mcpo` (`setup --print open-webui`).
 
 ---
 
 ## Zasady komunikacji z użytkownikiem
 
-- **Nie pytaj o sekrety PBN**, jeśli użytkownik nie wspomniał o PBN. Trzy narzędzia PBN bez sekretów zwracają czytelny komunikat.
-- **Nie modyfikuj innych serwerów MCP** w pliku konfiguracyjnym — użytkownik może mieć inne serwery.
-- **Nie instaluj pakietu globalnie** (`npm install -g`). Używaj wyłącznie `npx -y polish-academic-mcp` — to wymóg tej wersji.
-- **Po wstawieniu konfiguracji zawsze zrestartuj klienta**, w przeciwnym razie MCP nie załaduje nowego serwera.
-- **Nie publikuj raportu przed wykonaniem weryfikacji** — użytkownik powinien zobaczyć konkretny wynik testu, nie ogólnikowe „powinno działać".
+- **Nie modyfikuj innych serwerów MCP** w plikach konfiguracyjnych.
+- **Nie instaluj pakietu globalnie** (`npm install -g`). Używaj `npx -y polish-academic-mcp`.
+- **Nie ogłaszaj sukcesu przed weryfikacją:** pokaż wynik `doctor` i poproś o test w aplikacji.
+- Aby cofnąć zmiany: `npx -y polish-academic-mcp uninstall --client <id> --yes` (albo przywróć plik `.bak-<data>`).
+
+---
+
+## Prefiksy narzędzi
+
+| Prefiks                                                                                                                                           | Baza                                          | Grupa   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ------- |
+| `bn_`                                                                                                                                             | Biblioteka Nauki                              | nauka   |
+| `rcin_`                                                                                                                                           | RCIN                                          | nauka   |
+| `ruj_`, `agh_`, `amu_`, `uafm_`                                                                                                                   | repozytoria UJ, AGH, UAM, UAFM                | nauka   |
+| `icm_`, `rodbuk_`, `repod_`                                                                                                                       | dane badawcze ICM UW, RODBuK, RePOD           | nauka   |
+| `polon_`, `pbn_`, `ludzie_`                                                                                                                       | POL-on, PBN (wymaga kluczy), Ludzie Nauki     | nauka   |
+| `baztol_`, `sum_`                                                                                                                                 | BazTOL, katalog ŚUM                           | nauka   |
+| `dane_`, `bdl_`, `imgw_`                                                                                                                          | dane.gov.pl, BDL GUS, IMGW                    | dane    |
+| `isap_`, `saos_`, `bs_sejm_`                                                                                                                      | ISAP/ELI, SAOS, Biblioteka Sejmowa            | prawo   |
+| `pkn_`, `wiedza_`                                                                                                                                 | PKN, katalog norm WIEDZA                      | normy   |
+| `wolnelektury_`, `ninateka_`, `gapla_`, `fototeka_`, `filmpolski_`, `fototekaslaska_`, `fn_repo_`, `nac_`, `pauart_`, `blz_`, `dokumenty_slaska_` | literatura, film, fotografia, archiwa, sztuka | kultura |
