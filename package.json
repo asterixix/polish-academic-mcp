@@ -1,6 +1,6 @@
 {
   "name": "polish-academic-mcp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Lokalny serwer MCP dla polskich baz naukowych, publicznych i kulturowych (Biblioteka Nauki, GUS, ISAP, SAOS, Wolne Lektury i inne) z kreatorem konfiguracji dla Claude, Cursor, VS Code, LM Studio i innych aplikacji AI.",
   "license": "MIT",
   "keywords": [

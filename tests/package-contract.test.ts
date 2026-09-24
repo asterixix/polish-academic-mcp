@@ -9,7 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 const packageLock = JSON.parse(readFileSync(resolve(root, "package-lock.json"), "utf8"));
 const entry = resolve(root, packageJson.bin[packageJson.name]);
-const targetVersion = "1.1.0";
+const targetVersion = "1.2.0";
 
 function runCli(flag: string) {
   const result = spawnSync(process.execPath, [entry, flag], {
@@ -38,7 +38,7 @@ test("--version zwraca wersję docelową", () => {
   assert.equal(stderr, "");
 });
 
-test("metadane pakietu i lockfile wskazują tę samą wersję 1.1.0", () => {
+test("metadane pakietu i lockfile wskazują tę samą wersję 1.2.0", () => {
   assert.equal(packageJson.version, targetVersion);
   assert.equal(packageLock.version, packageJson.version);
   assert.equal(packageLock.packages[""].version, packageJson.version);
