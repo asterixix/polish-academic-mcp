@@ -1,6 +1,27 @@
 {
   "name": "polish-academic-mcp",
   "version": "1.1.0",
+  "description": "Lokalny serwer MCP dla polskich baz naukowych, publicznych i kulturowych (Biblioteka Nauki, GUS, ISAP, SAOS, Wolne Lektury i inne) z kreatorem konfiguracji dla Claude, Cursor, VS Code, LM Studio i innych aplikacji AI.",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "claude",
+    "cursor",
+    "vscode",
+    "lm-studio",
+    "ai-agents",
+    "polish",
+    "poland",
+    "polska",
+    "academic",
+    "research",
+    "open-data",
+    "biblioteka-nauki",
+    "gus",
+    "isap"
+  ],
   "private": false,
   "repository": {
     "type": "git",
@@ -33,7 +54,7 @@
     "lint:fix": "oxlint src/ --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "npm run build && node --import tsx --test tests/package-contract.test.ts tests/mcp-contract.test.ts",
+    "test": "npm run build && node --import tsx --test tests/package-contract.test.ts tests/mcp-contract.test.ts tests/fetch-policy.test.ts tests/sources.test.ts tests/setup.test.ts",
     "smoke:tools": "node --import tsx scripts/smoke-tools.ts --timeout-ms 30000 --stop-after-failures 30",
     "smoke:tools:quick": "node --import tsx scripts/smoke-tools.ts --max-tools 20 --timeout-ms 15000 --stop-after-failures 10",
     "prepublishOnly": "npm run build"

@@ -5,7 +5,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createMemoryCacheStore } from "./cache.js";
+import { helpText, listSourcesText, readOption, runDoctor, runSetup } from "./cli.js";
 import { createServer } from "./server.js";
+import { SOURCES, SOURCES_ENV, parseSourceSelection, type SourceId } from "./sources.js";
 import type { Env } from "./types.js";
 
 // Single source of truth for the package version: the published package.json.
@@ -17,31 +19,49 @@ function readPackageVersion(): string {
   return typeof raw.version === "string" ? raw.version : "0.0.0";
 }
 
-// Minimal stdio CLI: detect --help/--version before any MCP setup so flags are
-// honored even when stdin is empty (e.g. `npx -y polish-academic-mcp --help`).
-function handleCli(argv: readonly string[], version: string): boolean {
+// Commands and flags that must not start the MCP transport. Handled before any
+// MCP setup so they work even when stdin is empty (e.g. `npx -y polish-academic-mcp --help`).
+// Returns an exit code, or null to start the server.
+async function handleCli(argv: readonly string[], version: string): Promise<number | null> {
   if (argv.includes("--help") || argv.includes("-h")) {
-    process.stdout.write(
-      [
-        `${process.argv[1] ? "polish-academic-mcp" : "polish-academic-mcp"} — lokalny serwer MCP dla polskich zasobów akademickich`,
-        "",
-        "Użycie:",
-        "  polish-academic-mcp            uruchamia serwer MCP (stdio JSON-RPC)",
-        "  polish-academic-mcp --help     wyświetla tę pomoc i kończy działanie (kod 0)",
-        "  polish-academic-mcp --version  wyświetla wersję pakietu i kończy działanie (kod 0)",
-        "",
-        "Konfiguracja klienta: dodaj polecenie `npx -y polish-academic-mcp` jako transport stdio.",
-        `Aktualna wersja: ${version}`,
-        "",
-      ].join("\n"),
-    );
-    return true;
+    process.stdout.write(helpText(version));
+    return 0;
   }
   if (argv.includes("--version") || argv.includes("-V")) {
     process.stdout.write(`${version}\n`);
-    return true;
+    return 0;
   }
-  return false;
+  if (argv.includes("--list-sources")) {
+    process.stdout.write(listSourcesText());
+    return 0;
+  }
+  switch (argv[0]) {
+    case "setup":
+    case "install":
+      return runSetup(argv.slice(1), false, version);
+    case "uninstall":
+    case "remove":
+      return runSetup(argv.slice(1), true, version);
+    case "doctor":
+      return runDoctor(argv.slice(1));
+    default:
+      return null;
+  }
+}
+
+// --sources wins over the env var; an unusable selection falls back to all sources
+// so a typo in a client config never leaves the user with a dead server.
+function selectSources(argv: readonly string[]): SourceId[] {
+  const spec = readOption(argv, "--sources") ?? process.env[SOURCES_ENV];
+  const { ids, unknown } = parseSourceSelection(spec);
+  if (unknown.length > 0) {
+    console.error(`Ignoring unknown sources: ${unknown.join(", ")} (see --list-sources)`);
+  }
+  if (ids.length === 0) {
+    console.error("Source selection is empty; enabling all sources.");
+    return SOURCES.map((s) => s.id);
+  }
+  return ids;
 }
 
 function installProcessDiagnostics(): void {
@@ -86,7 +106,6 @@ function buildEnv(): Env {
   return {
     CACHE_KV: createMemoryCacheStore(),
     BDL_CLIENT_ID: process.env.BDL_CLIENT_ID,
-    WEB3FORMS_ACCESS_KEY: process.env.WEB3FORMS_ACCESS_KEY,
     PBN_APP_ID: process.env.PBN_APP_ID,
     PBN_APP_TOKEN: process.env.PBN_APP_TOKEN,
     PBN_USER_TOKEN: process.env.PBN_USER_TOKEN,
@@ -95,13 +114,19 @@ function buildEnv(): Env {
 
 async function main(): Promise<void> {
   const version = readPackageVersion();
-  if (handleCli(process.argv.slice(2), version)) {
-    process.exit(0);
+  const argv = process.argv.slice(2);
+  const exitCode = await handleCli(argv, version);
+  if (exitCode !== null) {
+    // Exit only after stdout is flushed: writes to a pipe are asynchronous on macOS,
+    // and an immediate exit could cut off output captured by scripts or AI agents.
+    process.stdout.write("", () => process.exit(exitCode));
+    return;
   }
 
   installProcessDiagnostics();
 
-  const server = createServer(buildEnv());
+  const sources = selectSources(argv);
+  const server = createServer(buildEnv(), { sources });
   const transport = new StdioServerTransport();
 
   process.on("SIGINT", () => {
@@ -113,7 +138,21 @@ async function main(): Promise<void> {
   });
 
   await server.connect(transport);
-  console.error("Polish Academic MCP running on stdio");
+  console.error(
+    `Polish Academic MCP ${version} running on stdio (${sources.length}/${SOURCES.length} sources)`,
+  );
+  if (process.stdin.isTTY) {
+    // Started by hand in a terminal: explain instead of silently waiting for JSON-RPC.
+    console.error(
+      [
+        "",
+        "To jest serwer MCP — uruchamia go aplikacja AI (Claude, Cursor, VS Code, LM Studio…), nie człowiek.",
+        "Aby dodać go do swoich aplikacji, zamknij go (Ctrl+C) i uruchom kreator:",
+        "  npx -y polish-academic-mcp setup",
+        "",
+      ].join("\n"),
+    );
+  }
 }
 
 main().catch((error) => {

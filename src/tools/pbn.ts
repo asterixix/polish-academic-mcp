@@ -7,7 +7,7 @@
  * Obtain access via PBN Helpdesk after integration on the test environment (see official docs).
  * Optional: PBN_USER_TOKEN for operations that require a user context.
  *
- * Tools use env: PBN_APP_ID, PBN_APP_TOKEN, optional PBN_USER_TOKEN.
+ * Tools use env: PBN_APP_ID, PBN_APP_TOKEN, optional PBN_USER_TOKEN (set in the MCP client's "env" block).
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -30,8 +30,11 @@ function requirePbnHeaders(
     return {
       headers: {},
       error:
-        "PBN API requires PBN_APP_ID and PBN_APP_TOKEN (Worker secrets / wrangler vars). " +
-        "See https://pbn.nauka.gov.pl/centrum-pomocy/baza-wiedzy/sposob-uzyskania-dostepu-do-api-w-wersji-produkcyjnej/",
+        "Narzędzia PBN wymagają zmiennych środowiskowych PBN_APP_ID i PBN_APP_TOKEN " +
+        "(PBN API requires PBN_APP_ID and PBN_APP_TOKEN). Dodaj je w sekcji \"env\" wpisu " +
+        "polish-academic w konfiguracji klienta MCP i uruchom klienta ponownie. " +
+        "Dostęp do API przyznaje PBN na wniosek instytucji: " +
+        "https://pbn.nauka.gov.pl/centrum-pomocy/baza-wiedzy/sposob-uzyskania-dostepu-do-api-w-wersji-produkcyjnej/",
     };
   }
   const headers: Record<string, string> = {

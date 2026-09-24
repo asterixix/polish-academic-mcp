@@ -34,9 +34,17 @@ package.json           npm-only distribution; entry "bin": { "polish-academic-mc
                        engines: "node": ">=18"; no MCPB; no eval; no telemetry deps
 
 src/
-├── index.ts           Stdio entry: --help, --version, MCP dispatch (creates fresh McpServer per request)
-├── server.ts          createServer(env) — registers all 85 tools
-├── cache.ts           in-process TTL cache + 30s timeout + single retry on transient errors
+├── index.ts           Stdio entry: --help, --version, --list-sources, setup/uninstall/doctor
+│                      dispatch, --sources / POLISH_ACADEMIC_SOURCES, then the MCP transport
+├── server.ts          createServer(env, { sources }) — registers the selected sources (default:
+│                      all 85 tools), MCP instructions, readOnlyHint/openWorldHint on every tool
+├── sources.ts         catalogue of 33 sources in 5 groups (nauka, dane, prawo, normy, kultura)
+│                      + parseSourceSelection()
+├── clients.ts         MCP client catalogue for setup: config paths per OS, entry formats,
+│                      JSON/TOML config edits (pure functions over a HostContext)
+├── cli.ts             setup / uninstall wizard, doctor, --list-sources, --help text
+├── cache.ts           in-process TTL cache + 30s timeout + single retry on transient errors;
+│                      POLISH_ACADEMIC_DEBUG=1 logs every request to stderr
 ├── tool-error-handling.ts   structured error classification without OTel
 ├── types.ts           Env interface (BDL_CLIENT_ID, PBN_APP_ID, PBN_APP_TOKEN optional)
 └── tools/             33 files, one per database / source
@@ -72,8 +80,8 @@ src/
     ├── ninateka.ts          → ninateka_search, ninateka_get_vod
     ├── gapla.ts             → gapla_search, gapla_get_poster
     ├── fototeka.ts          → fototeka_search, fototeka_get_photo
-    ├── filmpolski.ts        → filmpolski_search, filmpolski_get_record
-    ├── fototekaslaska.ts    → fototekaslaska_search, fototekaslaska_get_gallery
+    ├── filmpolski.ts        → filmpolski_search, filmpolski_get_item
+    ├── fototekaslaska.ts    → fototekaslaska_search, fototekaslaska_get_photo
     ├── filmoteka-repo.ts    → fn_repo_search, fn_repo_get_node, fn_repo_film_index, fn_repo_browse_kind
     ├── rcin.ts              → rcin_search, rcin_get_record
     └── dokumenty-slaska.ts  → dokumenty_slaska_get_page, dokumenty_slaska_medieval_catalog
@@ -81,15 +89,17 @@ src/
 tests/
 ├── package-contract.test.ts   version, --help, --version, npm-only, no MCPB / eval / telemetry
 ├── mcp-contract.test.ts       85 tool IDs stable, all tool + parameter descriptions in Polish
-└── fetch-policy.test.ts       30s timeout, single retry on transient, no retry on 4xx
+├── fetch-policy.test.ts       30s timeout, single retry on transient, no retry on 4xx
+├── sources.test.ts            source selection, catalogue ↔ tool prefixes, filtered server
+└── setup.test.ts              client config paths per OS, JSON/TOML edits, setup CLI end-to-end
 
 scripts/
 └── smoke-tools.ts             live smoke (82 tools + 5 dynamic search→get pairs)
 
 tsconfig.json          TypeScript config (strict, module: ES2022, target: ES2022)
 docs/
-├── CLIENTS.md         per-client MCP configuration snippets
-├── AGENT-GUIDE.md     prompt for AI agents configuring the server
+├── CLIENTS.md         per-client MCP configuration (what `setup` writes + manual steps)
+├── AGENT-GUIDE.md     prompt for AI agents configuring the server (uses `setup --yes`)
 └── plans/             implementation plans
 ```
 
@@ -221,7 +231,7 @@ export function registerMyDatabaseTools(server: McpServer, env: Env): void {
       try {
         const url = `${API_BASE}/search?q=${encodeURIComponent(query)}&page=${page}`;
         const key = makeCacheKey("mydb_search", { query, page });
-        const text = await cachedFetch(env, key, url, CACHE_TTL);
+        const text = await cachedFetch(env.CACHE_KV, key, url, {}, CACHE_TTL);
         return { content: [{ type: "text", text }] };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -240,23 +250,38 @@ Rules:
 - Always wrap the handler body in `try/catch` returning `isError: true` on failure.
 - Use `makeCacheKey(toolName, paramsObject)` to build deterministic cache keys.
 
-### Step 2 — Register in `src/server.ts`
+### Step 2 — Add the source to the catalogue and register it
+
+Add an entry to `SOURCES` in `src/sources.ts`. The `id` must equal the tool-name
+prefix (`mydb` for `mydb_search`) and `group` must be one of the existing groups
+(`nauka`, `dane`, `prawo`, `normy`, `kultura`):
 
 ```typescript
-// At top of file — add import
-import { registerMyDatabaseTools } from "./tools/my-database.js";
-
-// Inside createServer(), after existing register calls
-registerMyDatabaseTools(server, env);
+{ id: "mydb", group: "nauka", name: "My Database" },
 ```
 
-### Step 3 — Verify TypeScript compiles
+Then map it in `src/server.ts` (the `REGISTER` record is typed over all source
+ids, so a missing entry fails to compile):
+
+```typescript
+import { registerMyDatabaseTools } from "./tools/my-database.js";
+
+const REGISTER: Record<SourceId, RegisterFn> = {
+  // ...
+  mydb: registerMyDatabaseTools,
+};
+```
+
+Every tool is automatically annotated `readOnlyHint: true, openWorldHint: true`.
+If you add tools, update the expected tool list in `tests/mcp-contract.test.ts`
+and the counts in `README.md` / `docs/AGENT-GUIDE.md`.
+
+### Step 3 — Verify
 
 ```bash
 npx tsc --noEmit
+npm test        # includes the catalogue ↔ tool-prefix check in tests/sources.test.ts
 ```
-
-No other files need changing.
 
 ---
 
@@ -351,6 +376,11 @@ npm run deploy
   MCP client can pin its own version.
 - Do not re-introduce Cloudflare / MCPB / research-evaluation / telemetry
   dependencies. v1.1.0 is local stdio + npm-only by design.
+- Do not write to stdout from tools or server code (`console.log`, `process.stdout`):
+  stdout carries the MCP protocol. Log to stderr; the `setup`/`doctor` commands in
+  `src/cli.ts` are the only code that prints to stdout, and they never start the transport.
+- Do not add runtime dependencies for the setup wizard (prompts, TOML/YAML parsers):
+  it uses Node built-ins only, and `npx` downloads every dependency on first run.
 - Do not commit secrets. The only optional secrets are `PBN_APP_ID`,
   `PBN_APP_TOKEN`, `BDL_CLIENT_ID`; they live in the user's environment, never in
   the repo.
