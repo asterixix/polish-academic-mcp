@@ -109,8 +109,19 @@ const FETCH_MAX_ATTEMPTS = 2;
 function buildTimeoutSignal(existing: AbortSignal | null | undefined): AbortSignal {
   const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
   if (!existing) return timeout;
+  // AbortSignal.any needs Node 18.17+/20.3+; on older runtimes keep the caller's signal.
+  if (typeof AbortSignal.any !== "function") return existing;
   // Combine: either signal aborts the request.
   return AbortSignal.any([timeout, existing]);
+}
+
+// Opt-in request log (POLISH_ACADEMIC_DEBUG=1 or DEBUG=1). Goes to stderr because
+// stdout carries the MCP protocol; MCP clients show stderr in their server logs.
+function debugLog(message: string): void {
+  const flag = (process.env.POLISH_ACADEMIC_DEBUG ?? process.env.DEBUG ?? "").trim();
+  if (/^(1|true|yes|\*)$|polish-academic/i.test(flag)) {
+    process.stderr.write(`[polish-academic-mcp] ${message}\n`);
+  }
 }
 
 function buildNetworkError(url: string, networkErr: Error): CacheError {
@@ -130,7 +141,12 @@ export async function cachedFetch(
   ttlSeconds = 3600,
 ): Promise<string> {
   const cached = await kv.get(cacheKey);
-  if (cached !== null) return cached;
+  if (cached !== null) {
+    debugLog(`cache ${url}`);
+    return cached;
+  }
+  const method = (options.method ?? "GET").toUpperCase();
+  const startedAt = Date.now();
 
   let response: Response | null = null;
   let lastTransient: Error | null = null;
@@ -145,9 +161,11 @@ export async function cachedFetch(
     } catch (err) {
       const networkErr = err instanceof Error ? err : new Error(String(err));
       if (isTransientNetworkError(networkErr) && attempt < FETCH_MAX_ATTEMPTS) {
+        debugLog(`${method} ${url} -> ${networkErr.message}; retrying`);
         lastTransient = networkErr;
         continue;
       }
+      debugLog(`${method} ${url} -> ${networkErr.message} (${Date.now() - startedAt} ms)`);
       // Non-transient, or retries exhausted: surface the typed error.
       throw buildNetworkError(url, lastTransient ?? networkErr);
     }
@@ -157,6 +175,8 @@ export async function cachedFetch(
     // Defensive: the loop above must either resolve or throw.
     throw buildNetworkError(url, lastTransient ?? new Error("fetch returned no response"));
   }
+
+  debugLog(`${method} ${url} -> ${response.status} (${Date.now() - startedAt} ms)`);
 
   if (!response.ok) {
     // Collect headers for debugging (credentials redacted).

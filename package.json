@@ -33,7 +33,7 @@
     "lint:fix": "oxlint src/ --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "npm run build && node --import tsx --test tests/package-contract.test.ts tests/mcp-contract.test.ts",
+    "test": "npm run build && node --import tsx --test tests/package-contract.test.ts tests/mcp-contract.test.ts tests/fetch-policy.test.ts tests/sources.test.ts tests/setup.test.ts",
     "smoke:tools": "node --import tsx scripts/smoke-tools.ts --timeout-ms 30000 --stop-after-failures 30",
     "smoke:tools:quick": "node --import tsx scripts/smoke-tools.ts --max-tools 20 --timeout-ms 15000 --stop-after-failures 10",
     "prepublishOnly": "npm run build"
