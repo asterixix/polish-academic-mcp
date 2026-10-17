@@ -286,6 +286,121 @@ test("OAuth 2.1: discovery, DCR, PKCE authorize+token", async () => {
   assert.ok(tokens.refresh_token.length > 10);
 });
 
+test("OAuth 2.1: OpenCode i RFC 8252 loopback IP z dynamicznym portem (127.0.0.1 / localhost)", async () => {
+  const { MemoryD1, memoryKv } = await import("../cloud/src/db-memory.js");
+  const { handleOAuthRoutes, isRedirectUriAllowed } = await import("../cloud/src/oauth.js");
+  const { handleAuthRoutes, SESSION_COOKIE } = await import("../cloud/src/auth.js");
+  const { signPayload, sha256Base64Url } = await import("../cloud/src/crypto-util.js");
+
+  // Jednostkowe dopasowanie loopback wg RFC 8252 §7.3
+  const opencodeAllowed = ["http://127.0.0.1/callback", "http://localhost/callback"];
+  assert.equal(isRedirectUriAllowed("http://127.0.0.1:55197/callback", opencodeAllowed), true);
+  assert.equal(isRedirectUriAllowed("http://localhost:55197/callback", opencodeAllowed), true);
+  assert.equal(isRedirectUriAllowed("http://127.0.0.1:9999/callback", opencodeAllowed), true);
+  assert.equal(isRedirectUriAllowed("http://[::1]:55197/callback", ["http://[::1]/callback"]), true);
+  // Odrzucenie niewłaściwej ścieżki i zewnętrznych domen
+  assert.equal(isRedirectUriAllowed("http://127.0.0.1:55197/wrong", opencodeAllowed), false);
+  assert.equal(isRedirectUriAllowed("https://evil.com/callback", opencodeAllowed), false);
+  assert.equal(isRedirectUriAllowed("http://evil.com:55197/callback", opencodeAllowed), false);
+
+  const db = new MemoryD1();
+  const env = {
+    DB: db as unknown as D1Database,
+    CACHE_KV: memoryKv(),
+    AI: {} as Ai,
+    SESSION_SECRET: "unit-test-secret",
+    APP_NAME: "Polish Academic MCP",
+    PUBLIC_BASE_URL: "https://pamcp.example",
+  } as import("../cloud/src/env.js").CloudEnv;
+
+  // Stwórz użytkownika i sesję
+  await handleAuthRoutes(
+    new Request("https://pamcp.example/api/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "opencode-user@example.com", password: "haslo-testowe-9" }),
+    }),
+    env,
+    "/api/auth/register",
+  );
+  const userId = db.users[0].id as string;
+  const session = await signPayload("unit-test-secret", {
+    uid: userId,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+
+  // Wstępna rejestracja klienta OpenCode (symulacja pobrania z https://opencode.ai/oauth/opencode/client.json)
+  const openCodeClientId = "https://opencode.ai/oauth/opencode/client.json";
+  db.oauth_clients.push({
+    client_id: openCodeClientId,
+    client_secret: null,
+    client_name: "opencode",
+    redirect_uris: JSON.stringify(opencodeAllowed),
+    grant_types: "authorization_code,refresh_token",
+    token_endpoint_auth_method: "none",
+  });
+
+  const verifier = "m_X4k6HfFrZxVz-iuBoRrp7uozma9jt-dQs5S_vnXkE_verifier";
+  const challenge = await sha256Base64Url(verifier);
+  const dynamicRedirectUri = "http://127.0.0.1:55197/callback";
+
+  // Żądanie authorize z dynamicznym portem 55197
+  const authorizeUrl = new URL("https://pamcp.example/oauth/authorize");
+  authorizeUrl.searchParams.set("response_type", "code");
+  authorizeUrl.searchParams.set("client_id", openCodeClientId);
+  authorizeUrl.searchParams.set("code_challenge", challenge);
+  authorizeUrl.searchParams.set("code_challenge_method", "S256");
+  authorizeUrl.searchParams.set("redirect_uri", dynamicRedirectUri);
+  authorizeUrl.searchParams.set("state", "mQmMQEeLV3y0RU6O_NYy_fjWgMOaMNy8YMQqHOkmYIk");
+  authorizeUrl.searchParams.set("scope", "mcp");
+  authorizeUrl.searchParams.set("resource", "https://pamcp.example/mcp");
+  authorizeUrl.searchParams.set("consent", "1");
+
+  const authz = await handleOAuthRoutes(
+    new Request(authorizeUrl, {
+      method: "GET",
+      headers: { cookie: `${SESSION_COOKIE}=${session}` },
+    }),
+    env,
+    "/oauth/authorize",
+  );
+
+  assert.equal(authz!.status, 302);
+  const location = authz!.headers.get("location") ?? "";
+  assert.ok(location.startsWith("http://127.0.0.1:55197/callback?"));
+  assert.match(location, /code=/);
+  assert.match(location, /state=mQmMQEeLV3y0RU6O_NYy_fjWgMOaMNy8YMQqHOkmYIk/);
+  const code = new URL(location).searchParams.get("code")!;
+  assert.ok(code);
+
+  // Wymiana kodu na tokeny w /oauth/token
+  const tokenRes = await handleOAuthRoutes(
+    new Request("https://pamcp.example/oauth/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: dynamicRedirectUri,
+        client_id: openCodeClientId,
+        code_verifier: verifier,
+      }),
+    }),
+    env,
+    "/oauth/token",
+  );
+
+  assert.equal(tokenRes!.status, 200);
+  const tokens = (await tokenRes!.json()) as {
+    access_token: string;
+    refresh_token: string;
+    token_type: string;
+  };
+  assert.equal(tokens.token_type, "Bearer");
+  assert.ok(tokens.access_token.length > 10);
+  assert.ok(tokens.refresh_token.length > 10);
+});
+
 test("MCP JSON-RPC initialize i tools/list zwracają kontrakt", async () => {
   const { handleMcpJsonRpc } = await import("../cloud/src/tool-bridge.js");
   const { createMemoryCacheStore } = await import("../src/cache.js");

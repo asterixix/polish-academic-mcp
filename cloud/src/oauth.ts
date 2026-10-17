@@ -46,6 +46,70 @@ function parseRedirectUris(raw: string): string[] {
     .filter(Boolean);
 }
 
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    /^127(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(normalized)
+  );
+}
+
+function normalizePath(pathname: string): string {
+  const trimmed = pathname.replace(/\/+$/, "");
+  return trimmed === "" ? "/" : trimmed;
+}
+
+/**
+ * Checks whether candidate redirect_uri matches any registered redirect_uri.
+ * RFC 8252 (OAuth 2.0 for Native Apps) §7.3 & OAuth 2.1:
+ * Loopback interface URIs (127.0.0.1, localhost, [::1]) allow any ephemeral port at runtime.
+ */
+export function isRedirectUriAllowed(candidateUri: string, allowedUris: string[]): boolean {
+  if (allowedUris.includes(candidateUri)) return true;
+
+  let candidateUrl: URL;
+  try {
+    candidateUrl = new URL(candidateUri);
+  } catch {
+    return false;
+  }
+
+  const candidateIsLoopback =
+    candidateUrl.protocol === "http:" && isLoopbackHost(candidateUrl.hostname);
+
+  for (const allowed of allowedUris) {
+    if (allowed === candidateUri) return true;
+    try {
+      const allowedUrl = new URL(allowed);
+      const allowedIsLoopback =
+        allowedUrl.protocol === "http:" && isLoopbackHost(allowedUrl.hostname);
+
+      if (candidateIsLoopback && allowedIsLoopback) {
+        const hostMatches =
+          candidateUrl.hostname === allowedUrl.hostname ||
+          (isLoopbackHost(candidateUrl.hostname) && isLoopbackHost(allowedUrl.hostname));
+
+        if (hostMatches && normalizePath(candidateUrl.pathname) === normalizePath(allowedUrl.pathname)) {
+          let queryMatches = true;
+          for (const [k, v] of allowedUrl.searchParams.entries()) {
+            if (candidateUrl.searchParams.get(k) !== v) {
+              queryMatches = false;
+              break;
+            }
+          }
+          if (queryMatches) return true;
+        }
+      }
+    } catch {
+      /* skip malformed registered URI */
+    }
+  }
+
+  return false;
+}
+
 export function authorizationServerMetadata(origin: string) {
   return {
     issuer: origin,
@@ -81,7 +145,39 @@ async function getClient(env: CloudEnv, clientId: string, redirectUriHint?: stri
   )
     .bind(clientId)
     .first<OAuthClientRow>();
-  if (existing) return existing;
+  if (existing) {
+    if (
+      redirectUriHint &&
+      /^https:\/\//i.test(clientId) &&
+      !isRedirectUriAllowed(redirectUriHint, parseRedirectUris(existing.redirect_uris))
+    ) {
+      try {
+        const metaRes = await fetch(clientId, {
+          headers: { accept: "application/json" },
+        });
+        if (metaRes.ok) {
+          const meta = (await metaRes.json()) as {
+            client_name?: string;
+            redirect_uris?: string[];
+          };
+          const existingUris = parseRedirectUris(existing.redirect_uris);
+          const newUris = Array.isArray(meta.redirect_uris) ? meta.redirect_uris : [];
+          const merged = Array.from(new Set([...newUris, ...existingUris]));
+          const name = meta.client_name || existing.client_name;
+          await env.DB.prepare(
+            `UPDATE oauth_clients SET redirect_uris = ?, client_name = ? WHERE client_id = ?`,
+          )
+            .bind(JSON.stringify(merged), name, clientId)
+            .run();
+          existing.redirect_uris = JSON.stringify(merged);
+          existing.client_name = name;
+        }
+      } catch {
+        /* fallback to existing */
+      }
+    }
+    return existing;
+  }
 
   // Support Client ID Metadata Documents (https:// URL as client_id) and well-known public connectors
   if (
@@ -290,7 +386,7 @@ export async function handleOAuthRoutes(
       return jsonResponse({ error: "invalid_client" }, { status: 400 });
     }
     const allowed = parseRedirectUris(client.redirect_uris);
-    if (!allowed.includes(redirectUri)) {
+    if (!isRedirectUriAllowed(redirectUri, allowed)) {
       return jsonResponse({ error: "invalid_request", error_description: "redirect_uri mismatch" }, { status: 400 });
     }
     if (responseType !== "code") {
@@ -391,7 +487,10 @@ export async function handleOAuthRoutes(
           expires_at: string;
           used: number;
         }>();
-      if (!row || row.used || row.client_id !== clientId || row.redirect_uri !== redirectUri) {
+      const redirectMatch =
+        row.redirect_uri === redirectUri ||
+        isRedirectUriAllowed(redirectUri, [row.redirect_uri]);
+      if (!row || row.used || row.client_id !== clientId || !redirectMatch) {
         return jsonResponse({ error: "invalid_grant" }, { status: 400 });
       }
       if (new Date(row.expires_at).getTime() < Date.now()) {

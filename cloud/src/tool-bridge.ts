@@ -58,7 +58,7 @@ export async function withMcpClient<T>(
     mode,
   });
   await server.connect(serverTransport);
-  const client = new Client({ name: "polish-academic-bridge", version: "1.2.0" });
+  const client = new Client({ name: "polish-academic-bridge", version: "1.3.0" });
   await client.connect(clientTransport);
   try {
     return await fn(client);
@@ -157,7 +157,7 @@ export async function handleMcpJsonRpc(
         serverInfo: {
           name: "Polish Academic MCP",
           title: "Polish Academic MCP",
-          version: "1.2.0",
+          version: "1.3.0",
           websiteUrl: "https://pamcp.pl",
           icons: [
             {

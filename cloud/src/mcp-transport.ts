@@ -81,7 +81,7 @@ export async function handleMcpRoutes(
         openapi: "3.1.0",
         info: {
           title: appName(env),
-          version: "1.2.0",
+          version: "1.3.0",
           description:
             "Polish Academic — ujednolicony dostęp w trybie tylko do odczytu (read-only) do 55 polskich baz naukowych, prawnych, statystycznych, normalizacyjnych i kulturowych (Biblioteka Nauki, Polska Platforma Medyczna, GUS BDL, ISAP, SAOS, Wolne Lektury, Szukaj w Archiwach i inne) przez 3 skonsolidowane narzędzia MCP (list_sources, search, get_record).",
           contact: {
@@ -192,7 +192,7 @@ export async function handleMcpRoutes(
         title: "Polish Academic",
         description:
           "Read-only MCP connector for 52 Polish scientific, medical, legal (ISAP, SAOS), statistical (GUS BDL), standards (PKN), and archival databases via 3 unified tools (list_sources, search, get_record).",
-        version: "1.2.0",
+        version: "1.3.0",
         websiteUrl: origin,
         documentationUrl: `${origin}/connectors`,
         privacyPolicyUrl: `${origin}/privacy`,
@@ -571,7 +571,7 @@ export async function handleMcpRoutes(
         jsonResponse({
           name: "Polish Academic MCP",
           slug: "polish-academic-mcp",
-          version: "1.2.0",
+          version: "1.3.0",
           one_liner:
             "Przeszukuj 55 polskich baz naukowe, medyczne (PPM), prawne (ISAP, SAOS), statystyczne (GUS BDL) i archiwalne.",
           description:

@@ -1,9 +1,9 @@
 {
   "schema": "polish_academic_mcp_changelog_v1",
-  "generated_at": "2026-10-17T18:35:16.814Z",
+  "generated_at": "2026-10-17T18:46:10.831Z",
   "repository": "https://github.com/asterixix/polish-academic-mcp",
-  "package_version": "1.2.0",
-  "cloud_version": "1.2.0",
+  "package_version": "1.3.0",
+  "cloud_version": "1.3.0",
   "latest_commit": {
     "sha": "5d30640",
     "sha_full": "5d30640405dee698893ab10f6f4587a151091fb3",

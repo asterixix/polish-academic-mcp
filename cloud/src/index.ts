@@ -38,7 +38,7 @@ export default {
           jsonResponse({
             ok: true,
             name: appName(env),
-            version: "1.2.0",
+            version: "1.3.0",
             mcp: `${publicOrigin(request, env)}/mcp`,
           }),
         );
