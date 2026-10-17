@@ -743,6 +743,55 @@ export const SCENARIOS: Scenario[] = [
       },
     ],
   },
+  {
+    id: "krakow-od-bezrobotni",
+    source: "krakow_od",
+    question: "Bezrobotni i oferty pracy od 2023 roku: zbiór, jego tabele API i wiersze danych z API.",
+    steps: [
+      {
+        tool: "krakow_od_search",
+        args: { query: "bezrobotni oferty pracy", page: 1 },
+        capture: { slug: '"slug"\\s*:\\s*"(bezrobotni[^"]+)"' },
+      },
+      { tool: "krakow_od_get_dataset", args: { slug: "$slug", include_data: true } },
+      {
+        tool: "krakow_od_fetch_api",
+        args: { api_url: "https://api.um.krakow.pl/opendata-przedsiebiorczosc-i-nauka/v1/bezrobotni", limit: 5 },
+      },
+    ],
+  },
+  {
+    id: "krakow-msip-dzielnice",
+    source: "krakow_msip",
+    question: "Dzielnice administracyjne: katalog MSIP, karta zbioru, usługi ArcGIS i zapytanie do warstwy dzielnic.",
+    steps: [
+      {
+        tool: "krakow_msip_search",
+        args: { query: "dzielnice", page: 1 },
+        capture: { ds: '"dataset_id"\\s*:\\s*(1483)' },
+      },
+      { tool: "krakow_msip_get_dataset", args: { dataset_id: "$ds:number" } },
+      { tool: "krakow_msip_list_services", args: { folder: "Pobieranie" } },
+      {
+        tool: "krakow_msip_query_layer",
+        args: { service: "Pobieranie/Dzielnice", layer_id: 0, where: "1=1", result_record_count: 5, server: "msip3", return_geometry: false },
+      },
+    ],
+  },
+  {
+    id: "krakow-strategia-raport",
+    source: "krakow_strategia",
+    question: "Raport o stanie gminy: spis Banku Informacji, wyszukiwanie raportów i treść artykułu z załącznikami.",
+    steps: [
+      { tool: "krakow_strategia_list_bank", args: {} },
+      {
+        tool: "krakow_strategia_search",
+        args: { query: "raport o stanie gminy", page: 1 },
+        capture: { art: '"id"\\s*:\\s*(253584)' },
+      },
+      { tool: "krakow_strategia_get_article", args: { id: "$art" } },
+    ],
+  },
 ];
 
 export function toolsUsedByScenarios(scenarios: Scenario[] = SCENARIOS): Set<string> {

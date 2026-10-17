@@ -83,7 +83,7 @@ export async function handleMcpRoutes(
           title: appName(env),
           version: "1.2.0",
           description:
-            "Polish Academic — ujednolicony dostęp w trybie tylko do odczytu (read-only) do 52 polskich baz naukowych, prawnych, statystycznych, normalizacyjnych i kulturowych (Biblioteka Nauki, Polska Platforma Medyczna, GUS BDL, ISAP, SAOS, Wolne Lektury, Szukaj w Archiwach i inne) przez 3 skonsolidowane narzędzia MCP (list_sources, search, get_record).",
+            "Polish Academic — ujednolicony dostęp w trybie tylko do odczytu (read-only) do 55 polskich baz naukowych, prawnych, statystycznych, normalizacyjnych i kulturowych (Biblioteka Nauki, Polska Platforma Medyczna, GUS BDL, ISAP, SAOS, Wolne Lektury, Szukaj w Archiwach i inne) przez 3 skonsolidowane narzędzia MCP (list_sources, search, get_record).",
           contact: {
             name: "Artur Sendyka",
             url: "https://pamcp.pl",
@@ -169,7 +169,7 @@ export async function handleMcpRoutes(
         name_for_human: appName(env),
         name_for_model: "polish_academic",
         description_for_human:
-          "Wyszukiwanie w 52 polskich bazach naukowych, prawnych, statystycznych i kulturowych (Biblioteka Nauki, PPM, GUS, ISAP, SAOS, Archiwa Państwowe).",
+          "Wyszukiwanie w 55 polskich bazach naukowych, prawnych, statystycznych i kulturowych (Biblioteka Nauki, PPM, GUS, ISAP, SAOS, Archiwa Państwowe).",
         description_for_model:
           "Search 52 Polish academic, medical, legal, statistical, standard, and cultural databases via 3 read-only tools (list_sources, search, get_record). Target API docs: https://pamcp.pl/connectors",
         auth: { type: "oauth", instructions: `Use OAuth 2.1 with PKCE at ${origin}` },
@@ -573,9 +573,9 @@ export async function handleMcpRoutes(
           slug: "polish-academic-mcp",
           version: "1.2.0",
           one_liner:
-            "Przeszukuj 52 polskie bazy naukowe, medyczne (PPM), prawne (ISAP, SAOS), statystyczne (GUS BDL) i archiwalne.",
+            "Przeszukuj 55 polskich baz naukowe, medyczne (PPM), prawne (ISAP, SAOS), statystyczne (GUS BDL) i archiwalne.",
           description:
-            "Polish Academic MCP udostępnia ujednolicony dostęp w trybie tylko do odczytu (read-only) do 52 polskich baz naukowych, medycznych, publicznych, prawnych, normalizacyjnych i kulturowych przez jedno środowisko MCP i 3 skonsolidowane narzędzia (list_sources, search, get_record obsługujące 116 operacji natywnych). Obejmuje m.in. Bibliotekę Nauki, Polską Platformę Medyczną (PPM), RCIN, repozytoria uczelni (UJ, AGH, UAM, UW, ŚUM), dane badawcze (RODBuK, RePOD), RAD-on / POL-on, Ludzi Nauki, Bank Danych Lokalnych GUS, dane.gov.pl, IMGW-PIB, akty prawne ISAP (ELI Sejm API), orzeczenia sądowe SAOS, Bibliotekę Sejmową, normy PKN, Wolne Lektury, FilmPolski, Ninatekę, Fototekę, JBC/SBC/FBC (z odczytem OCR/HTR skanów) oraz Szukaj w Archiwach i inwentarze Archiwów Państwowych (AGAD, IPN Straty.pl).",
+            "Polish Academic MCP udostępnia ujednolicony dostęp w trybie tylko do odczytu (read-only) do 55 polskich baz naukowych, medycznych, publicznych, prawnych, normalizacyjnych i kulturowych przez jedno środowisko MCP i 3 skonsolidowane narzędzia (list_sources, search, get_record obsługujące 126 operacji natywnych). Obejmuje m.in. Bibliotekę Nauki, Polską Platformę Medyczną (PPM), RCIN, repozytoria uczelni (UJ, AGH, UAM, UW, ŚUM), dane badawcze (RODBuK, RePOD), RAD-on / POL-on, Ludzi Nauki, Bank Danych Lokalnych GUS, dane.gov.pl, IMGW-PIB, akty prawne ISAP (ELI Sejm API), orzeczenia sądowe SAOS, Bibliotekę Sejmową, normy PKN, Wolne Lektury, FilmPolski, Ninatekę, Fototekę, JBC/SBC/FBC (z odczytem OCR/HTR skanów) oraz Szukaj w Archiwach i inwentarze Archiwów Państwowych (AGAD, IPN Straty.pl).",
           categories: ["Research", "Education", "Legal", "Data & Analytics", "Productivity"],
           mcp_endpoint: `${origin}/mcp`,
           documentation_url: `${origin}/connectors`,

@@ -67,6 +67,16 @@ const expectedToolNames = [
   "jbc_get_publication",
   "jbc_ocr_htr",
   "jbc_search",
+  "krakow_msip_get_dataset",
+  "krakow_msip_list_services",
+  "krakow_msip_query_layer",
+  "krakow_msip_search",
+  "krakow_od_fetch_api",
+  "krakow_od_get_dataset",
+  "krakow_od_search",
+  "krakow_strategia_get_article",
+  "krakow_strategia_list_bank",
+  "krakow_strategia_search",
   "lublin_ap_search",
   "ludzie_get_scientist",
   "ludzie_search",
@@ -287,7 +297,7 @@ test("handshake MCP zgłasza wersję serwera 1.2.0", () => {
   assert.equal(client.getServerVersion()?.version, targetVersion);
 });
 
-test("tools/list zachowuje dokładnie 116 stabilnych identyfikatorów", () => {
+test("tools/list zachowuje dokładnie 126 stabilnych identyfikatorów", () => {
   assert.deepEqual(tools.map(({ name }) => name).sort(), [...expectedToolNames]);
 });
 

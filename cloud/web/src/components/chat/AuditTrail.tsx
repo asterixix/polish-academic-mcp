@@ -50,8 +50,8 @@ function CollapsibleBlock({
       {open && (
         <div
           className={cn(
-            "mt-1 max-h-64 overflow-auto rounded-lg border border-border-primary bg-zinc-50 p-2 text-[11px] leading-relaxed text-fg-primary",
-            mono && "font-mono whitespace-pre-wrap",
+            "mt-1 max-h-48 overflow-auto rounded-lg border border-border-primary bg-bg-primary p-2 text-[11px] leading-relaxed text-fg-primary sm:max-h-64",
+            mono && "font-mono whitespace-pre-wrap break-words",
           )}
         >
           {children}
@@ -68,7 +68,7 @@ function StepRow({ step }: { step: AuditStep }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start gap-3 py-2.5 text-left"
+        className="flex w-full min-h-11 items-start gap-3 py-2.5 text-left"
       >
         <span className="mt-0.5 size-2 shrink-0 rounded-sm bg-brand-600" aria-hidden />
         <span className="min-w-0 flex-1">
@@ -89,7 +89,7 @@ function StepRow({ step }: { step: AuditStep }) {
         <div className="mb-2 ml-5 space-y-2">
           {step.detail && <p className="text-xs text-fg-secondary">{step.detail}</p>}
           {step.data && (
-            <pre className="max-h-40 overflow-auto rounded-lg bg-zinc-50 p-2 font-mono text-[10px] text-fg-secondary">
+            <pre className="max-h-40 overflow-auto rounded-lg bg-bg-primary p-2 font-mono text-[10px] text-fg-secondary break-words whitespace-pre-wrap">
               {JSON.stringify(step.data, null, 2)}
             </pre>
           )}
@@ -100,22 +100,49 @@ function StepRow({ step }: { step: AuditStep }) {
 }
 
 function LlmBlock({ call }: { call: LlmCallEvent }) {
+  const failedAttempts = (call.attempts ?? []).filter((a) => a.status === "error");
   return (
-    <div className="rounded-xl border border-border-primary bg-white p-3">
+    <div className="rounded-xl border border-border-primary bg-bg-primary p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Code01 className="size-3.5 text-brand-600" />
         <span className="text-sm font-semibold text-fg-primary">
           LLM {call.phase}
         </span>
-        <span className="font-mono text-[11px] text-fg-tertiary">
+        <span
+          className={cn(
+            "rounded px-1.5 py-0.5 font-mono text-[11px]",
+            call.provider === "edenai"
+              ? "bg-success/15 text-success"
+              : "bg-brand-50 text-brand-800",
+          )}
+        >
           {call.provider} / {call.model}
         </span>
+        {failedAttempts.length > 0 && (
+          <span className="rounded bg-danger/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-danger">
+            fallback po błędzie {failedAttempts.map((a) => `${a.provider} (${a.http_status ?? "ERR"})`).join(", ")}
+          </span>
+        )}
         <TokenPill usage={call.usage} />
+        {typeof call.cost_usd === "number" && (
+          <span className="font-mono text-[11px] text-fg-tertiary">
+            ${call.cost_usd.toFixed(6)}
+          </span>
+        )}
         <span className="inline-flex items-center gap-1 text-[11px] text-fg-tertiary">
           <Clock className="size-3" />
           {call.duration_ms} ms
         </span>
       </div>
+      {call.attempts && call.attempts.length > 0 && (
+        <CollapsibleBlock
+          title={`Próby providerów (${call.attempts.length}${failedAttempts.length ? ` · ${failedAttempts.length} błąd` : ""})`}
+          mono
+          defaultOpen={failedAttempts.length > 0}
+        >
+          {JSON.stringify(call.attempts, null, 2)}
+        </CollapsibleBlock>
+      )}
       <CollapsibleBlock title="System prompt" mono>
         {call.system_prompt}
       </CollapsibleBlock>
@@ -170,11 +197,11 @@ export function AuditTrail({
       <motion.div
         initial={reduce ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        className="overflow-hidden rounded-2xl border border-border-primary bg-white/95 shadow-soft"
+        className="overflow-hidden rounded-2xl border border-border-primary bg-bg-secondary shadow-soft"
       >
-        <div className="flex flex-wrap items-center gap-2 border-b border-border-primary px-4 py-3">
-          <Activity className="size-4 text-brand-600" />
-          <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border-primary px-3 py-3 sm:px-4">
+          <Activity className="size-4 shrink-0 text-brand-600" />
+          <div className="min-w-0 flex-1 basis-[min(100%,12rem)]">
             <p className="text-sm font-semibold text-fg-primary">Ślad audytu (100% transparentność)</p>
             <p className="text-xs text-fg-tertiary">
               Kroki, myśli, prompty, odpowiedzi LLM i tokeny. Do pobrania na analizy naukowe.
@@ -182,7 +209,7 @@ export function AuditTrail({
           </div>
           {live.tokens && <TokenPill usage={live.tokens} label="suma" />}
           {live.audit && (
-            <>
+            <div className="flex flex-wrap gap-1.5">
               <Button
                 size="sm"
                 variant="secondary"
@@ -203,12 +230,12 @@ export function AuditTrail({
                 <File01 className="size-3.5" />
                 MD
               </Button>
-            </>
+            </div>
           )}
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="rounded-lg border border-border-primary p-1.5 text-fg-secondary hover:bg-brand-25"
+            className="min-h-9 min-w-9 rounded-lg border border-border-primary p-1.5 text-fg-secondary hover:bg-brand-25"
             aria-label={open ? "Zwiń ślad" : "Rozwiń ślad"}
           >
             <Eye className="size-3.5" />
@@ -216,8 +243,8 @@ export function AuditTrail({
         </div>
 
         {open && (
-          <div className="grid gap-4 p-4 lg:grid-cols-[1fr_1.1fr]">
-            <div>
+          <div className="grid grid-cols-1 gap-4 p-3 sm:p-4 lg:grid-cols-[1fr_1.1fr]">
+            <div className="min-w-0">
               {status && (
                 <p className="mb-3 flex items-center gap-2 text-sm text-fg-secondary">
                   <span
@@ -265,7 +292,7 @@ export function AuditTrail({
               )}
             </div>
 
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-3">
               <p className="text-xs font-semibold text-fg-primary">Wywołania modelu (pełne tokeny)</p>
               {live.llmCalls.length === 0 && (
                 <p className="text-xs text-fg-tertiary">

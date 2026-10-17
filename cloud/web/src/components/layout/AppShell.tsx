@@ -1,4 +1,5 @@
 import { BetaBanner } from "@/components/layout/BetaBanner";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Button } from "@/components/ui/Button";
 import {
   FEEDBACK_EMAIL,
@@ -17,6 +18,8 @@ import { motion, useReducedMotion } from "motion/react";
 const nav = [
   { to: "/", label: "Szukaj", end: true },
   { to: "/connectors", label: "Konektory" },
+  { to: "/docs", label: "Dokumentacja" },
+  { to: "/projekt", label: "Projekt" },
   { to: "/account", label: "Konto" },
 ];
 
@@ -40,11 +43,11 @@ export function AppShell() {
         Przejdź do treści
       </a>
       <BetaBanner />
-      <header className="border-b border-border-primary/80 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 md:px-6">
+      <header className="border-b border-border-primary/80 bg-bg-primary/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 md:px-6">
           <Link
             to="/"
-            className="flex items-center gap-3 no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 rounded-lg"
+            className="flex min-w-0 flex-1 items-center gap-3 no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 rounded-lg"
           >
             <img
               src="/logo.jpg"
@@ -53,8 +56,8 @@ export function AppShell() {
               width={40}
               height={40}
             />
-            <div className="leading-tight">
-              <div className="font-display text-sm font-semibold text-brand-700 md:text-base">
+            <div className="min-w-0 leading-tight">
+              <div className="truncate font-display text-sm font-semibold text-brand-700 md:text-base">
                 Polish Academic MCP
               </div>
               <div className="hidden text-xs text-fg-secondary sm:block">
@@ -94,7 +97,8 @@ export function AppShell() {
             )}
           </nav>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeToggle />
             {quota?.ai_search && (
               <span
                 className="hidden rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 sm:inline"
@@ -170,7 +174,7 @@ export function AppShell() {
         <Outlet context={{ user, quota, setQuota, refreshUser: async () => setUser(await fetchMe()) }} />
       </motion.main>
 
-      <footer className="border-t border-border-primary bg-white/70">
+      <footer className="border-t border-border-primary bg-bg-secondary/80">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-fg-secondary md:flex-row md:items-start md:justify-between md:px-6">
           <div className="space-y-1.5">
             <p className="text-xs font-medium uppercase tracking-wide text-fg-secondary">
@@ -248,6 +252,12 @@ export function AppShell() {
               className="min-h-9 inline-flex items-center hover:text-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
             >
               Konektory MCP
+            </Link>
+            <Link
+              to="/docs"
+              className="min-h-9 inline-flex items-center hover:text-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            >
+              Dokumentacja MCP
             </Link>
             {user?.is_admin && (
               <Link

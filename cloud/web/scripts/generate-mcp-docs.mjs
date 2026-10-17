@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Build-time generator for `cloud/web/src/generated/mcp-docs.json`.
- * Extracts the complete catalogue of 53 sources, 3 Meta-Router tools,
- * 116 granular operations (with full JSON Schema parameters), and 22 MCP client configs
+ * Extracts the complete catalogue of sources, 3 Meta-Router tools,
+ * granular operations (with full JSON Schema parameters), and MCP client configs
  * directly from the compiled root `dist/` package.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -121,6 +121,24 @@ const SOURCE_META = {
     apiUrl: "https://danepubliczne.imgw.pl/api/data",
     protocol: "REST JSON",
     notes: "Dane pomiarowe IMGW-PIB na żywo: stacje synoptyczne, hydrologiczne, meteorologiczne i ostrzeżenia.",
+  },
+  krakow_od: {
+    portalUrl: "https://otwartedane.um.krakow.pl/zbiory-danych",
+    apiUrl: "https://api.um.krakow.pl/devportal",
+    protocol: "REST JSON (WSO2 API Manager, OData)",
+    notes: "Otwarte Dane Miasta Krakowa — 45 zbiorów UMK (demografia, transport KMK, żłobki, szkoły, parki, pojazdy, turystyka) z tabelami REST API i dokumentacją Swagger.",
+  },
+  krakow_msip: {
+    portalUrl: "https://msip.krakow.pl",
+    apiUrl: "https://msip3.um.krakow.pl/server/rest/services",
+    protocol: "ArcGIS REST (MapServer/FeatureServer, Geoportal)",
+    notes: "Miejski System Informacji Przestrzennej Krakowa — 179 zbiorów przestrzennych, usługi WMS/WFS i zapytania do warstw ArcGIS (EPSG:2178).",
+  },
+  krakow_strategia: {
+    portalUrl: "https://strategia.krakow.pl",
+    apiUrl: "https://strategia.krakow.pl/252790,artykul,bank_informacji_o_miescie_i_metropolii.html",
+    protocol: "HTML / Bank Informacji o Mieście",
+    notes: "Strategia Rozwoju Krakowa — raporty o stanie miasta, Kraków w liczbach, Barometr Krakowski, prognozy demograficzne do 2050 r.",
   },
   isap: {
     portalUrl: "https://isap.sejm.gov.pl",

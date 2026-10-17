@@ -37,12 +37,35 @@ describe("normalizeResearchQuery", () => {
     assert.ok(!/\bgus\b/i.test(n.core));
     assert.ok(!/\bbdl\b/i.test(n.core));
     assert.ok(n.hints.stats);
+    assert.ok(n.variants.some((v) => /^bezrobocie$/i.test(v)));
+  });
+
+  it("dla BDL usuwa geo/admin z frazy (API AND → inaczej 0 trafień)", () => {
+    const { query } = normalizeQueryForSource(
+      "Bezrobocie w województwie małopolskim według GUS BDL",
+      "bdl",
+      ["name", "page_size"],
+    );
+    assert.equal(query.toLowerCase(), "bezrobocie");
   });
 
   it("produces shorter variants", () => {
     const n = normalizeResearchQuery("ochrona danych osobowych w administracji publicznej");
     assert.ok(n.variants.length >= 1);
     assert.ok(n.variants.every((v) => v.length < n.core.length || v.split(" ").length <= 3));
+  });
+
+  it("oczyszcza czasownik 'Sprawdź', formy miejscownika i wykrywa statystyki dla cudzoziemców w Krakowie", () => {
+    const n = normalizeResearchQuery(
+      "Sprawdź dane o cudzoziemcach w krakowie na rok 2025",
+    );
+    assert.match(n.core, /cudzoziemcy/i);
+    assert.match(n.core, /kraków/i);
+    assert.ok(!/sprawdź/i.test(n.core));
+    assert.ok(!/\bdane\b/i.test(n.core));
+    assert.ok(!/\brok\b/i.test(n.core));
+    assert.equal(n.yearFrom, "2025-01-01");
+    assert.ok(n.hints.stats);
   });
 });
 

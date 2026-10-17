@@ -13,7 +13,7 @@
 
 export const SOURCE_GROUPS = {
   nauka: "publikacje, repozytoria uczelni, dane badawcze, profile naukowców",
-  dane: "dane publiczne: statystyka GUS (BDL), dane.gov.pl, pogoda i wody (IMGW)",
+  dane: "dane publiczne: statystyka GUS (BDL), dane.gov.pl, pogoda i wody (IMGW), Otwarte Dane, MSIP i Strategia Krakowa",
   prawo: "akty prawne (ISAP), orzeczenia sądów (SAOS), katalog Biblioteki Sejmowej",
   normy: "normy i Polski Komitet Normalizacyjny",
   kultura: "literatura, film, fotografia, plakat, archiwa, sztuka",
@@ -47,6 +47,9 @@ export const SOURCES = [
   { id: "dane", group: "dane", name: "dane.gov.pl" },
   { id: "bdl", group: "dane", name: "Bank Danych Lokalnych GUS" },
   { id: "imgw", group: "dane", name: "IMGW-PIB" },
+  { id: "krakow_od", group: "dane", name: "Otwarte Dane Miasta Krakowa" },
+  { id: "krakow_msip", group: "dane", name: "MSIP Kraków — Miejski System Informacji Przestrzennej" },
+  { id: "krakow_strategia", group: "dane", name: "Strategia Krakowa — Bank Informacji o Mieście i Metropolii" },
   { id: "isap", group: "prawo", name: "ISAP / ELI API Sejmu" },
   { id: "saos", group: "prawo", name: "SAOS — orzeczenia sądów" },
   { id: "bs_sejm", group: "prawo", name: "Biblioteka Sejmowa" },

@@ -58,7 +58,7 @@ export function AnswerMarkdown({ text }: { text: string }) {
               );
             }
             return (
-              <pre className="my-3 overflow-x-auto rounded-xl border border-border-primary bg-zinc-50 p-3 font-mono text-[11px] leading-relaxed text-fg-secondary">
+              <pre className="my-3 overflow-x-auto rounded-xl border border-border-primary bg-bg-primary p-3 font-mono text-[11px] leading-relaxed text-fg-secondary">
                 {lang && (
                   <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-brand-600">
                     {lang}

@@ -36,6 +36,7 @@ export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  /** "working" | "error" | undefined (ok) */
   status?: string;
   sources?: Array<{ tool: string; preview: string; isError?: boolean }>;
   followups?: string[];
@@ -56,6 +57,8 @@ type ChatMeta = {
   openThread: (id: string) => Promise<void>;
   removeThread: (id: string) => Promise<void>;
   downloadHistory: (format: "json" | "md") => void;
+  /** Re-run the user prompt that led to the last (or given) system-error assistant turn. */
+  retryFailedPrompt: (assistantMessageId?: string) => Promise<void>;
 };
 
 const emptyLive = (): LiveTrace => ({
@@ -82,6 +85,7 @@ const ChatMetaContext = createContext<ChatMeta>({
   openThread: async () => {},
   removeThread: async () => {},
   downloadHistory: () => {},
+  retryFailedPrompt: async () => {},
 });
 
 export function useChatMeta() {
@@ -264,19 +268,14 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
     [authenticated, threadId, refreshThreadList],
   );
 
-  const onNew = useCallback(
-    async (message: AppendMessage) => {
-      const textPart = message.content.find((c) => c.type === "text");
-      if (!textPart || textPart.type !== "text") return;
-      const input = textPart.text.trim();
-      if (!input) return;
-
+  const runSearch = useCallback(
+    async (input: string, priorMessages: ChatMessage[]) => {
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
         content: input,
       };
-      const base = [...messagesRef.current, userMsg];
+      const base = [...priorMessages, userMsg];
       setMessages(base);
       messagesRef.current = base;
       setIsRunning(true);
@@ -303,6 +302,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
       let answer = "";
       let followups: string[] = [];
       let finalAudit: AuditLog | null = null;
+      let sawSystemError = false;
 
       try {
         for await (const ev of streamAiSearch(input, {
@@ -382,9 +382,10 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
             }
           }
           if (ev.event === "error") {
+            sawSystemError = true;
             answer = withFeedbackHint(ev.data.message || "Coś poszło nie tak.");
             const next = messagesRef.current.map((m) =>
-              m.id === assistantId ? { ...m, content: answer } : m,
+              m.id === assistantId ? { ...m, content: answer, status: "error" } : m,
             );
             setMessages(next);
             messagesRef.current = next;
@@ -396,11 +397,21 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
         }
 
         if (!answer) {
+          sawSystemError = true;
           const fallback = withFeedbackHint(
-            "Nie udało się zbudować odpowiedzi. Spróbuj innego sformułowania albo zawęź grupę baz.",
+            "Nie udało się zbudować odpowiedzi. Spróbuj ponownie albo zawęź grupę baz.",
           );
           const next = messagesRef.current.map((m) =>
-            m.id === assistantId ? { ...m, content: fallback } : m,
+            m.id === assistantId ? { ...m, content: fallback, status: "error" } : m,
+          );
+          setMessages(next);
+          messagesRef.current = next;
+        } else if (sawSystemError) {
+          // Keep status: "error" from the error event even if partial answer arrived earlier
+          const next = messagesRef.current.map((m) =>
+            m.id === assistantId && m.status !== "error"
+              ? { ...m, status: "error" as const }
+              : m,
           );
           setMessages(next);
           messagesRef.current = next;
@@ -412,7 +423,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
           err instanceof Error ? err.message : "Nieoczekiwany błąd połączenia.",
         );
         const next = messagesRef.current.map((m) =>
-          m.id === assistantId ? { ...m, content: msg } : m,
+          m.id === assistantId ? { ...m, content: msg, status: "error" } : m,
         );
         setMessages(next);
         messagesRef.current = next;
@@ -422,6 +433,58 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
       }
     },
     [groupFilter, persistConversation],
+  );
+
+  const onNew = useCallback(
+    async (message: AppendMessage) => {
+      const textPart = message.content.find((c) => c.type === "text");
+      if (!textPart || textPart.type !== "text") return;
+      const input = textPart.text.trim();
+      if (!input) return;
+      await runSearch(input, messagesRef.current);
+    },
+    [runSearch],
+  );
+
+  const retryFailedPrompt = useCallback(
+    async (assistantMessageId?: string) => {
+      if (isRunning) return;
+      const looksFailed = (m: ChatMessage) =>
+        m.role === "assistant" &&
+        (m.status === "error" ||
+          /wykorzystano limit|błąd|error|nie udało|wyczerpany|niedostępna|subrequest/i.test(
+            m.content,
+          ));
+
+      const msgs = messagesRef.current;
+      let assistantIdx = -1;
+      if (assistantMessageId) {
+        assistantIdx = msgs.findIndex((m) => m.id === assistantMessageId && looksFailed(m));
+      } else {
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (looksFailed(msgs[i])) {
+            assistantIdx = i;
+            break;
+          }
+        }
+      }
+      if (assistantIdx < 0) return;
+
+      let userIdx = assistantIdx - 1;
+      while (userIdx >= 0 && msgs[userIdx].role !== "user") userIdx--;
+      if (userIdx < 0) return;
+
+      const prompt = msgs[userIdx].content.trim();
+      if (!prompt) return;
+
+      // Drop the failed turn (user + error assistant) and anything after, then re-run.
+      const prior = msgs.slice(0, userIdx);
+      setMessages(prior);
+      messagesRef.current = prior;
+      setStatus("Ponawiam wyszukiwanie…");
+      await runSearch(prompt, prior);
+    },
+    [isRunning, runSearch],
   );
 
   const runtime = useExternalStoreRuntime({
@@ -447,6 +510,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
       openThread,
       removeThread,
       downloadHistory,
+      retryFailedPrompt,
     }),
     [
       status,
@@ -462,6 +526,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
       openThread,
       removeThread,
       downloadHistory,
+      retryFailedPrompt,
     ],
   );
 

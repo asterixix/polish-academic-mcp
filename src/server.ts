@@ -89,10 +89,8 @@ import {
   registerWarszawaApTools,
   registerLublinApTools,
 } from "./tools/warszawa-lublin-ap.js";
-import {
-  registerAgadTools,
-  registerPostdiplomaTools,
-} from "./tools/agad-postdiploma.js";
+import { registerAgadTools, registerPostdiplomaTools } from "./tools/agad-postdiploma.js";
+import { registerKrakowMsipTools, registerKrakowOdTools, registerKrakowStrategiaTools } from "./tools/krakow.js";
 
 type RegisterFn = (server: McpServer, env: Env) => void;
 
@@ -116,6 +114,9 @@ const REGISTER: Record<SourceId, RegisterFn> = {
   dane: registerDaneTools,
   bdl: registerBdlTools,
   imgw: registerImgwTools,
+  krakow_od: registerKrakowOdTools,
+  krakow_msip: registerKrakowMsipTools,
+  krakow_strategia: registerKrakowStrategiaTools,
   isap: registerIsapTools,
   saos: registerSaosTools,
   bs_sejm: registerSejmBsTools,
@@ -277,6 +278,11 @@ const ACTION_TITLE_LABELS: Record<string, string> = {
   get_unit: "Pobranie jednostki archiwalnej",
   get_person: "Pobranie karty osoby represjonowanej",
   ocr_htr: "Odczyt OCR/HTR skanów i rękopisów",
+  fetch_api: "Pobranie danych z API",
+  list_services: "Lista usług ArcGIS",
+  query_layer: "Zapytanie do warstwy ArcGIS",
+  list_bank: "Bank Informacji — spis raportów i badań",
+  get_dataset_krakow: "Pobranie zbioru danych",
 };
 
 /** Build a human-readable Polish title for any MCP tool (required by Claude & ChatGPT directories). */

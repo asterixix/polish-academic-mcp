@@ -49,21 +49,42 @@ export interface CloudEnv {
   PBN_USER_TOKEN?: string;
 }
 
-export function wrapKv(ns: KVNamespace): CacheStore {
+const L1_CACHE_MAX_ENTRIES = 500;
+const l1MemoryCache = new Map<string, { value: string; expiresAtMs: number }>();
+
+/**
+ * In-isolate L1 memory cache store for tool responses.
+ * Using in-memory caching inside the Worker isolate avoids burning 2 Cloudflare
+ * subrequests (`KV.get` + `KV.put`) on every tool `cachedFetch` call, keeping
+ * multi-source fan-out well below the 50-subrequest-per-invocation Worker limit.
+ */
+export function wrapKv(_ns: KVNamespace): CacheStore {
   return {
     async get(key: string): Promise<string | null> {
-      return ns.get(key);
+      const hit = l1MemoryCache.get(key);
+      if (!hit) return null;
+      if (hit.expiresAtMs <= Date.now()) {
+        l1MemoryCache.delete(key);
+        return null;
+      }
+      return hit.value;
     },
     async put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void> {
-      await ns.put(key, value, {
-        expirationTtl:
-          typeof options?.expirationTtl === "number" && options.expirationTtl >= 60
-            ? Math.floor(options.expirationTtl)
-            : undefined,
+      if (l1MemoryCache.size >= L1_CACHE_MAX_ENTRIES) {
+        const oldestKey = l1MemoryCache.keys().next().value;
+        if (oldestKey !== undefined) l1MemoryCache.delete(oldestKey);
+      }
+      const ttlSec =
+        typeof options?.expirationTtl === "number" && options.expirationTtl > 0
+          ? options.expirationTtl
+          : 3600;
+      l1MemoryCache.set(key, {
+        value,
+        expiresAtMs: Date.now() + Math.floor(ttlSec * 1000),
       });
     },
     async delete(key: string): Promise<void> {
-      await ns.delete(key);
+      l1MemoryCache.delete(key);
     },
   };
 }

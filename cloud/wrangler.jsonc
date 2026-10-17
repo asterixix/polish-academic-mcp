@@ -24,6 +24,12 @@
   "ai": {
     "binding": "AI"
   },
+  // AI Search fans out to many upstream APIs; free plan caps at 50, paid default 10k (raisable).
+  // Without this, synthesis fails with "Too many subrequests by single Worker invocation".
+  "limits": {
+    "cpu_ms": 300000,
+    "subrequests": 10000
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -46,7 +52,7 @@
     "MCP_MONTHLY_LIMIT": "100",
     "AI_SEARCH_ANON_WEEKLY_LIMIT": "2",
     "AI_SEARCH_USER_WEEKLY_LIMIT": "5",
-    "AI_MODEL": "anthropic/claude-haiku-5.5",
+    "AI_MODEL": "anthropic/claude-haiku-5-5",
     "AI_FALLBACK_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
   }
   // Sensitive / environment-specific — set in Cloudflare dashboard or:

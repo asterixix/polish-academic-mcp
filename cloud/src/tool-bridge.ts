@@ -10,7 +10,7 @@ import { withDeveloperContact } from "./error-contact.js";
 /**
  * Public Cloud MCP uses a single unified Meta-Router environment (3 tools:
  * `list_sources`, `search`, `get_record` routing across all 52 Polish databases
- * and 116 operations) for Claude, ChatGPT, Perplexity, and MCP directories.
+ * and 126 operations) for Claude, ChatGPT, Perplexity, and MCP directories.
  */
 export function modeFromRequest(_request: Request): ServerMode {
   return "router";
@@ -179,8 +179,8 @@ export async function handleMcpJsonRpc(
         },
         instructions:
           mode === "router"
-            ? "Serwer udostępnia 3 skonsolidowane narzędzia (list_sources, search, get_record) do przeszukiwania 52 polskich baz naukowych, prawnych, statystycznych, normalizacyjnych i archiwalnych (116 operacji natywnych). Wszystkie narzędzia działają wyłącznie w trybie do odczytu (read-only). Dokumentacja API: https://pamcp.pl/connectors"
-            : "Narzędzia przeszukują 52 polskie bazy naukowe, publiczne i kulturowe (116 operacji). Prefiks nazwy wskazuje bazę.",
+            ? "Serwer udostępnia 3 skonsolidowane narzędzia (list_sources, search, get_record) do przeszukiwania 55 polskich baz naukowych, prawnych, statystycznych, normalizacyjnych i archiwalnych (126 operacji natywnych). Wszystkie narzędzia działają wyłącznie w trybie do odczytu (read-only). Dokumentacja API: https://pamcp.pl/connectors"
+            : "Narzędzia przeszukują 55 polskich baz naukowe, publiczne i kulturowe (126 operacji). Prefiks nazwy wskazuje bazę.",
       },
     };
   }

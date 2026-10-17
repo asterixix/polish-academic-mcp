@@ -18,6 +18,7 @@ import {
   parseDocumentBuffer,
   rewriteRepositoryContentUrl,
 } from "../src/content-fetcher.js";
+import { extractDeepenCandidates, formatDeepenFooter } from "../src/router.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -144,6 +145,34 @@ test("extract.ts oczyszcza HTML, usuwa base64 i wspiera stronicowanie offset/max
   assert.match(page1, /offset=1000/);
 });
 
+test("extractDeepenCandidates wyciąga kandydatów get_record z JSON narzędzi Krakowa (slug, dataset_id, id artykułu)", () => {
+  const odJson = JSON.stringify({
+    items: [
+      { slug: "bezrobotni-i-oferty-pracy-w-krakowie-od-2023-roku", id: "bezrobotni-i-oferty-pracy-w-krakowie-od-2023-roku", source: "krakow_od", title: "Bezrobotni i oferty pracy w Krakowie, od 2023 roku" },
+      { slug: "mieszkancy-zameldowani-na-pobyt-staly", id: "mieszkancy-zameldowani-na-pobyt-staly", source: "krakow_od", title: "Mieszkańcy Krakowa zameldowani na pobyt stały" },
+    ],
+  });
+  const od = extractDeepenCandidates("krakow_od", odJson);
+  assert.deepEqual(
+    od.map((c) => `${c.source}:${c.id}`),
+    ["krakow_od:bezrobotni-i-oferty-pracy-w-krakowie-od-2023-roku", "krakow_od:mieszkancy-zameldowani-na-pobyt-staly"],
+  );
+  assert.match(od[0].label ?? "", /Bezrobotni i oferty pracy/);
+
+  const msipJson = JSON.stringify({
+    catalog_items: [{ dataset_id: 1483, id: 1483, source: "krakow_msip", title: "Dzielnice" }],
+    geoportal: { results: [{ metadata_id: "47d6a24d-4e25-58a6-ac1a-5461d3470000", title: "Oferty inwestycyjne" }] },
+  });
+  const msip = extractDeepenCandidates("krakow_msip", msipJson);
+  assert.deepEqual(msip.map((c) => `${c.source}:${c.id}`), ["krakow_msip:1483"]);
+
+  const footer = formatDeepenFooter([...od, ...msip]);
+  assert.match(footer, /REKORDY DO POGŁĘBIENIA/);
+  assert.match(footer, /- krakow_od:bezrobotni-i-oferty-pracy-w-krakowie-od-2023-roku — Bezrobotni/);
+  assert.equal(formatDeepenFooter([]), "");
+  assert.deepEqual(extractDeepenCandidates("krakow_od", "to nie jest JSON"), []);
+});
+
 test("content-fetcher.ts wyodrębnia tekst z PDF (FlateDecode + BT/ET), CSV/TSV z grep oraz wykrywa bitstreamy", () => {
   // 1) Synthetic PDF with FlateDecode content stream
   const contentStream = "BT /F1 12 Tf 72 720 Td [(Polska Akademia Nauk) -200 (Raport Badawczy 2026)] TJ ET";
@@ -200,6 +229,11 @@ test("content-fetcher.ts wyodrębnia tekst z PDF (FlateDecode + BT/ET), CSV/TSV 
   const isapFiles = discoverBitstreamsInText(isapWithoutEli, "isap");
   assert.ok(isapFiles.some((f) => f.url.endsWith("/acts/DU/2026/1289/text.pdf")));
   assert.equal(isapFiles.some((f) => f.url.includes("/1287/")), false);
+
+  const oaiWithSchema = `<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/" xsi:schemaLocation="http://www.openarchives.org/OAI/2.0/ http://www.openarchives.org/OAI/2.0/OAI-PMH.xsd"><self-uri xlink:href="https://bibliotekanauki.pl/articles/1193117.pdf" /></OAI-PMH>`;
+  const oaiFiles = discoverBitstreamsInText(oaiWithSchema, "bn");
+  assert.equal(oaiFiles.some((f) => f.url.includes("OAI-PMH.xsd")), false);
+  assert.ok(oaiFiles.some((f) => f.url === "https://bibliotekanauki.pl/articles/1193117.pdf"));
 
   assert.equal(
     rewriteRepositoryContentUrl(

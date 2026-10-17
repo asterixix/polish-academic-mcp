@@ -10,6 +10,7 @@ import { normalizeQueryForSource } from "./query-normalize.js";
 import { formatAndSliceOutput } from "./extract.js";
 import {
   discoverBitstreamsInText,
+  type DiscoveredFile,
   fetchAndParseUrl,
   grepExtractedText,
 } from "./content-fetcher.js";
@@ -96,6 +97,9 @@ const PRIMARY_SEARCH_TOOL_BY_SOURCE: Partial<Record<SourceId, string>> = {
   lublin_ap: "lublin_ap_search",
   opole_ap: "opole_ap_search",
   piotrkow_ap: "piotrkow_ap_search",
+  krakow_od: "krakow_od_search",
+  krakow_msip: "krakow_msip_search",
+  krakow_strategia: "krakow_strategia_search",
 };
 
 const PRIMARY_GET_TOOL_BY_SOURCE: Partial<Record<SourceId, string>> = {
@@ -138,6 +142,9 @@ const PRIMARY_GET_TOOL_BY_SOURCE: Partial<Record<SourceId, string>> = {
   archiwa_jency: "archiwa_jency_get_record",
   archiwa_dziedzictwo: "archiwa_dziedzictwo_get_record",
   straty: "straty_get_person",
+  krakow_od: "krakow_od_get_dataset",
+  krakow_msip: "krakow_msip_get_dataset",
+  krakow_strategia: "krakow_strategia_get_article",
 };
 
 /**
@@ -150,6 +157,7 @@ const SKIP_CATEGORY_FANOUT_WITHOUT_EXPLICIT: ReadonlySet<SourceId> = new Set<Sou
   "rcin", // OAI-PMH ListRecords without full-text keyword search
   "dokumenty_slaska", // static page/catalog fetch without keyword query
   "plock_genea", // 12.7MB GENEA.xlsx download on first cold call — query explicitly via sources=['plock_genea']
+  "imgw", // synop/hydro zwraca wszystkie stacje pogodowe — zaśmieca fan-out kategorii dane; wołaj sources=['imgw']
 ]);
 
 const QUERY_PARAM_CANDIDATES = [
@@ -361,6 +369,67 @@ function buildGetRecordArgs(
   return raw;
 }
 
+export interface DeepenCandidate {
+  source: string;
+  id: string;
+  label?: string;
+}
+
+/**
+ * Wyciąga z surowej odpowiedzi JSON narzędzia kandydatów do pogłębienia przez
+ * get_record (source + id + etykieta). Działa na nieprzetworzonym tekście,
+ * zanim router utnie odpowiedź do budżetu znaków.
+ */
+export function extractDeepenCandidates(sourceId: string, rawText: string, limit = 8): DeepenCandidate[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return [];
+  }
+  const out: DeepenCandidate[] = [];
+  const seen = new Set<string>();
+  const walk = (node: unknown, depth: number): void => {
+    if (depth > 6 || node == null || out.length >= limit) return;
+    if (Array.isArray(node)) {
+      for (const item of node.slice(0, 40)) walk(item, depth + 1);
+      return;
+    }
+    if (typeof node !== "object") return;
+    const o = node as Record<string, unknown>;
+    let id: string | undefined;
+    if (typeof o.get_record === "string" && o.get_record.includes(":")) {
+      id = o.get_record.slice(o.get_record.indexOf(":") + 1);
+    } else {
+      const rawId = o.id ?? o.slug ?? o.dataset_id ?? o.record_id;
+      if (typeof rawId === "string" || typeof rawId === "number") id = String(rawId);
+    }
+    // Identyfikatory UUID nie są kluczami get_record dla MSIP (dataset_id jest liczbą).
+    if (id && sourceId === "krakow_msip" && !/^\d+$/.test(id)) id = undefined;
+    if (id && id.trim().length > 0) {
+      const key = `${sourceId}:${id}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        const label = o.title ?? o.name ?? o.slug;
+        out.push({ source: sourceId, id, ...(typeof label === "string" ? { label: label.slice(0, 120) } : {}) });
+      }
+    }
+    for (const v of Object.values(o)) {
+      if (typeof v === "object") walk(v, depth + 1);
+    }
+  };
+  walk(parsed, 0);
+  return out;
+}
+
+export function formatDeepenFooter(candidates: DeepenCandidate[]): string {
+  if (candidates.length === 0) return "";
+  return [
+    "=== REKORDY DO POGŁĘBIENIA (wywołaj get_record z parametrami source oraz id, aby pobrać pełne dane liczbowe rekordu) ===",
+    ...candidates.map((c) => `- ${c.source}:${c.id}${c.label ? ` — ${c.label}` : ""}`),
+  ].join("\n");
+}
+
 function describeToolSchema(schema: Record<string, z.ZodTypeAny>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, field] of Object.entries(schema)) {
@@ -399,7 +468,7 @@ export function registerRouterTools(
   server.tool(
     "list_sources",
     [
-      "Wyświetla katalog 52 dostępnych polskich baz naukowych, prawnych, statystycznych, normalizacyjnych i kulturalnych (operacja tylko do odczytu — read-only).",
+      "Wyświetla katalog 55 dostępnych polskich baz naukowych, prawnych, statystycznych, normalizacyjnych i kulturalnych (operacja tylko do odczytu — read-only).",
       "Pozwala sprawdzić identyfikatory źródeł, podział na kategorie tematyczne (nauka, dane, prawo, normy, kultura) oraz szczegółowe operacje i schematy parametrów każdej bazy przed wywołaniem wyszukiwania (search) lub pobrania rekordu (get_record).",
       "Dokumentacja API konektora i docelowych interfejsów API (Target API Docs): https://pamcp.pl/connectors oraz https://pamcp.pl/openapi.json.",
     ].join(" "),
@@ -500,10 +569,10 @@ export function registerRouterTools(
   server.tool(
     "search",
     [
-      "Uniwersalne narzędzie do wyszukiwania informacji w 52 polskich bazach akademickich, rejestrach publicznych, bazach aktów prawnych, orzeczeń, norm oraz archiwach kultury (operacja tylko do odczytu — read-only).",
+      "Uniwersalne narzędzie do wyszukiwania informacji w 55 polskich bazach akademickich, rejestrach publicznych, bazach aktów prawnych, orzeczeń, norm oraz archiwach kultury (operacja tylko do odczytu — read-only).",
       "Obsługuje trzy tryby pracy: (1) równoległe przeszukiwanie całej kategorii tematycznej (parametr category), (2) równoległe przeszukiwanie wskazanych baz (parametr sources) oraz (3) wywołanie konkretnej operacji natywnej (parametr operation) z własnymi parametrami w obiekcie filters.",
       "Automatycznie oczyszcza odpowiedzi HTML i XML z szumu znaczników oraz ogranicza rozmiar zwracanych danych.",
-      "Dokumentacja API konektora i docelowych interfejsów API (Target API Docs): https://pamcp.pl/connectors oraz https://pamcp.pl/openapi.json (API źródłowe m.in.: ISAP ELI API https://api.sejm.gov.pl/eli/openapi/ui, SAOS API https://www.saos.org.pl/help/index.php/dokumentacja-api, GUS BDL API https://bdl.stat.gov.pl/api/v1/, Dane.gov.pl API https://api.dane.gov.pl/doc, Wolne Lektury API https://wolnelektury.pl/api/, Biblioteka Nauki OAI-PMH https://bibliotekanauki.pl/api/oai, RAD-on OpenData https://radon.nauka.gov.pl/opendata/ — pełną specyfikację parametrów każdej operacji zwraca narzędzie list_sources z include_operations=true).",
+      "Dokumentacja API konektora i docelowych interfejsów API (Target API Docs): https://pamcp.pl/connectors oraz https://pamcp.pl/openapi.json (API źródłowe m.in.: ISAP ELI API https://api.sejm.gov.pl/eli/openapi/ui, SAOS API https://www.saos.org.pl/help/index.php/dokumentacja-api, GUS BDL API https://bdl.stat.gov.pl/api/v1/, Dane.gov.pl API https://api.dane.gov.pl/doc, Wolne Lektury API https://wolnelektury.pl/api/, Biblioteka Nauki OAI-PMH https://bibliotekanauki.pl/api/oai, RAD-on OpenData https://radon.nauka.gov.pl/opendata/, Otwarte Dane Krakowa https://otwartedane.um.krakow.pl/zbiory-danych i https://api.um.krakow.pl/devportal, MSIP Kraków ArcGIS REST https://msip3.um.krakow.pl/server/rest/services, Strategia Krakowa https://strategia.krakow.pl/252790,artykul,bank_informacji_o_miescie_i_metropolii.html — pełną specyfikację parametrów każdej operacji zwraca narzędzie list_sources z include_operations=true).",
     ].join(" "),
     {
       query: z
@@ -554,8 +623,8 @@ export function registerRouterTools(
         .int()
         .min(1000)
         .max(100000)
-        .default(16000)
-        .describe("Maksymalna łączna liczba znaków w zwracanej odpowiedzi (1000–100000)."),
+        .default(100000)
+        .describe("Maksymalna łączna liczba znaków w zwracanej odpowiedzi (1000–100000; domyślnie 100000 — pełna jakość wyszukiwania)."),
     },
     {
       title: "Wyszukiwanie w polskich bazach — Polish Academic",
@@ -600,8 +669,9 @@ export function registerRouterTools(
           maxChars: max_chars,
           maxItems: limit_per_source,
         });
+        const footer = res.isError ? "" : formatDeepenFooter(extractDeepenCandidates(target.sourceId, rawText));
         return {
-          content: [{ type: "text" as const, text: formatted }, ...imageBlocks],
+          content: [{ type: "text" as const, text: footer ? `${formatted}\n\n${footer}` : formatted }, ...imageBlocks],
           ...(res.isError ? { isError: true } : {}),
         };
       }
@@ -662,8 +732,9 @@ export function registerRouterTools(
         };
       }
 
+      // Nie ścinaj agresywnie per źródło: minimum 12k, a przy małej liczbie źródeł dziel budżet po równo.
       const perSourceCharBudget = Math.max(
-        1200,
+        12_000,
         Math.floor(max_chars / Math.max(1, targetTools.length)),
       );
 
@@ -685,6 +756,7 @@ export function registerRouterTools(
             operation: tool.name,
             isError: Boolean(result.isError),
             output: compacted,
+            candidates: result.isError ? [] : extractDeepenCandidates(tool.sourceId, rawText),
           };
         }),
       );
@@ -706,10 +778,25 @@ export function registerRouterTools(
         }
       }
 
-      const combined = formatAndSliceOutput(sections.join("\n\n"), {
-        format: "raw",
-        maxChars: max_chars,
-      });
+      const allCandidates: DeepenCandidate[] = [];
+      const candSeen = new Set<string>();
+      for (const item of settled) {
+        if (item.status !== "fulfilled") continue;
+        for (const c of item.value.candidates) {
+          const key = `${c.source}:${c.id}`;
+          if (candSeen.has(key) || allCandidates.length >= 24) continue;
+          candSeen.add(key);
+          allCandidates.push(c);
+        }
+      }
+      const footer = formatDeepenFooter(allCandidates);
+      const combined = formatAndSliceOutput(
+        [footer, ...sections].filter(Boolean).join("\n\n"),
+        {
+          format: "raw",
+          maxChars: max_chars,
+        },
+      );
 
       return {
         content: [{ type: "text", text: combined }],
@@ -727,7 +814,7 @@ export function registerRouterTools(
       "Pobiera pełne metadane, treść dokumentu lub dane badawcze (PDF, HTML, XML/OAI-PMH/EAD, CSV, TSV, XLSX, ZIP, JSON) dla pojedynczego rekordu albo bezpośrednio ze wskazanego adresu URL (operacja tylko do odczytu — read-only).",
       'Przyjmuje identyfikator złożony w formacie "źródło:id" (np. "ruj:207985", "isap:DU/2023/123", "saos:12345", "wolnelektury:lalka", "ppm:1234"), osobne parametry source oraz id albo bezpośredni adres pliku/strony w parametrze url (bądź w polu id zaczynającym się od http/https).',
       "Automatycznie wykrywa powiązane pliki pełnotekstowe (bitstreamy PDF, arkusze CSV/XLSX, manifesty IIIF), wyodrębnia warstwę tekstową z plików PDF (wraz z obsługą OCR/HTR dla skanów) oraz arkuszy XLSX w pamięci i wspiera przeszukiwanie wewnątrz dokumentu (parametr grep) oraz stronicowanie (offset i max_chars).",
-      "Dokumentacja API konektora i docelowych interfejsów API (Target API Docs): https://pamcp.pl/connectors oraz https://pamcp.pl/openapi.json (API źródłowe m.in.: ISAP ELI API https://api.sejm.gov.pl/eli/openapi/ui, SAOS API https://www.saos.org.pl/help/index.php/dokumentacja-api, GUS BDL API https://bdl.stat.gov.pl/api/v1/, Dane.gov.pl API https://api.dane.gov.pl/doc, Wolne Lektury API https://wolnelektury.pl/api/, Biblioteka Nauki OAI-PMH https://bibliotekanauki.pl/api/oai, RAD-on OpenData https://radon.nauka.gov.pl/opendata/ — szczegółowe schematy parametrów każdej operacji zwraca narzędzie list_sources z include_operations=true).",
+      "Dokumentacja API konektora i docelowych interfejsów API (Target API Docs): https://pamcp.pl/connectors oraz https://pamcp.pl/openapi.json (API źródłowe m.in.: ISAP ELI API https://api.sejm.gov.pl/eli/openapi/ui, SAOS API https://www.saos.org.pl/help/index.php/dokumentacja-api, GUS BDL API https://bdl.stat.gov.pl/api/v1/, Dane.gov.pl API https://api.dane.gov.pl/doc, Wolne Lektury API https://wolnelektury.pl/api/, Biblioteka Nauki OAI-PMH https://bibliotekanauki.pl/api/oai, RAD-on OpenData https://radon.nauka.gov.pl/opendata/, Otwarte Dane Krakowa https://otwartedane.um.krakow.pl/zbiory-danych i https://api.um.krakow.pl/devportal, MSIP Kraków ArcGIS REST https://msip3.um.krakow.pl/server/rest/services, Strategia Krakowa https://strategia.krakow.pl/252790,artykul,bank_informacji_o_miescie_i_metropolii.html — szczegółowe schematy parametrów każdej operacji zwraca narzędzie list_sources z include_operations=true).",
     ].join(" "),
     {
       id: z
@@ -792,8 +879,8 @@ export function registerRouterTools(
         .int()
         .min(1000)
         .max(100000)
-        .default(20000)
-        .describe("Maksymalna liczba znaków zwracana w jednym wywołaniu (1000–100000)."),
+        .default(80000)
+        .describe("Maksymalna liczba znaków zwracana w jednym wywołaniu (1000–100000; domyślnie 80000)."),
       format: z
         .enum(["concise", "detailed", "raw"])
         .default("detailed")
@@ -962,11 +1049,17 @@ export function registerRouterTools(
       }
 
       if (include_fulltext && discoveredFiles.length > 0) {
-        // Prefer PDF, CSV, TSV, XLSX, TXT, HTML over generic links
-        const preferred =
-          discoveredFiles.find((f) =>
-            ["pdf", "csv", "tsv", "xlsx", "txt", "html", "xml"].includes(f.type),
-          ) ?? discoveredFiles[0];
+        // Prefer rich content formats (PDF, EPUB, CSV, TSV, XLSX, TXT) over XML/HTML
+        const PRIORITY = ["pdf", "epub", "csv", "tsv", "xlsx", "txt", "html", "xml"];
+        let preferred: DiscoveredFile | undefined;
+        for (const p of PRIORITY) {
+          const match = discoveredFiles.find((f) => f.type === p);
+          if (match) {
+            preferred = match;
+            break;
+          }
+        }
+        if (!preferred) preferred = discoveredFiles[0];
         try {
           const fulltextBudget = Math.max(2000, max_chars - sections.join("\n").length);
           const parsedDoc = await fetchAndParseUrl(preferred.url, {

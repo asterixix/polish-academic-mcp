@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/polish-academic-mcp)](https://www.npmjs.com/package/polish-academic-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/polish-academic-mcp)](https://www.npmjs.com/package/polish-academic-mcp)
 
-Serwer MCP, dzięki któremu asystent AI (Claude, Copilot, Cursor, Gemini, model lokalny w LM Studio i inne) przeszukuje **polskie bazy naukowe, publiczne i kulturowe**: Bibliotekę Nauki, repozytoria uczelni, GUS, ISAP, orzeczenia sądów, Wolne Lektury, archiwa filmowe i fotograficzne. 85 narzędzi, 33 źródła, bez kont i kluczy API (poza opcjonalnym PBN).
+Serwer MCP, dzięki któremu asystent AI (Claude, Copilot, Cursor, Gemini, model lokalny w LM Studio i inne) przeszukuje **polskie bazy naukowe, publiczne i kulturowe**: Bibliotekę Nauki, repozytoria uczelni, GUS, ISAP, orzeczenia sądów, Wolne Lektury, archiwa filmowe i fotograficzne. 126 narzędzi, 55 źródeł, bez kont i kluczy API (poza opcjonalnym PBN).
 
 Serwer działa **na Twoim komputerze**: aplikacja AI uruchamia go sama w tle, a serwer łączy się bezpośrednio z bazami, bez pośredniczących usług.
 
@@ -43,7 +43,7 @@ Jeśli masz już Node.js:
 [![Zainstaluj w VS Code](https://img.shields.io/badge/VS_Code-Zainstaluj-0098FF?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=polish-academic&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22polish-academic-mcp%22%5D%7D)
 [![Zainstaluj w VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Zainstaluj-24bfa5?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=polish-academic&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22polish-academic-mcp%22%5D%7D&quality=insiders)
 
-Przyciski dodają wszystkie 85 narzędzi. Cursor pokazuje modelowi najwyżej ok. 40 narzędzi, więc tam lepiej [wybrać jedną lub dwie grupy baz](#wybór-baz).
+Przyciski dodają wszystkie 126 narzędzi. Cursor pokazuje modelowi najwyżej ok. 40 narzędzi, więc tam lepiej [wybrać jedną lub dwie grupy baz](#wybór-baz).
 
 ### Quick start (English)
 
@@ -100,12 +100,12 @@ Kreator zachowuje inne serwery i ustawienia w plikach (także Twoje zmienne we w
 
 ## Wybór baz
 
-Opisy wszystkich 85 narzędzi zajmują ok. 26 tys. tokenów kontekstu przy każdym zapytaniu. Dla Claude czy GPT to nie problem, ale małe modele lokalne gubią się przy tylu narzędziach, a część aplikacji ma limity (Cursor ok. 40, Windsurf 100, VS Code 128 narzędzi łącznie ze wszystkich serwerów). Włącz tylko to, czego potrzebujesz:
+Opisy wszystkich 126 narzędzi zajmują ok. 26 tys. tokenów kontekstu przy każdym zapytaniu. Dla Claude czy GPT to nie problem, ale małe modele lokalne gubią się przy tylu narzędziach, a część aplikacji ma limity (Cursor ok. 40, Windsurf 100, VS Code 128 narzędzi łącznie ze wszystkich serwerów). Włącz tylko to, czego potrzebujesz:
 
 | Grupa     | Zawartość                                                                                                                                    | Narzędzia |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | `nauka`   | Biblioteka Nauki, RCIN, repozytoria UJ, AGH, UAM, UAFM, ICM, RODBuK, RePOD, POL-on, PBN, Ludzie Nauki, BazTOL, katalog ŚUM                   | 30        |
-| `dane`    | Bank Danych Lokalnych GUS, dane.gov.pl, IMGW                                                                                                 | 12        |
+| `dane`    | Bank Danych Lokalnych GUS, dane.gov.pl, IMGW, Otwarte Dane Miasta Krakowa, MSIP Kraków, Strategia Krakowa — Bank Informacji o Mieście i Metropolii | 22        |
 | `prawo`   | ISAP (akty prawne), SAOS (orzeczenia), Biblioteka Sejmowa                                                                                    | 11        |
 | `normy`   | PKN, katalog norm WIEDZA                                                                                                                     | 3         |
 | `kultura` | Wolne Lektury, Ninateka, Gapla, Fototeka, FilmPolski, Fototeka Śląska, Repozytorium FN, NAC, PAUart, Baza Legalnych Źródeł, Dokumenty Śląska | 29        |
@@ -166,6 +166,16 @@ albo argumentem: `"args": ["-y", "polish-academic-mcp", "--sources=nauka,prawo"]
 | `imgw_hydro`                        | IMGW-PIB                                                                                               | Aktualne odczyty z wodowskazów i stacji hydrologicznych                                                                                   |
 | `imgw_meteo`                        | IMGW-PIB                                                                                               | Aktualne odczyty ze stacji meteorologicznych                                                                                              |
 | `imgw_warnings`                     | IMGW-PIB                                                                                               | Aktywne ostrzeżenia meteorologiczne i hydrologiczne                                                                                       |
+| `krakow_od_search`                  | [Otwarte Dane Miasta Krakowa](https://otwartedane.um.krakow.pl/zbiory-danych) | Wyszukiwanie we wszystkich 45 zbiorach UMK (12 kategorii) — wyszukiwarka portalu i pełny katalog |
+| `krakow_od_get_dataset`             | Otwarte Dane Miasta Krakowa                                                                                       | Karta zbioru: metadane, tabele REST API api.um.krakow.pl, Swagger, przykładowe wiersze, linki ArcGIS Hub |
+| `krakow_od_fetch_api`               | Otwarte Dane Miasta Krakowa (WSO2)                                                                                | Dane JSON {value:[...]} bezpośrednio z 42 API OD-* na api.um.krakow.pl (katalog devportal v3) |
+| `krakow_msip_search`                | [MSIP Kraków](https://msip.krakow.pl/)                                                                            | Katalog danych i usług (179 zbiorów) oraz Geoportal metadanych (863 rekordy, JSON/XML) |
+| `krakow_msip_get_dataset`           | MSIP Kraków                                                                                                       | Karta zbioru przestrzennego: pliki SHP/DXF/JSON ZIP, usługi WMS/WFS, metadane ISO 19115 |
+| `krakow_msip_list_services`         | MSIP Kraków (ArcGIS REST)                                                                                         | Foldery i usługi MapServer/FeatureServer: msip3.um.krakow.pl (12.1) i msip.um.krakow.pl (10.81) |
+| `krakow_msip_query_layer`           | MSIP Kraków (ArcGIS REST)                                                                                         | Zapytanie atrybutowe query do warstwy MapServer (EPSG:2178), np. dzielnice, demografia, transport ZTP |
+| `krakow_strategia_search`           | [Strategia Krakowa](https://strategia.krakow.pl/252790,artykul,bank_informacji_o_miescie_i_metropolii.html)        | Wyszukiwarka portalu Rozwój Krakowa i indeks Banku Informacji o Mieście i Metropolii |
+| `krakow_strategia_get_article`      | Strategia Krakowa — Bank Informacji                                                                               | Treść artykułu/raportu, załączniki PDF/XLS (plikimpi.krakow.pl), wersja PDF (getPdf) |
+| `krakow_strategia_list_bank`        | Strategia Krakowa — Bank Informacji                                                                               | Spis raportów o stanie Gminy/Miasta, Kraków w liczbach, Barometr, prognozy demograficzne, 16 dziedzin zarządzania |
 | `pkn_search`                        | [PKN — Polski Komitet Normalizacyjny](https://www.pkn.pl)                                              | Wyszukiwarka treści strony www.pkn.pl (Drupal / Solr, HTML)                                                                               |
 | `wiedza_search_norms`               | [WIEDZA — PKN](https://wiedza.pkn.pl)                                                                  | Wyszukiwarka norm (Liferay; sesja + POST, HTML)                                                                                           |
 | `wiedza_get_standard`               | WIEDZA                                                                                                 | Karta pojedynczej normy po numerze katalogowym (HTML)                                                                                     |
@@ -217,6 +227,15 @@ albo argumentem: `"args": ["-y", "polish-academic-mcp", "--sources=nauka,prawo"]
 | `fn_repo_browse_kind`               | Repozytorium FN                                                                                        | Przegląd: fabularne / dokumentalne / animacje / magazyn (HTML)                                                                            |
 | `dokumenty_slaska_get_page`         | [Dokumenty Śląska](https://www.dokumentyslaska.pl/)                                                    | Pobranie pojedynczej strony statycznej po ścieżce względnej (`indeks …`, `dokument …`, podkatalogi — HTML)                                |
 | `dokumenty_slaska_medieval_catalog` | Dokumenty Śląska                                                                                       | Lista JSON ścieżek do głównej serii dokumentów średniowiecznych (okresy do 1333 r.) — pomoc nawigacyjna                                   |
+
+
+### Kraków — Otwarte Dane, MSIP i Bank Informacji o Mieście i Metropolii
+
+Trzy źródła grupy `dane` pokrywają **wszystkie publicznie dostępne dane Miasta Krakowa**:
+
+- **[Otwarte Dane Miasta Krakowa](https://otwartedane.um.krakow.pl/zbiory-danych)** (`krakow_od_*`): 45 zbiorów w 12 kategoriach (m.in. bezrobocie i oferty pracy GUP, cudzoziemcy i zameldowani w 18 dzielnicach, statystyki demograficzne od 1995 r., żłobki/przedszkola/szkoły, parki miejskie i kieszonkowe, zarejestrowane pojazdy, ruch turystyczny od 2015 r., Komunikacja Miejska KMK, działalność Biblioteki Kraków, muzeów, teatrów i ośrodków kultury, biegi miejskie). Każdy zbiór z tabelami danych udostępnia REST API na **api.um.krakow.pl** (WSO2 API Manager, format OData JSON `{value:[...]}`, eksport JSON/CSV/XLSX, dokumentacja Swagger per tabela); katalog wszystkich **42 API OD-***: `https://api.um.krakow.pl/api/am/devportal/v3/apis?limit=100`, portal deweloperski: https://api.um.krakow.pl/devportal. Zbiory bez tabel API (np. KMK) linkują warstwy ArcGIS Hub ZTP.
+- **[MSIP — Miejski System Informacji Przestrzennej](https://msip.krakow.pl/)** (`krakow_msip_*`): Katalog danych i usług ze **179 zbiorami** przestrzennymi (budynki/działki ewidencyjne, adresy i ulice EMUiA, dzielnice, MPZP i decyzje WZ, mapy hałasu, ortofotomapy, zameldowania) z plikami SHP/DXF/JSON (ZIP), usługami **WMS/WFS** i metadanymi ISO 19115; katalog metadanych **Geoportal** (863 rekordy, `https://msip.um.krakow.pl/geoportal/rest/metadata/search`); usługi **ArcGIS REST** na dwóch serwerach: `https://msip3.um.krakow.pl/server/rest/services` (ArcGIS Server 12.1, 36 folderów: Demografia, Geodezja, Planowanie, Pobieranie, Transport, Zdrowie, Zabytki…) oraz `https://msip.um.krakow.pl/arcgis/rest/services` (10.81: Obserwatorium, Metropolia Krakowska, Hosted), z zapytaniami `query` do warstw (EPSG:2178; folder `Pobieranie`: Adresy, Budynki, Decyzje_Pnb, Decyzje_Wz, Dzialki, Dzielnice, Ulice, Wybory).
+- **[Strategia Krakowa — Bank Informacji o Mieście i Metropolii](https://strategia.krakow.pl/252790,artykul,bank_informacji_o_miescie_i_metropolii.html)** (`krakow_strategia_*`): Raport o stanie Gminy (od 2018 r., załączniki PDF na plikimpi.krakow.pl), Raport o stanie Miasta, Kraków w liczbach / Krakow in numbers, Biuletyn Statystyczny (BIP), prognozy demograficzne dla Krakowa i MOF do 2050 roku, statystyka eksperymentalna (dojazdy do pracy, sytuacja demograficzna/dochodowa Krakowa, KOM i OSI), badania społeczne (Barometr Krakowski od 2015 r., Badanie Jakości Życia i Jakości Usług Publicznych) oraz 16 dziedzin zarządzania; wyszukiwarka portalu Rozwój Krakowa (POST, `sp_port_id=128`) i wersja PDF każdego artykułu (`getPdf/?dok_id=`).
 
 ### Biblioteka Sejmowa — katalog OPAC
 

@@ -168,10 +168,47 @@ export async function adminHealth() {
     defaults: Record<string, number>;
     bindings: Record<string, { ok: boolean; detail: string; latency_ms?: number }>;
     counts: Record<string, number>;
-    eden_ai: { configured: boolean; note: string; usage: unknown; error: string | null };
+    eden_ai: {
+      configured: boolean;
+      api_key_configured?: boolean;
+      note: string;
+      usage: unknown;
+      error: string | null;
+      telemetry?: {
+        eden_ok_count: number;
+        eden_fallback_count: number;
+        eden_error_events: number;
+        eden_ok_events: number;
+        worker_subrequest_errors: number;
+        last_error: { message: string; created_at: string; detail_json: string | null } | null;
+        last_ok: { message: string; created_at: string; detail_json: string | null } | null;
+        last_search_at: string | null;
+      } | null;
+    };
     cloudflare: { configured: boolean; note: string; metrics: unknown; error: string | null };
     checked_at: string;
   }>("/api/admin/health");
+}
+
+export async function adminTestEdenAi() {
+  return adminFetch<{
+    ok: boolean;
+    configured: boolean;
+    requested_model: string;
+    normalized_model: string;
+    fallbacks: string[];
+    resolved_model?: string;
+    http_status?: number;
+    duration_ms: number;
+    cost_usd?: number | null;
+    response_preview?: string;
+    edenai_metadata?: Record<string, unknown> | null;
+    error?: string;
+    error_body?: unknown;
+  }>("/api/admin/eden-test", {
+    method: "POST",
+    body: "{}",
+  });
 }
 
 export async function adminListUsers() {
@@ -295,6 +332,20 @@ export type AuditStep = {
   data?: Record<string, unknown>;
 };
 
+export type LlmAttemptRecord = {
+  provider: string;
+  requested_model: string;
+  resolved_model: string;
+  fallbacks?: string[];
+  status: "ok" | "error";
+  http_status?: number;
+  duration_ms: number;
+  cost_usd?: number | null;
+  edenai_metadata?: Record<string, unknown> | null;
+  error?: string;
+  error_body?: unknown;
+};
+
 export type LlmCallEvent = {
   id: string;
   phase: string;
@@ -310,6 +361,9 @@ export type LlmCallEvent = {
   usage: TokenUsage;
   duration_ms: number;
   stop_reason?: string;
+  cost_usd?: number | null;
+  edenai_metadata?: Record<string, unknown> | null;
+  attempts?: LlmAttemptRecord[];
 };
 
 export type ToolResultEvent = {

@@ -863,6 +863,17 @@ export function discoverBitstreamsInText(rawText: string, sourceHint?: string): 
   while ((uMatch = urlRegex.exec(rawText)) !== null) {
     const url = uMatch[0].replace(/[.,;]+$/, "");
     const lower = url.toLowerCase();
+    // Skip XML schema definitions and namespaces (W3C, OAI-PMH XSD, JATS DTD)
+    if (
+      lower.endsWith(".xsd") ||
+      lower.endsWith(".dtd") ||
+      lower.includes("/xsd/") ||
+      lower.includes("openarchives.org/oai/") ||
+      /www\.(w3|openarchives)\.org/i.test(lower) ||
+      lower.includes("jats.nlm.nih.gov")
+    ) {
+      continue;
+    }
     if (lower.endsWith(".pdf") || (lower.includes("/bitstreams/") && lower.endsWith("/content"))) {
       addFile("pdf", "Dokument PDF / Bitstream", url);
     } else if (/handler=pdf|\/applet\/publication\//i.test(lower)) {
@@ -873,7 +884,7 @@ export function discoverBitstreamsInText(rawText: string, sourceHint?: string): 
       addFile("xlsx", "Arkusz kalkulacyjny Excel (XLSX/XLS)", url);
     } else if (lower.endsWith(".tsv") || lower.endsWith(".tab")) {
       addFile("tsv", "Dane tabelaryczne TSV/TAB", url);
-    } else if (lower.endsWith(".xml") || lower.includes("oai-pmh") || lower.includes(";a=1.xml")) {
+    } else if (lower.endsWith(".xml") || lower.includes(";a=1.xml")) {
       addFile("xml", "Dane strukturalne XML", url);
     } else if (lower.endsWith(".epub") || lower.endsWith(".txt")) {
       addFile(lower.endsWith(".epub") ? "epub" : "txt", "Pełny tekst utworu", url);

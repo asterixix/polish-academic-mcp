@@ -225,13 +225,32 @@ export function termsPageHtml(): string {
   });
 }
 
+export function docsPageHtml(origin: string): string {
+  return renderStaticPage({
+    title: "Dokumentacja serwera MCP — Polish Academic",
+    heading: "Dokumentacja serwera MCP — Polish Academic",
+    contentHtml: `
+      <p>Pełna, interaktywna dokumentacja serwera MCP Polish Academic jest dostępna w aplikacji webowej pod adresem <a href="${escapeHtml(origin)}/docs">${escapeHtml(origin)}/docs</a> (także <a href="${escapeHtml(origin)}/connectors/docs">${escapeHtml(origin)}/connectors/docs</a> z poziomu strony konektorów <a href="${escapeHtml(origin)}/connectors">${escapeHtml(origin)}/connectors</a>).</p>
+      <h2>Zakres dokumentacji</h2>
+      <ul>
+        <li>Architektura: zdalny konektor chmurowy <code>${escapeHtml(origin)}/mcp</code> (OAuth 2.1, tryb Meta-Router: 3 narzędzia) oraz lokalny serwer stdio <code>npx -y polish-academic-mcp</code> (tryb granularny).</li>
+        <li>Instrukcje podłączenia Claude, ChatGPT (Connectors, Deep Research, Custom GPT Actions) i Perplexity oraz własne klienty HTTP/SSE.</li>
+        <li>Instalacja lokalna CLI (<code>setup</code>, <code>uninstall</code>, <code>doctor</code>) i konfiguracja aplikacji AI ze snippetami dla Windows oraz macOS/Linux.</li>
+        <li>Specyfikacja narzędzi <code>list_sources</code>, <code>search</code>, <code>get_record</code>, ekstrakcja pełnego tekstu (PDF, OCR/HTR, XLSX, CSV/TSV, XML/OAI-PMH, HTML) i szablon zasobu <code>polish-academic://record/{source}/{id}</code>.</li>
+        <li>Interaktywny katalog wszystkich baz danych w 5 kategoriach (nauka, dane, prawo, normy, kultura) oraz pełne schematy parametrów operacji natywnych.</li>
+        <li>Zmienne środowiskowe i klucze API (PBN, BDL), endpointy HTTP/OAuth/discovery (<code>/openapi.json</code>, <code>/server.json</code>, <code>/.well-known/*</code>), diagnostyka i informacje dla programistów.</li>
+      </ul>
+      <p><a href="${escapeHtml(origin)}/docs">Otwórz pełną dokumentację →</a> · <a href="${escapeHtml(origin)}/connectors">Konektory MCP →</a> · <a href="https://github.com/asterixix/polish-academic-mcp">Kod źródłowy (GitHub)</a></p>`,
+  });
+}
+
 export function connectorsPageHtml(origin: string): string {
   return renderStaticPage({
     title: "Konektory i dokumentacja API — Polish Academic",
     heading: "Oficjalny konektor i dokumentacja Target API — Polish Academic",
     contentHtml: `
       <p>Jedno ujednolicone środowisko MCP: <code>${escapeHtml(origin)}/mcp</code> (kanonicznie: <code>https://pamcp.pl/mcp</code>)</p>
-      <p>Narzędzia MCP (tylko do odczytu — <code>readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true</code>): <code>list_sources</code>, <code>search</code>, <code>get_record</code> (52 polskie bazy, 116 operacji natywnych).</p>
+      <p>Narzędzia MCP (tylko do odczytu — <code>readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true</code>): <code>list_sources</code>, <code>search</code>, <code>get_record</code> — pełny katalog baz i operacji natywnych: <a href="${escapeHtml(origin)}/docs">${escapeHtml(origin)}/docs</a>.</p>
       <p>Kod źródłowy (GitHub): <a href="https://github.com/asterixix/polish-academic-mcp">https://github.com/asterixix/polish-academic-mcp</a></p>
       <p>OAuth discovery: <code>${escapeHtml(origin)}/.well-known/oauth-authorization-server</code> · OpenAPI: <code>${escapeHtml(origin)}/openapi.json</code> · MCP Card: <code>${escapeHtml(origin)}/.well-known/mcp.json</code></p>
       <h2>Claude (claude.ai / Desktop)</h2>
@@ -251,7 +270,7 @@ export function connectorsPageHtml(origin: string): string {
         <li>Dodaj Remote MCP / Connector z URL <code>${escapeHtml(origin)}/mcp</code></li>
         <li>Autoryzacja OAuth 2.1 + PKCE (S256)</li>
       </ol>
-      <p><a href="/account">Panel konta i limity →</a></p>`,
+      <p><a href="/account">Panel konta i limity →</a> · <a href="/docs">Pełna dokumentacja MCP →</a> · <a href="/connectors/docs">Dokumentacja z poziomu konektorów →</a></p>`,
   });
 }
 

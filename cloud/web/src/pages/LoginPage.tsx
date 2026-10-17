@@ -60,7 +60,7 @@ export function LoginPage() {
       animate={{ opacity: 1, y: 0 }}
       className="mx-auto max-w-md"
     >
-      <div className="rounded-3xl border border-border-primary bg-white p-6 shadow-soft md:p-8">
+      <div className="rounded-3xl border border-border-primary bg-bg-secondary p-6 shadow-soft md:p-8">
         <img src="/logo.jpg" alt="" className="mx-auto mb-4 size-16 rounded-2xl" />
         <h1 className="text-center font-display text-2xl font-semibold text-brand-700">
           Wejdź do konta

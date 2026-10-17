@@ -44,7 +44,7 @@ export function ChangelogPage() {
         nowym buildzie widać ostatni commit i historię zmian serwera MCP.
       </p>
 
-      <div className="mt-6 grid gap-3 rounded-2xl border border-border-primary bg-white p-5 shadow-soft sm:grid-cols-2">
+      <div className="mt-6 grid gap-3 rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft sm:grid-cols-2">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-fg-tertiary">Wersja npm</p>
           <p className="mt-1 font-mono text-sm text-fg-primary">v{data.package_version}</p>
@@ -88,7 +88,7 @@ export function ChangelogPage() {
         </Link>
       </div>
 
-      <ol className="mt-8 divide-y divide-border-primary rounded-2xl border border-border-primary bg-white">
+      <ol className="mt-8 divide-y divide-border-primary rounded-2xl border border-border-primary bg-bg-secondary">
         {data.commits.map((c) => (
           <li key={c.sha_full || c.sha} className="px-4 py-3.5">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

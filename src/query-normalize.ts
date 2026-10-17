@@ -32,14 +32,14 @@ const SOURCE_META =
 
 /** Conversational fluff and task verbs (PL + EN). */
 const CONVERSATIONAL =
-  /\b(co\s+mówi[ąa]?|jakie\s+są|jaki\s+jest|czy\s+(?:istniej|można|są)|powiedz(?:\s+mi)?|znajd[źz]|wyszukaj|szukam|chcę\s+wiedzieć|interesuje\s+mnie|proszę\s+o|daj\s+mi|pokaż|opisz|wyjaśnij|podsumuj|przeanalizuj|what\s+(?:do|are|is)|tell\s+me|find|search\s+for|please)\b/gi;
+  /(?<=[^\p{L}\p{N}]|^)(co\s+mówi[ąa]?|jakie\s+są|jaki\s+jest|czy\s+(?:istniej|można|są)|powiedz(?:\s+mi)?|znajd[źz]|wyszukaj|szukam|chcę\s+wiedzieć|interesuje\s+mnie|prosz[ęe](?:\s+o)?|daj\s+mi|pokaż|opisz|wyjaśnij|podsumuj|przeanalizuj|sprawd[źz]|sprawdz|zweryfikuj|ustal|porównaj|what\s+(?:do|are|is)|tell\s+me|find|search\s+for|check|please)(?=[^\p{L}\p{N}]|$)/giu;
 
 /** Generic result-type / meta nouns that rarely help APIs. */
 const META_NOUNS =
   /\b(orzeczeni\w*|wyrok\w*|ustaw\w*|rozporządzeni\w*|publikacj\w*|artykuł\w*|rekord\w*|wynik\w*|danych|dane|informacj\w*|baza|bazy|bazie|api|search|judgment\w*|ruling\w*|dataset\w*|źródł\w*|źródeł|dokument\w*|plik\w*|pdf)\b/gi;
 
 /** Prepositions / fillers around years. */
-const YEAR_FILLERS = /\b(po|od|do|sprzed|przed|after|since|from|until|before|year|rok(?:u|iem)?|lata(?:ch)?)\b/gi;
+const YEAR_FILLERS = /\b(po|od|do|sprzed|przed|na(?:\s+rok)?|w\s+roku|after|since|from|until|before|year|rok(?:u|iem)?|lata(?:ch)?)\b/gi;
 
 const PLURAL_FIXES: Array<[RegExp, string]> = [
   [/\bkredyty\b/gi, "kredyt"],
@@ -51,6 +51,14 @@ const PLURAL_FIXES: Array<[RegExp, string]> = [
   [/\bnormy\b/gi, "norma"],
   [/\bfilmy\b/gi, "film"],
   [/\bksiążki\b/gi, "książka"],
+  [/\bcudzoziemc(?:ach|ami|om|ów|a)\b/gi, "cudzoziemcy"],
+  [/\bkrakowie\b/gi, "kraków"],
+  [/\bwarszawie\b/gi, "warszawa"],
+  [/\bwrocławiu\b/gi, "wrocław"],
+  [/\bpoznaniu\b/gi, "poznań"],
+  [/\bgdańsku\b/gi, "gdańsk"],
+  [/\bpolsce\b/gi, "polska"],
+  [/\bmałopolsc(?:e|ie)|małopolskim\b/gi, "małopolska"],
 ];
 
 function collapseSpaces(s: string): string {
@@ -71,13 +79,14 @@ function applyPluralFixes(text: string): string {
 
 function detectHints(original: string): QueryHints {
   const q = original.toLowerCase();
+  const hasStats = /\b(gus|bdl|statyst|bezroboc|inflac|ludność|demograf|dane\.gov|\bdane\b|cudzoziem|obcokrajow|migra|mieszka[ńn]c|meldun)/i.test(q);
   return {
     judgments: /\b(saos|orzeczen|wyrok|sąd|frankow|kredyt\s+walut)/i.test(q),
     legislation: /\b(isap|ustaw|rozporząd|kodeks|eli\b|dziennik\s+ustaw)/i.test(q),
-    stats: /\b(gus|bdl|statyst|bezroboc|inflac|ludność|demograf|dane\.gov)/i.test(q),
+    stats: hasStats,
     publications:
       /\b(publikac|artykuł|doi|orcid|repozytor|nauka|bibliograf|badaw)/i.test(q) ||
-      (!/\b(saos|isap|gus|bdl|norma|film|książ)/i.test(q) && q.length > 0),
+      (!/\b(saos|isap|gus|bdl|norma|film|książ|dane|statyst|demograf|bezroboc|ludno)/i.test(q) && q.length > 0),
     culture: /\b(film|książ|lektur|fotografi|plakat|archiw|muzeum|sztuk|ninateka|teatr)/i.test(q),
     norms: /\b(norma|pkn|iso\b|pn-|standard)/i.test(q),
   };
@@ -152,6 +161,14 @@ export function normalizeResearchQuery(input: string): NormalizedQuery {
   // Without soft adjectives if any remain
   const noSoft = tokens.filter((t) => !/^(dotycząc\w*|w\s+sprawie|o)$/i.test(t)).join(" ");
   if (noSoft && noSoft !== core) variants.push(noSoft);
+  // Stats: BDL matches short indicator labels (AND on all words) — add bare stems.
+  if (hints.stats) {
+    if (/\bbezroboc/i.test(original)) {
+      variants.push("bezrobocie", "stopa bezrobocia", "stopa bezrobocia rejestrowanego", "bezrobotni");
+    }
+    if (/\binflac/i.test(original)) variants.push("inflacja");
+    if (/\bludno[sś]ć|demograf/i.test(original)) variants.push("ludność", "demografia");
+  }
 
   const uniqueVariants = [...new Set(variants.map(collapseSpaces).filter((v) => v && v !== core))];
 
@@ -187,6 +204,13 @@ export function dateFiltersForSchema(
 }
 
 /**
+ * Geo / admin words poison BDL variable-name search (AND match on N1…N5).
+ * "bezrobocie województwie małopolskim" → 0 hits; "bezrobocie" → trafienia + dane wojewódzkie.
+ */
+const BDL_GEO_ADMIN =
+  /\b(województw\w*|powiat\w*|gmin\w*|miast\w*|miasto|metropoli\w*|region\w*|według|wg|poziomie?|terytorialn\w*|w\s+podziale|na\s+poziomie|dla\s+obszaru|małopolsk\w*|mazowieck\w*|śląsk\w*|slask\w*|wielkopolsk\w*|dolnośląsk\w*|dolnoslask\w*|pomorsk\w*|łódzk\w*|lodzk\w*|lubelsk\w*|podkarpack\w*|świętokrzysk\w*|swietokrzysk\w*|podlask\w*|warmińsk\w*|warminsk\w*|mazursk\w*|kujawsk\w*|zachodniopomorsk\w*|opolsk\w*|lubusk\w*|kraków|krakow|warszawa|wrocław|wroclaw|poznań|poznan|gdańsk|gdansk|łódź|lodz|szczecin|lublin|bydgoszcz|białystok|bialystok|katowice|gdynia)\b/gi;
+
+/**
  * Rewrite a free-text query field for a given source tool.
  * Returns the cleaned string (and optional date filters to merge).
  */
@@ -200,6 +224,13 @@ export function normalizeQueryForSource(
   // SAOS-specific light lemma already in plural fixes
   if (sourceId === "saos" && /\bkredyt\b/i.test(q) && /\bfrank/i.test(query)) {
     if (!/\bfrankowy\b/i.test(q)) q = collapseSpaces(`${q} frankowy`);
+  }
+  if (sourceId === "bdl" || sourceId === "imgw") {
+    // BDL: zostaw wyłącznie nazwę wskaźnika. IMGW: synop nie przyjmuje fraz geograficznych jako query.
+    q = collapseSpaces(q.replace(BDL_GEO_ADMIN, " "));
+    if (!q && /\bbezroboc/i.test(query)) q = "bezrobocie";
+    if (!q && /\binflac/i.test(query)) q = "inflacja";
+    if (!q) q = norm.variants[0] || norm.core || query.trim();
   }
   return { query: q || query.trim(), filters: dateFiltersForSchema(schemaKeys, norm) };
 }

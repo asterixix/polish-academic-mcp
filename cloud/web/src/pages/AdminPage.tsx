@@ -7,6 +7,7 @@ import {
   adminListUsers,
   adminPurgeCache,
   adminSaveSettings,
+  adminTestEdenAi,
   adminUpdateQuota,
   fetchMe,
   type PublicUser,
@@ -34,7 +35,7 @@ export function AdminPage() {
 
   const [synthesisExtra, setSynthesisExtra] = useState("");
   const [routerExtra, setRouterExtra] = useState("");
-  const [deepenLimit, setDeepenLimit] = useState("10");
+  const [deepenLimit, setDeepenLimit] = useState("4");
   const [maintenance, setMaintenance] = useState("");
 
   const load = useCallback(async () => {
@@ -50,7 +51,7 @@ export function AdminPage() {
         setSettings(s);
         setSynthesisExtra(String(s.settings.synthesis_extra?.value ?? ""));
         setRouterExtra(String(s.settings.router_extra?.value ?? ""));
-        setDeepenLimit(String(s.settings.deepen_record_limit?.value ?? 10));
+        setDeepenLimit(String(s.settings.deepen_record_limit?.value ?? 4));
         setMaintenance(String(s.settings.maintenance_message?.value ?? ""));
       }
       if (tab === "events") setEvents(await adminListEvents());
@@ -66,7 +67,7 @@ export function AdminPage() {
 
   if (!user) {
     return (
-      <div className="rounded-2xl border border-border-primary bg-white p-8 text-center shadow-soft">
+      <div className="rounded-2xl border border-border-primary bg-bg-secondary p-8 text-center shadow-soft">
         <h1 className="font-display text-2xl font-semibold text-brand-700">Panel admina</h1>
         <p className="mt-2 text-fg-secondary">Zaloguj się kontem z uprawnieniami administratora.</p>
         <div className="mt-5">
@@ -80,7 +81,7 @@ export function AdminPage() {
 
   if (!user.is_admin) {
     return (
-      <div className="rounded-2xl border border-border-primary bg-white p-8 text-center shadow-soft">
+      <div className="rounded-2xl border border-border-primary bg-bg-secondary p-8 text-center shadow-soft">
         <h1 className="font-display text-2xl font-semibold text-brand-700">Brak dostępu</h1>
         <p className="mt-2 text-fg-secondary">
           Ten panel jest dostępny tylko dla określonych UID. Twój UID:{" "}
@@ -126,7 +127,7 @@ export function AdminPage() {
             className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
               tab === t.id
                 ? "border-brand-700 bg-brand-700 text-white"
-                : "border-border-primary bg-white text-fg-secondary hover:border-brand-300"
+                : "border-border-primary bg-bg-secondary text-fg-secondary hover:border-brand-300"
             }`}
           >
             {t.label}
@@ -139,7 +140,7 @@ export function AdminPage() {
 
       {tab === "health" && health && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <section className="rounded-2xl border border-border-primary bg-white p-5 shadow-soft">
+          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft">
             <h2 className="font-semibold text-fg-primary">Bindingi i sekrety</h2>
             <ul className="mt-3 space-y-2 text-sm">
               {Object.entries(health.bindings).map(([k, v]) => (
@@ -162,9 +163,86 @@ export function AdminPage() {
             </p>
           </section>
 
-          <section className="rounded-2xl border border-border-primary bg-white p-5 shadow-soft">
-            <h2 className="font-semibold text-fg-primary">Eden AI</h2>
+          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold text-fg-primary">Eden AI</h2>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={busy}
+                onPress={async () => {
+                  setBusy(true);
+                  setError("");
+                  setMsg("");
+                  try {
+                    const r = await adminTestEdenAi();
+                    setMsg(
+                      `Eden AI OK: model ${r.resolved_model ?? r.normalized_model}, ${r.duration_ms} ms${
+                        typeof r.cost_usd === "number" ? `, koszt $${r.cost_usd.toFixed(6)}` : ""
+                      } (odpowiedź: "${r.response_preview ?? ""}")`,
+                    );
+                    setHealth(await adminHealth());
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : String(err));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Testuj połączenie z Eden AI
+              </Button>
+            </div>
             <p className="mt-2 text-sm text-fg-secondary">{health.eden_ai.note}</p>
+            {health.eden_ai.telemetry && (
+              <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-border-primary bg-brand-25/50 p-3 text-xs sm:grid-cols-3 lg:grid-cols-5">
+                <div>
+                  <span className="block text-fg-tertiary">Wyszukiwania Eden OK</span>
+                  <span className="font-mono text-sm font-semibold text-emerald-700">
+                    {health.eden_ai.telemetry.eden_ok_count}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-fg-tertiary">Wywołania LLM OK</span>
+                  <span className="font-mono text-sm font-semibold text-emerald-700">
+                    {health.eden_ai.telemetry.eden_ok_events}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-fg-tertiary">Fallback</span>
+                  <span className="font-mono text-sm font-semibold text-amber-800">
+                    {health.eden_ai.telemetry.eden_fallback_count}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-fg-tertiary">Błędy Eden AI</span>
+                  <span className="font-mono text-sm font-semibold text-red-700">
+                    {health.eden_ai.telemetry.eden_error_events}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-fg-tertiary">Limit subrequestów</span>
+                  <span className="font-mono text-sm font-semibold text-red-700">
+                    {health.eden_ai.telemetry.worker_subrequest_errors}
+                  </span>
+                </div>
+              </div>
+            )}
+            {health.eden_ai.telemetry?.last_ok && (
+              <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-900">
+                <div className="font-semibold">
+                  Ostatnie OK Eden AI ({health.eden_ai.telemetry.last_ok.created_at}):
+                </div>
+                <div className="mt-0.5 break-words">{health.eden_ai.telemetry.last_ok.message}</div>
+              </div>
+            )}
+            {health.eden_ai.telemetry?.last_error && (
+              <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-800">
+                <div className="font-semibold">
+                  Ostatni błąd ({health.eden_ai.telemetry.last_error.created_at}):
+                </div>
+                <div className="mt-0.5 break-words">{health.eden_ai.telemetry.last_error.message}</div>
+              </div>
+            )}
             {health.eden_ai.error ? (
               <p className="mt-2 text-sm text-red-700">{String(health.eden_ai.error)}</p>
             ) : null}
@@ -187,7 +265,7 @@ export function AdminPage() {
             </p>
           </section>
 
-          <section className="rounded-2xl border border-border-primary bg-white p-5 shadow-soft lg:col-span-2">
+          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft lg:col-span-2">
             <h2 className="font-semibold text-fg-primary">Cloudflare Workers (24 h)</h2>
             <p className="mt-2 text-sm text-fg-secondary">{health.cloudflare.note}</p>
             {health.cloudflare.error ? (
@@ -243,7 +321,7 @@ export function AdminPage() {
       )}
 
       {tab === "models" && settings && (
-        <section className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-border-primary bg-white p-6 shadow-soft">
+        <section className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-border-primary bg-bg-secondary p-6 shadow-soft">
           <h2 className="font-semibold text-fg-primary">Wytyczne odpowiedzi LLM</h2>
           <p className="text-sm text-fg-secondary">
             Te pola trafiają do promptów routera i syntezy AI Search (bez restartu Workera).
@@ -265,7 +343,7 @@ export function AdminPage() {
             />
           </label>
           <label className="block text-sm font-medium text-fg-secondary">
-            Limit pogłębiania rekordów (1-20)
+            Limit pogłębiania rekordów (1–6; zostawia budżet subrequestów na syntezę Eden AI)
             <input
               className="mt-1.5 w-full rounded-xl border border-border-primary px-3 py-2 text-sm"
               value={deepenLimit}
@@ -294,7 +372,7 @@ export function AdminPage() {
                 await adminSaveSettings({
                   synthesis_extra: synthesisExtra,
                   router_extra: routerExtra,
-                  deepen_record_limit: Math.min(20, Math.max(1, Number(deepenLimit) || 10)),
+                  deepen_record_limit: Math.min(6, Math.max(1, Number(deepenLimit) || 4)),
                   maintenance_message: maintenance,
                 });
                 setMsg("Zapisano ustawienia modeli.");
@@ -311,7 +389,7 @@ export function AdminPage() {
       )}
 
       {tab === "activity" && activity && (
-        <section className="rounded-2xl border border-border-primary bg-white p-5 shadow-soft">
+        <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft">
           <h2 className="font-semibold text-fg-primary">Logi aktywności (AI + MCP)</h2>
           <p className="mt-1 text-xs text-fg-secondary">{activity.note}</p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -334,48 +412,86 @@ export function AdminPage() {
             <p className="mt-3 text-sm text-fg-secondary">Brak wpisów.</p>
           ) : (
             <ul className="mt-3 max-h-[32rem] divide-y divide-border-primary overflow-y-auto">
-              {activity.logs.map((row) => (
-                <li key={row.id} className="py-3 text-sm">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`rounded-md px-1.5 py-0.5 text-xs font-semibold uppercase ${
-                        row.status === "error"
-                          ? "bg-red-100 text-red-800"
-                          : row.status === "empty"
-                            ? "bg-amber-100 text-amber-900"
-                            : row.status === "partial"
-                              ? "bg-orange-100 text-orange-900"
-                              : "bg-brand-50 text-brand-800"
-                      }`}
-                    >
-                      {row.status}
-                    </span>
-                    <span className="font-medium text-fg-primary">{row.event_type}</span>
-                    <span className="text-xs text-fg-secondary">{row.created_at}</span>
-                    <span className="text-xs text-fg-secondary">
-                      {row.subject_kind}
-                      {row.user_id ? ` · ${row.user_id.slice(0, 8)}…` : ""}
-                      {row.subject_hash && !row.user_id
-                        ? ` · hash ${row.subject_hash.slice(0, 8)}…`
-                        : ""}
-                    </span>
-                    {row.duration_ms != null && (
-                      <span className="text-xs text-fg-secondary">{row.duration_ms} ms</span>
+              {activity.logs.map((row) => {
+                let meta: Record<string, unknown> | null = null;
+                if (row.meta_json) {
+                  try {
+                    meta = JSON.parse(row.meta_json) as Record<string, unknown>;
+                  } catch {
+                    meta = null;
+                  }
+                }
+                const edenOk = meta?.eden_ok === true;
+                const fallbackUsed = meta?.fallback_used === true;
+                const models = Array.isArray(meta?.models) ? (meta.models as string[]) : [];
+                return (
+                  <li key={row.id} className="py-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-md px-1.5 py-0.5 text-xs font-semibold uppercase ${
+                          row.status === "error"
+                            ? "bg-red-100 text-red-800"
+                            : row.status === "empty"
+                              ? "bg-amber-100 text-amber-900"
+                              : row.status === "partial"
+                                ? "bg-orange-100 text-orange-900"
+                                : "bg-brand-50 text-brand-800"
+                        }`}
+                      >
+                        {row.status}
+                      </span>
+                      <span className="font-medium text-fg-primary">{row.event_type}</span>
+                      {edenOk && (
+                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-mono text-[11px] font-medium text-emerald-800">
+                          Eden AI OK
+                        </span>
+                      )}
+                      {fallbackUsed && (
+                        <span className="rounded bg-red-100 px-1.5 py-0.5 font-mono text-[11px] font-medium text-red-800">
+                          Fallback z Eden AI
+                        </span>
+                      )}
+                      {models.length > 0 && (
+                        <span className="font-mono text-[11px] text-fg-tertiary">
+                          {models.join(" → ")}
+                        </span>
+                      )}
+                      <span className="text-xs text-fg-secondary">{row.created_at}</span>
+                      <span className="text-xs text-fg-secondary">
+                        {row.subject_kind}
+                        {row.user_id ? ` · ${row.user_id.slice(0, 8)}…` : ""}
+                        {row.subject_hash && !row.user_id
+                          ? ` · hash ${row.subject_hash.slice(0, 8)}…`
+                          : ""}
+                      </span>
+                      {row.duration_ms != null && (
+                        <span className="text-xs text-fg-secondary">{row.duration_ms} ms</span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-fg-secondary">{row.summary}</p>
+                    {row.trace_id && (
+                      <p className="mt-0.5 font-mono text-xs text-brand-800">trace: {row.trace_id}</p>
                     )}
-                  </div>
-                  <p className="mt-1 text-fg-secondary">{row.summary}</p>
-                  {row.trace_id && (
-                    <p className="mt-0.5 font-mono text-xs text-brand-800">trace: {row.trace_id}</p>
-                  )}
-                </li>
-              ))}
+                    {meta && (
+                      <details className="mt-1.5">
+                        <summary className="cursor-pointer text-xs text-fg-tertiary hover:text-brand-700">
+                          Szczegóły wywołania (meta JSON)
+                        </summary>
+                        <pre className="mt-1 max-h-48 overflow-auto rounded-lg bg-bg-primary p-2 font-mono text-[11px] text-fg-secondary">
+                          {JSON.stringify(meta, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
       )}
 
       {tab === "events" && events && (
-        <section className="rounded-2xl border border-border-primary bg-white p-5 shadow-soft">
+        <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft">
           <h2 className="font-semibold text-fg-primary">Ostatnie zdarzenia</h2>
           {events.events.length === 0 ? (
             <p className="mt-3 text-sm text-fg-secondary">Brak zdarzeń.</p>
@@ -399,6 +515,22 @@ export function AdminPage() {
                     <span className="text-xs text-fg-secondary">{e.created_at}</span>
                   </div>
                   <p className="mt-1 text-fg-secondary">{e.message}</p>
+                  {e.detail_json && (
+                    <details className="mt-1.5">
+                      <summary className="cursor-pointer text-xs text-fg-tertiary hover:text-brand-700">
+                        Szczegóły błędu / zdarzenia (JSON)
+                      </summary>
+                      <pre className="mt-1 max-h-48 overflow-auto rounded-lg bg-bg-primary p-2 font-mono text-[11px] text-fg-secondary">
+                        {(() => {
+                          try {
+                            return JSON.stringify(JSON.parse(e.detail_json), null, 2);
+                          } catch {
+                            return e.detail_json;
+                          }
+                        })()}
+                      </pre>
+                    </details>
+                  )}
                 </li>
               ))}
             </ul>
@@ -428,7 +560,7 @@ function UserRowCard({
   const [saving, setSaving] = useState(false);
 
   return (
-    <div className="rounded-2xl border border-border-primary bg-white p-4 shadow-soft">
+    <div className="rounded-2xl border border-border-primary bg-bg-secondary p-4 shadow-soft">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-semibold text-fg-primary">

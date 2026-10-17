@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 export function TermsPage() {
   return (
-    <article className="mx-auto max-w-3xl rounded-2xl border border-border-primary bg-white p-6 shadow-soft md:p-8">
+    <article className="mx-auto max-w-3xl rounded-2xl border border-border-primary bg-bg-secondary p-6 shadow-soft md:p-8">
       <h1 className="font-display text-3xl font-semibold text-brand-700">Regulamin usługi (Terms of Service)</h1>
       <p className="mt-2 text-sm text-fg-tertiary">Polish Academic · obowiązuje od października 2026</p>
 

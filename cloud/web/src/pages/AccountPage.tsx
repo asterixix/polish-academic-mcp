@@ -68,7 +68,7 @@ export function AccountPage() {
 
   if (!user) {
     return (
-      <div className="rounded-2xl border border-border-primary bg-white p-8 text-center shadow-soft">
+      <div className="rounded-2xl border border-border-primary bg-bg-secondary p-8 text-center shadow-soft">
         <h1 className="font-display text-2xl font-semibold text-brand-700">Konto</h1>
         <p className="mt-2 text-fg-secondary">
           Zaloguj się, żeby zobaczyć limity, prywatny kontekst badacza i historię rozmów.
@@ -88,7 +88,7 @@ export function AccountPage() {
       animate={{ opacity: 1, y: 0 }}
       className="mx-auto max-w-2xl space-y-6"
     >
-      <div className="rounded-2xl border border-border-primary bg-white p-6 shadow-soft">
+      <div className="rounded-2xl border border-border-primary bg-bg-secondary p-6 shadow-soft">
         <h1 className="font-display text-2xl font-semibold text-brand-700">
           Cześć, {user.display_name || user.email || "badaczu"}
         </h1>
@@ -136,7 +136,7 @@ export function AccountPage() {
         </p>
       </div>
 
-      <div className="rounded-2xl border border-border-primary bg-white p-6 shadow-soft">
+      <div className="rounded-2xl border border-border-primary bg-bg-secondary p-6 shadow-soft">
         <h2 className="font-display text-lg font-semibold text-brand-700">Prywatny kontekst badacza</h2>
         <p className="mt-1 text-sm text-fg-secondary">
           Dyscyplina, instytucja, język publikacji, preferowane bazy. Trafia tylko do Twoich
@@ -145,7 +145,7 @@ export function AccountPage() {
         <label className="mt-4 block text-sm font-medium text-fg-secondary">
           Kontekst
           <textarea
-            className="mt-1.5 min-h-28 w-full rounded-xl border border-border-primary bg-white px-3 py-2.5 text-sm text-fg-primary outline-none focus:border-brand-400"
+            className="mt-1.5 min-h-28 w-full rounded-xl border border-border-primary bg-bg-secondary px-3 py-2.5 text-sm text-fg-primary outline-none focus:border-brand-400"
             value={prefs.research_context}
             onChange={(e) => setPrefs((p) => ({ ...p, research_context: e.target.value }))}
             maxLength={4000}
@@ -163,7 +163,7 @@ export function AccountPage() {
               className={`rounded-xl border px-3 py-3 text-left transition ${
                 prefs.response_style === opt.id
                   ? "border-brand-700 bg-brand-50 text-brand-800"
-                  : "border-border-primary bg-white text-fg-secondary hover:border-brand-200"
+                  : "border-border-primary bg-bg-secondary text-fg-secondary hover:border-brand-200"
               }`}
             >
               <div className="text-sm font-semibold">{opt.label}</div>
@@ -175,7 +175,7 @@ export function AccountPage() {
         <label className="mt-6 block text-sm font-medium text-fg-secondary">
           Memory (notatki trwałe)
           <textarea
-            className="mt-1.5 min-h-24 w-full rounded-xl border border-border-primary bg-white px-3 py-2.5 text-sm text-fg-primary outline-none focus:border-brand-400"
+            className="mt-1.5 min-h-24 w-full rounded-xl border border-border-primary bg-bg-secondary px-3 py-2.5 text-sm text-fg-primary outline-none focus:border-brand-400"
             value={prefs.memory_notes}
             onChange={(e) => setPrefs((p) => ({ ...p, memory_notes: e.target.value }))}
             maxLength={4000}
@@ -209,7 +209,7 @@ export function AccountPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border-primary bg-white p-6 shadow-soft">
+      <div className="rounded-2xl border border-border-primary bg-bg-secondary p-6 shadow-soft">
         <h2 className="font-display text-lg font-semibold text-brand-700">Historia rozmów</h2>
         <p className="mt-1 text-sm text-fg-secondary">
           Zapisane wątki AI Search. Możesz wrócić do rozmowy następnego dnia.
@@ -254,7 +254,7 @@ export function AccountPage() {
         <p className="mt-3 text-xs text-fg-tertiary">Obecnie: faza rozwojowa, bez sprzedaży w aplikacji.</p>
       </div>
 
-      <div className="rounded-2xl border border-border-primary bg-white p-6 shadow-soft">
+      <div className="rounded-2xl border border-border-primary bg-bg-secondary p-6 shadow-soft">
         <div className="flex flex-wrap gap-2">
           <Link to="/connectors">
             <Button>Instrukcje konektorów</Button>

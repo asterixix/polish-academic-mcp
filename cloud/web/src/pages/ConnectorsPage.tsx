@@ -50,12 +50,12 @@ export function ConnectorsPage() {
         <p className="mt-3 text-base leading-relaxed text-fg-secondary">
           Zdalny serwer MCP udostępniający jedno ujednolicone środowisko z 3 narzędziami (
           <code>list_sources</code>, <code>search</code>, <code>get_record</code>) obsługującymi{" "}
-          <strong>52 polskie bazy naukowe, medyczne, prawne, statystyczne, normalizacyjne i kulturowe</strong>{" "}
-          (116 operacji natywnych). Wszystkie operacje działają wyłącznie w trybie odczytu (
+          <strong>wszystkich polskich baz naukowych, medycznych, prawnych, statystycznych, normalizacyjnych i kulturowych</strong>{" "}
+          (pełny zestaw operacji natywnych; aktualne liczby w dokumentacji). Wszystkie operacje działają wyłącznie w trybie odczytu (
           <code>readOnlyHint: true</code>, <code>destructiveHint: false</code>,{" "}
           <code>idempotentHint: true</code>, <code>openWorldHint: true</code>).
         </p>
-        <div className="mt-4 rounded-2xl border border-border-primary bg-white p-4 font-mono text-sm text-brand-800">
+        <div className="mt-4 rounded-2xl border border-border-primary bg-bg-secondary p-4 font-mono text-sm text-brand-800">
           {origin}/mcp
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -68,14 +68,37 @@ export function ConnectorsPage() {
           <Link to="/login">
             <Button>Zaloguj przed podłączeniem</Button>
           </Link>
+          <Link to="/docs">
+            <Button variant="secondary">Pełna dokumentacja MCP →</Button>
+          </Link>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-brand-200 bg-brand-50/70 p-6 shadow-soft">
+        <h2 className="font-display text-xl font-semibold text-brand-700">
+          Dokumentacja serwera MCP — /docs
+        </h2>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-fg-secondary">
+          Na stronie <Link to="/docs" className="font-semibold text-brand-700 underline underline-offset-2">pamcp.pl/docs</Link>{" "}
+          (także pod <Link to="/connectors/docs" className="font-semibold text-brand-700 underline underline-offset-2">/connectors/docs</Link>)
+          znajdziesz kompletną dokumentację: architekturę chmura vs. lokalne stdio, instrukcje dla Claude, ChatGPT
+          i Perplexity, instalację CLI dla 22 aplikacji AI ze snippetami dla Windows i macOS/Linux, pełne schematy
+          3 narzędzi Meta-Routera oraz interaktywny katalog wszystkich baz i operacji natywnych
+          z parametrami, zmienne środowiskowe, endpointy OAuth/discovery i diagnostykę.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link to="/docs"><Button>Otwórz dokumentację</Button></Link>
+          <Link to="/docs#katalog"><Button variant="secondary">Katalog baz</Button></Link>
+          <Link to="/docs#operacje"><Button variant="secondary">Schematy operacji</Button></Link>
+          <Link to="/docs#klienci"><Button variant="secondary">Konfiguracja aplikacji AI</Button></Link>
+        </div>
+      </section>
 
       <div className="grid gap-4 md:grid-cols-3">
         {connectors.map((c) => (
           <article
             key={c.name}
-            className="rounded-2xl border border-border-primary bg-white p-5 shadow-soft"
+            className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft"
           >
             <h2 className="font-semibold text-brand-700">{c.name}</h2>
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm leading-relaxed text-fg-secondary">
@@ -87,7 +110,7 @@ export function ConnectorsPage() {
         ))}
       </div>
 
-      <section className="rounded-2xl border border-border-primary bg-white p-6 shadow-soft">
+      <section className="rounded-2xl border border-border-primary bg-bg-secondary p-6 shadow-soft">
         <h2 className="font-display text-xl font-semibold text-brand-700">
           Przykładowe zapytania startowe (Example Prompts)
         </h2>
@@ -98,15 +121,18 @@ export function ConnectorsPage() {
           {examplePrompts.map((prompt) => (
             <li
               key={prompt}
-              className="rounded-xl border border-border-primary/70 bg-brand-50/40 px-4 py-2.5"
+              className="flex flex-wrap items-start justify-between gap-2 rounded-xl border border-border-primary/70 bg-brand-50/40 px-4 py-2.5"
             >
-              „{prompt}”
+              <span className="max-w-3xl">„{prompt}”</span>
+              <Button variant="secondary" size="sm" onPress={() => navigator.clipboard.writeText(prompt)}>
+                Kopiuj prompt
+              </Button>
             </li>
           ))}
         </ul>
       </section>
 
-      <section className="rounded-2xl border border-border-primary bg-white p-6 shadow-soft">
+      <section className="rounded-2xl border border-border-primary bg-bg-secondary p-6 shadow-soft">
         <h2 className="font-display text-xl font-semibold text-brand-700">
           Specyfikacja narzędzi MCP i docelowych API (Target API Docs)
         </h2>
@@ -120,9 +146,9 @@ export function ConnectorsPage() {
               1. <code>list_sources</code> — Katalog źródeł i operacji — Polish Academic
             </strong>
             <p className="mt-1">
-              Zwraca listę 52 baz w 5 kategoriach (<code>nauka</code>, <code>dane</code>,{" "}
+              Zwraca listę wszystkich baz w 5 kategoriach (<code>nauka</code>, <code>dane</code>,{" "}
               <code>prawo</code>, <code>normy</code>, <code>kultura</code>) oraz pełne schematy
-              parametrów 116 operacji natywnych (<code>include_operations=true</code>). Adnotacje:{" "}
+              parametrów wszystkich operacji natywnych (<code>include_operations=true</code>). Adnotacje:{" "}
               <code>readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true</code>.
             </p>
           </div>
@@ -193,7 +219,7 @@ export function ConnectorsPage() {
         </ul>
       </section>
 
-      <section className="rounded-2xl border border-border-primary bg-white p-6 shadow-soft">
+      <section className="rounded-2xl border border-border-primary bg-bg-secondary p-6 shadow-soft">
         <h2 className="font-display text-xl font-semibold text-brand-700">
           Metadane techniczne i weryfikacyjne (Directory Review)
         </h2>
@@ -222,6 +248,12 @@ export function ConnectorsPage() {
             <strong className="text-fg-primary">Regulamin usługi:</strong>{" "}
             <Link to="/terms" className="text-brand-600 hover:underline">
               {origin}/terms
+            </Link>
+          </div>
+          <div>
+            <strong className="text-fg-primary">Dokumentacja MCP:</strong>{" "}
+            <Link to="/docs" className="text-brand-600 hover:underline">
+              {origin}/docs
             </Link>
           </div>
           <div>

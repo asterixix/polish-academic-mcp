@@ -12,7 +12,7 @@ Lokalny pakiet npm (`npx -y polish-academic-mcp`) pozostaje niezależny — chmu
 
 ## Jedno ujednolicone środowisko MCP (Meta-Router)
 
-Zdalny serwer `/mcp` oraz AI Search udostępniają **jedno ujednolicone środowisko MCP** składające się z 3 skonsolidowanych narzędzi (`list_sources`, `search`, `get_record`) obsługujących wszystkie **52 polskie bazy** (116 operacji natywnych) z automatyczną ekstrakcją treści (PDF z warstwą tekstową oraz OCR/HTR dla skanów, XLSX, CSV, XML, HTML) oraz referencjami do dokumentacji docelowych API (`https://pamcp.pl/connectors`, `https://pamcp.pl/openapi.json`).
+Zdalny serwer `/mcp` oraz AI Search udostępniają **jedno ujednolicone środowisko MCP** składające się z 3 skonsolidowanych narzędzi (`list_sources`, `search`, `get_record`) obsługujących wszystkie **55 polskich baz** (126 operacji natywnych) z automatyczną ekstrakcją treści (PDF z warstwą tekstową oraz OCR/HTR dla skanów, XLSX, CSV, XML, HTML) oraz referencjami do dokumentacji docelowych API (`https://pamcp.pl/connectors`, `https://pamcp.pl/openapi.json`).
 
 Wszystkie narzędzia posiadają:
 - czytelny tytuł (`title` oraz `annotations.title`),

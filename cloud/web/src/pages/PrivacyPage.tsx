@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 export function PrivacyPage() {
   return (
-    <article className="prose-legal mx-auto max-w-3xl rounded-2xl border border-border-primary bg-white p-6 shadow-soft md:p-8">
+    <article className="prose-legal mx-auto max-w-3xl rounded-2xl border border-border-primary bg-bg-secondary p-6 shadow-soft md:p-8">
       <h1 className="font-display text-3xl font-semibold text-brand-700">
         Polityka prywatności (Privacy Policy)
       </h1>

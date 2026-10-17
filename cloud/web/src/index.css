@@ -1,22 +1,33 @@
 @import "tailwindcss";
 @import "./styles/theme.css";
-@plugin "tailwindcss-animate";
-@plugin "tailwindcss-react-aria-components";
 
 @layer base {
   html {
     scroll-behavior: smooth;
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
   body {
-    @apply m-0 min-h-[100dvh] bg-bg-primary font-sans text-fg-primary antialiased;
+    @apply bg-bg-primary text-fg-primary font-sans antialiased;
     background-image:
-      radial-gradient(900px 480px at 8% -10%, rgb(123 82 171 / 0.12), transparent 55%),
-      radial-gradient(700px 400px at 100% 0%, rgb(54 5 79 / 0.08), transparent 45%);
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgb(54 5 79 / 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 90% 0%, rgb(168 114 199 / 0.1), transparent);
+    min-height: 100dvh;
+  }
+
+  html[data-theme="dark"] body {
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgb(168 114 199 / 0.14), transparent),
+      radial-gradient(ellipse 60% 40% at 90% 0%, rgb(54 5 79 / 0.35), transparent);
   }
 
   ::selection {
-    background: rgb(123 82 171 / 0.24);
+    @apply bg-brand-200 text-brand-900;
   }
 
   :focus-visible {
@@ -24,60 +35,145 @@
     outline-offset: 2px;
   }
 
-  a:focus:not(:focus-visible),
-  button:focus:not(:focus-visible) {
-    outline: none;
+  html[data-theme="dark"] :focus-visible {
+    outline-color: var(--color-brand-400);
   }
 }
 
-@layer components {
-  .skip-link {
-    position: absolute;
-    left: 1rem;
-    top: -100%;
-    z-index: 100;
-    border-radius: 999px;
-    background: var(--color-brand-700);
-    color: #fff;
-    padding: 0.625rem 1rem;
-    font-size: 0.875rem;
-    font-weight: 600;
-    text-decoration: none;
+/* Utility leftovers that still hardcode light surfaces (Tailwind class strings). */
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .bg-white\/70,
+html[data-theme="dark"] .bg-white\/80,
+html[data-theme="dark"] .bg-white\/90,
+html[data-theme="dark"] .bg-white\/95,
+html[data-theme="dark"] .bg-zinc-50,
+html[data-theme="dark"] .bg-zinc-100 {
+  background-color: var(--color-bg-secondary) !important;
+}
+
+/* Brand text utilities stay dark-purple hex; lift them for contrast on dark surfaces. */
+html[data-theme="dark"] .text-brand-600,
+html[data-theme="dark"] .text-brand-700,
+html[data-theme="dark"] .text-brand-800,
+html[data-theme="dark"] .text-brand-900,
+html[data-theme="dark"] .hover\:text-brand-700:hover,
+html[data-theme="dark"] .hover\:text-brand-800:hover {
+  color: #e4d2ef !important;
+}
+
+html[data-theme="dark"] .bg-brand-600,
+html[data-theme="dark"] .bg-brand-700,
+html[data-theme="dark"] .hover\:bg-brand-600:hover,
+html[data-theme="dark"] .hover\:bg-brand-700:hover {
+  background-color: #6b2d8f !important;
+}
+
+html[data-theme="dark"] .border-brand-700,
+html[data-theme="dark"] .border-brand-600 {
+  border-color: #8747ab !important;
+}
+
+html[data-theme="dark"] .text-white {
+  color: #faf7fc !important;
+}
+
+html[data-theme="dark"] .bg-emerald-50 {
+  background-color: rgb(6 78 59 / 0.35) !important;
+}
+html[data-theme="dark"] .text-emerald-800 {
+  color: #6ee7b7 !important;
+}
+
+html[data-theme="dark"] .bg-amber-50 {
+  background-color: rgb(120 53 15 / 0.4) !important;
+}
+html[data-theme="dark"] .text-amber-900 {
+  color: #fcd34d !important;
+}
+
+html[data-theme="dark"] .bg-red-50,
+html[data-theme="dark"] .bg-red-100,
+html[data-theme="dark"] .hover\:bg-red-50:hover {
+  background-color: rgb(127 29 29 / 0.45) !important;
+}
+html[data-theme="dark"] .text-red-800,
+html[data-theme="dark"] .hover\:text-red-700:hover {
+  color: #fca5a5 !important;
+}
+
+html[data-theme="dark"] .ring-offset-white,
+html[data-theme="dark"] .focus-visible\:ring-offset-2:focus-visible {
+  --tw-ring-offset-color: var(--color-bg-primary);
+}
+
+html[data-theme="dark"] .text-\[\#004a80\],
+html[data-theme="dark"] .hover\:text-\[\#0063AF\]:hover {
+  color: #7dd3fc !important;
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: var(--color-fg-tertiary);
+}
+
+html[data-theme="dark"] .shadow-soft {
+  box-shadow: var(--shadow-soft);
+}
+
+/* Composer: readable multi-line field without pill clipping */
+.composer-box {
+  box-sizing: border-box;
+}
+
+.composer-input {
+  field-sizing: content;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-primary) transparent;
+}
+
+.composer-input::-webkit-scrollbar {
+  width: 6px;
+}
+
+.composer-input::-webkit-scrollbar-thumb {
+  background: var(--color-border-primary);
+  border-radius: 999px;
+}
+
+.composer-input::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Mobile: prevent horizontal bleed from audit / code blocks */
+@media (max-width: 767px) {
+  .answer-md pre,
+  .answer-md table {
+    max-width: 100%;
   }
 
-  .skip-link:focus {
-    top: 0.75rem;
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
+  .composer-box {
+    margin-inline: 0;
   }
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -100%;
+  z-index: 100;
+  border-radius: 9999px;
+  background: var(--color-brand-700);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.skip-link:focus {
+  top: 1rem;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+html[data-theme="dark"] .skip-link {
+  background: var(--color-brand-400);
+  color: var(--color-brand-950);
 }

@@ -147,12 +147,79 @@ async function probeBindings(env: CloudEnv) {
 }
 
 async function fetchEdenUsage(env: CloudEnv) {
+  let telemetry: {
+    eden_ok_count: number;
+    eden_fallback_count: number;
+    eden_error_events: number;
+    eden_ok_events: number;
+    worker_subrequest_errors: number;
+    last_error: { message: string; created_at: string; detail_json: string | null } | null;
+    last_ok: { message: string; created_at: string; detail_json: string | null } | null;
+    last_search_at: string | null;
+  } | null = null;
+
+  try {
+    const statsRow = await env.DB.prepare(
+      `SELECT
+         SUM(CASE WHEN event_type = 'ai_search' AND meta_json LIKE '%"eden_ok":true%' THEN 1 ELSE 0 END) AS eden_ok_count,
+         SUM(CASE WHEN event_type = 'ai_search' AND meta_json LIKE '%"fallback_used":true%' THEN 1 ELSE 0 END) AS eden_fallback_count,
+         MAX(CASE WHEN event_type = 'ai_search' THEN created_at ELSE NULL END) AS last_search_at
+       FROM activity_logs`,
+    ).first<{
+      eden_ok_count: number | null;
+      eden_fallback_count: number | null;
+      last_search_at: string | null;
+    }>();
+
+    const errCountRow = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM admin_events WHERE source = 'edenai.chat' AND level = 'error'`,
+    ).first<{ cnt: number | null }>();
+
+    const okCountRow = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM admin_events WHERE source = 'edenai.chat' AND level = 'info'`,
+    ).first<{ cnt: number | null }>();
+
+    const subreqCountRow = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM admin_events WHERE source = 'worker.subrequests' AND level = 'error'`,
+    ).first<{ cnt: number | null }>();
+
+    const lastErrRow = await env.DB.prepare(
+      `SELECT message, detail_json, created_at
+       FROM admin_events
+       WHERE (source = 'edenai.chat' OR source = 'worker.subrequests') AND level = 'error'
+       ORDER BY created_at DESC LIMIT 1`,
+    ).first<{ message: string; detail_json: string | null; created_at: string }>();
+
+    const lastOkRow = await env.DB.prepare(
+      `SELECT message, detail_json, created_at
+       FROM admin_events
+       WHERE source = 'edenai.chat' AND level = 'info'
+       ORDER BY created_at DESC LIMIT 1`,
+    ).first<{ message: string; detail_json: string | null; created_at: string }>();
+
+    telemetry = {
+      eden_ok_count: Number(statsRow?.eden_ok_count ?? 0),
+      eden_fallback_count: Number(statsRow?.eden_fallback_count ?? 0),
+      eden_error_events: Number(errCountRow?.cnt ?? 0),
+      eden_ok_events: Number(okCountRow?.cnt ?? 0),
+      worker_subrequest_errors: Number(subreqCountRow?.cnt ?? 0),
+      last_error: lastErrRow ?? null,
+      last_ok: lastOkRow ?? null,
+      last_search_at: statsRow?.last_search_at ?? null,
+    };
+  } catch {
+    /* ignore if tables not migrated yet */
+  }
+
+  const apiKeyConfigured = Boolean(env.EDENAI_API_KEY?.trim());
   if (!env.EDENAI_MANAGEMENT_KEY) {
     return {
       configured: false,
+      api_key_configured: apiKeyConfigured,
       note: "Ustaw sekret EDENAI_MANAGEMENT_KEY (mgmt-eden-…) z uprawnieniem manage:read. Saldo kredytów jest tylko w dashboardzie Eden AI.",
       usage: null as unknown,
       error: null as string | null,
+      telemetry,
     };
   }
   try {
@@ -165,9 +232,11 @@ async function fetchEdenUsage(env: CloudEnv) {
     if (!res.ok) {
       return {
         configured: true,
+        api_key_configured: apiKeyConfigured,
         note: "Management API: błąd. Saldo kredytów nadal tylko w https://app.edenai.run/",
         usage: null,
         error: `${res.status}: ${text.slice(0, 400)}`,
+        telemetry,
       };
     }
     const json = JSON.parse(text) as { usage?: unknown[] };
@@ -184,16 +253,20 @@ async function fetchEdenUsage(env: CloudEnv) {
     }
     return {
       configured: true,
+      api_key_configured: apiKeyConfigured,
       note: "Zużycie z ostatnich ~7 dni (Management API). Saldo kredytów: dashboard Eden AI.",
       usage: { keys: json.usage?.length ?? 0, total_cost_usd: totalCost, total_calls: totalCalls, raw: json.usage },
       error: null,
+      telemetry,
     };
   } catch (err) {
     return {
       configured: true,
+      api_key_configured: apiKeyConfigured,
       note: "Nie udało się pobrać usage.",
       usage: null,
       error: err instanceof Error ? err.message : String(err),
+      telemetry,
     };
   }
 }
@@ -461,7 +534,7 @@ export async function handleAdminRoutes(
     return jsonResponse({
       settings,
       defaults: {
-        deepen_record_limit: 10,
+        deepen_record_limit: 4,
         synthesis_extra: "",
         router_extra: "",
         maintenance_message: "",
@@ -528,6 +601,21 @@ export async function handleAdminRoutes(
       body.detail,
     );
     return jsonResponse({ ok: true });
+  }
+
+  if (path === "/api/admin/eden-test" && request.method === "POST") {
+    const { probeEdenAiChat } = await import("./ai-search.js");
+    const result = await probeEdenAiChat(env);
+    await logAdminEvent(
+      env,
+      result.ok ? "info" : "error",
+      "edenai.probe",
+      result.ok
+        ? `Test Eden AI OK (${result.resolved_model}, ${result.duration_ms} ms)`
+        : `Test Eden AI BŁĄD (${result.normalized_model}, HTTP ${result.http_status ?? "ERR"}): ${(result.error ?? "").slice(0, 220)}`,
+      result,
+    );
+    return jsonResponse(result, { status: result.ok ? 200 : 502 });
   }
 
   if (path === "/api/admin/cache/purge" && request.method === "POST") {

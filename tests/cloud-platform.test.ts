@@ -336,6 +336,8 @@ test("zgodność z katalogami Claude, ChatGPT i Perplexity: adnotacje narzędzi,
     CACHE_KV: memoryKv(),
     AI: {} as Ai,
     SESSION_SECRET: "unit-test-secret",
+    REVIEWER_DEMO_EMAIL: "reviewer@example.com",
+    REVIEWER_DEMO_PASSWORD: "unit-test-reviewer-password",
     PUBLIC_BASE_URL: "https://pamcp.example",
   } as import("../cloud/src/env.js").CloudEnv;
 
@@ -436,11 +438,11 @@ test("zgodność z katalogami Claude, ChatGPT i Perplexity: adnotacje narzędzi,
   assert.equal(metaJson.repository_url, "https://github.com/asterixix/polish-academic-mcp");
   assert.ok(metaJson.example_prompts.length >= 4);
   assert.equal(metaJson.annotations_summary.router_tool_count, 3);
-  assert.equal(metaJson.annotations_summary.granular_tool_count, 116);
+  assert.equal(metaJson.annotations_summary.granular_tool_count, 126);
 });
 
 test("UI zawiera strony privacy/terms/connectors i logo w markupie", async () => {
-  const { privacyPageHtml, termsPageHtml, connectorsPageHtml, renderAuthorizePage } = await import(
+  const { privacyPageHtml, termsPageHtml, connectorsPageHtml, docsPageHtml, renderAuthorizePage } = await import(
     "../cloud/src/ui.js"
   );
   assert.match(privacyPageHtml(), /Polityka prywatności/);
@@ -448,6 +450,10 @@ test("UI zawiera strony privacy/terms/connectors i logo w markupie", async () =>
   assert.match(connectorsPageHtml("https://pamcp.example"), /Claude/);
   assert.match(connectorsPageHtml("https://pamcp.example"), /ChatGPT/);
   assert.match(connectorsPageHtml("https://pamcp.example"), /Perplexity/);
+  assert.match(connectorsPageHtml("https://pamcp.example"), /pamcp\.example\/docs/);
+  assert.match(docsPageHtml("https://pamcp.example"), /Dokumentacja serwera MCP/);
+  assert.match(docsPageHtml("https://pamcp.example"), /pamcp\.example\/connectors\/docs/);
+  assert.match(docsPageHtml("https://pamcp.example"), /list_sources/);
   assert.match(
     renderAuthorizePage({
       appName: "Polish Academic MCP",
@@ -461,18 +467,118 @@ test("UI zawiera strony privacy/terms/connectors i logo w markupie", async () =>
   );
 });
 
+test("dokumentacja webowa /docs jest generowana z katalogu serwera MCP", async () => {
+  const app = readFileSync(resolve(root, "cloud/web/src/App.tsx"), "utf8");
+  assert.match(app, /path="docs"/);
+  assert.match(app, /path="connectors\/docs"/);
+  const shell = readFileSync(resolve(root, "cloud/web/src/components/layout/AppShell.tsx"), "utf8");
+  assert.match(shell, /to: "\/docs", label: "Dokumentacja"/);
+  const docsPagePath = resolve(root, "cloud/web/src/pages/DocsPage.tsx");
+  assert.ok(existsSync(docsPagePath), "brak strony DocsPage.tsx");
+  const docsPage = readFileSync(docsPagePath, "utf8");
+  for (const anchor of ["architektura", "zdalny", "lokalny", "narzedzia", "katalog", "operacje", "klienci", "srodowisko", "endpointy", "diagnostyka"]) {
+    assert.match(docsPage, new RegExp(`id="${anchor}"`), `brak sekcji dokumentacji: ${anchor}`);
+  }
+  const generatedPath = resolve(root, "cloud/web/src/generated/mcp-docs.json");
+  assert.ok(existsSync(generatedPath), "brak wygenerowanego mcp-docs.json — uruchom docs-data");
+  const docs = JSON.parse(readFileSync(generatedPath, "utf8")) as {
+    stats: { sourcesCount: number; granularToolsCount: number; routerToolsCount: number; clientsCount: number };
+    sources: { id: string; operations: string[] }[];
+    granularTools: { name: string; parameters: unknown[] }[];
+    routerTools: { name: string }[];
+    clients: { id: string }[];
+  };
+  const { SOURCES } = await import("../src/sources.js");
+  assert.equal(docs.stats.sourcesCount, SOURCES.length);
+  assert.equal(docs.sources.length, SOURCES.length);
+  assert.equal(docs.stats.routerToolsCount, 3);
+  assert.deepEqual(docs.routerTools.map((t) => t.name), ["list_sources", "search", "get_record"]);
+  assert.equal(docs.stats.granularToolsCount, docs.granularTools.length);
+  assert.equal(
+    docs.sources.reduce((sum, s) => sum + s.operations.length, 0),
+    docs.granularTools.length,
+  );
+  assert.ok(docs.clients.length >= 22);
+  assert.ok(docs.granularTools.every((t) => Array.isArray(t.parameters)));
+});
+
 test("AI Search orchestrator eksportuje handler i domyślny model Haiku", () => {
   const source = readFileSync(resolve(root, "cloud/src/ai-search.ts"), "utf8");
-  assert.match(source, /anthropic\/claude-haiku-5\.5/);
+  assert.match(source, /anthropic\/claude-haiku-5-5/);
   assert.match(source, /handleAiSearchRoutes/);
   assert.match(source, /AI_SEARCH_ANON|aiSearchLimit/);
   assert.match(source, /callEdenAi|EDENAI_API_KEY|api\.edenai\.run/);
   assert.match(source, /extractRecordTargets|get_record/);
+  assert.match(source, /normalizeEdenModel|EDEN_CATALOG_HAIKU_FALLBACKS/);
+  assert.match(source, /worker\.subrequests|Too many subrequests/i);
+  assert.match(source, /AI_SEARCH_CORE_BY_GROUP|AI_SEARCH_MAX_TOOL_CALLS/);
   const wrangler = readFileSync(resolve(root, "cloud/wrangler.jsonc"), "utf8");
   assert.match(wrangler, /PUBLIC_BASE_URL": "https:\/\/pamcp\.pl"/);
-  assert.match(wrangler, /claude-haiku-5\.5/);
+  assert.match(wrangler, /claude-haiku-5-5/);
   assert.match(wrangler, /MCP_MONTHLY_LIMIT": "100"/);
   assert.match(wrangler, /AI_SEARCH_ANON_WEEKLY_LIMIT": "2"/);
   assert.match(wrangler, /AI_SEARCH_USER_WEEKLY_LIMIT": "5"/);
   assert.match(wrangler, /EDENAI_API_KEY/);
+  assert.match(wrangler, /"subrequests":\s*10000/);
+});
+
+test("normalizeEdenModel maps dotted Haiku IDs and uses catalog-valid fallbacks", async () => {
+  const { normalizeEdenModel, EDEN_CATALOG_HAIKU_FALLBACKS } = await import(
+    "../cloud/src/ai-search.js"
+  );
+  const dotted = normalizeEdenModel("anthropic/claude-haiku-5.5");
+  assert.equal(dotted.model, "anthropic/claude-haiku-5-5");
+  assert.ok(dotted.fallbacks.every((f: string) => (EDEN_CATALOG_HAIKU_FALLBACKS as readonly string[]).includes(f)));
+  assert.ok(!dotted.fallbacks.includes("anthropic/claude-haiku-latest"));
+  assert.ok(!dotted.fallbacks.includes("anthropic/claude-haiku-4-5"));
+  const bare = normalizeEdenModel("claude-haiku-5-5");
+  assert.equal(bare.model, "anthropic/claude-haiku-5-5");
+});
+
+test("extractRecordTargets parsuje sekcje routera i stopkę REKORDY DO POGŁĘBIENIA (runda 2 get_record)", async () => {
+  const { extractRecordTargets } = await import("../cloud/src/ai-search.js");
+  const routerText = [
+    "=== REKORDY DO POGŁĘBIENIA (wywołaj get_record z parametrami source oraz id, aby pobrać pełne dane liczbowe rekordu) ===",
+    "- krakow_od:bezrobotni-i-oferty-pracy-w-krakowie-od-2023-roku — Bezrobotni i oferty pracy w Krakowie, od 2023 roku",
+    "- krakow_msip:1483 — Dzielnice",
+    "",
+    "=== [krakow_od] (krakow_od_search) ===",
+    JSON.stringify({
+      items: [
+        { id: "mieszkancy-zameldowani-na-pobyt-staly", source: "krakow_od", title: "Mieszkańcy Krakowa zameldowani na pobyt stały" },
+      ],
+    }),
+    "",
+    "=== [krakow_strategia] (krakow_strategia_search) ===",
+    JSON.stringify({ bank_items: [{ id: 255436, source: "krakow_strategia", title: "Prognoza demograficzna dla Krakowa do 2050 roku" }] }),
+  ].join("\n");
+  const calls = extractRecordTargets([{ name: "search", text: routerText }], 10);
+  assert.deepEqual(
+    calls.map((c) => `${c.arguments.source}:${c.arguments.id}`),
+    [
+      "krakow_od:bezrobotni-i-oferty-pracy-w-krakowie-od-2023-roku",
+      "krakow_msip:1483",
+      "krakow_od:mieszkancy-zameldowani-na-pobyt-staly",
+      "krakow_strategia:255436",
+    ],
+  );
+  assert.ok(calls.every((c) => c.name === "get_record" && c.arguments.include_fulltext === true));
+  assert.deepEqual(extractRecordTargets([{ name: "search", text: "brak", isError: true }], 10), []);
+
+  const bdlText = [
+    "=== REKORDY DO POGŁĘBIENIA ===",
+    "- bdl:459121 — bezrobocie",
+    "=== [bdl] (bdl_search_variables) ===",
+    JSON.stringify({ items: [{ id: 459121, source: "bdl", title: "bezrobocie" }] }),
+  ].join("\n");
+  const bdlCalls = extractRecordTargets([{ name: "search", text: bdlText }], 10);
+  assert.ok(bdlCalls.some((c) => c.name === "get_record" && c.arguments.source === "bdl"));
+  assert.ok(
+    bdlCalls.some(
+      (c) =>
+        c.name === "search" &&
+        c.arguments.operation === "bdl_get_data_by_variable" &&
+        (c.arguments.filters as { variable_id?: number })?.variable_id === 459121,
+    ),
+  );
 });

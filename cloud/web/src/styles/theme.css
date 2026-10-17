@@ -1,35 +1,53 @@
 @theme {
-  --font-sans: "Segoe UI", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Segoe UI Semibold", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
 
-  /* Brand from PAMCP logo: deep purple + lavender */
-  --color-brand-25: #faf7fc;
-  --color-brand-50: #f3ebf8;
-  --color-brand-100: #e6d5f0;
-  --color-brand-200: #d0b0e0;
-  --color-brand-300: #b07dcb;
-  --color-brand-400: #7b52ab;
-  --color-brand-500: #5c2d8a;
-  --color-brand-600: #4a1f72;
+  --color-brand-25: #f8f4fb;
+  --color-brand-50: #f1e8f7;
+  --color-brand-100: #e4d2ef;
+  --color-brand-200: #c9a5df;
+  --color-brand-300: #a872c7;
+  --color-brand-400: #8747ab;
+  --color-brand-500: #6b2d8f;
+  --color-brand-600: #541872;
   --color-brand-700: #36054f;
   --color-brand-800: #2a043d;
-  --color-brand-900: #1f0330;
-  --color-brand-950: #140220;
+  --color-brand-900: #1c0329;
+  --color-brand-950: #10011a;
 
-  --color-fg-primary: #1a0f24;
-  /* Secondary/tertiary darkened for WCAG 2.2 AA (≥4.5:1 on #faf8fc) */
-  --color-fg-secondary: #4a3a58;
-  --color-fg-tertiary: #5c4a6e;
-  --color-bg-primary: #faf8fc;
+  --color-fg-primary: #1a0f22;
+  --color-fg-secondary: #4a3a55;
+  --color-fg-tertiary: #6b5a78;
+  --color-bg-primary: #faf7fc;
   --color-bg-secondary: #ffffff;
-  --color-border-primary: #e5d9ef;
-  --color-accent: #7b52ab;
+  --color-border-primary: #e8dced;
   --color-danger: #b42318;
   --color-success: #067647;
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-xl: 24px;
-  --shadow-soft: 0 12px 40px rgb(54 5 79 / 0.08);
+  --shadow-soft: 0 10px 40px -12px rgb(54 5 79 / 0.18);
+  --shadow-glow: 0 0 0 1px rgb(54 5 79 / 0.06), 0 20px 50px -20px rgb(54 5 79 / 0.35);
+}
+
+/* Off-black, not #000. Brand purple fills (600+) stay for buttons. Surfaces remap. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-brand-25: #1a0f24;
+  --color-brand-50: #22142e;
+  --color-brand-100: #2c1a3c;
+  --color-brand-200: #3d2552;
+  --color-brand-300: #5a3878;
+  --color-brand-400: #8b5aaf;
+
+  --color-fg-primary: #f4eef8;
+  --color-fg-secondary: #d4c4e0;
+  --color-fg-tertiary: #a892b8;
+  --color-bg-primary: #100814;
+  --color-bg-secondary: #1a1020;
+  --color-border-primary: #3a2a48;
+  --color-danger: #f97066;
+  --color-success: #47cd89;
+
+  --shadow-soft: 0 10px 40px -12px rgb(0 0 0 / 0.55);
+  --shadow-glow: 0 0 0 1px rgb(168 114 199 / 0.12), 0 20px 50px -20px rgb(0 0 0 / 0.65);
 }
