@@ -21,6 +21,13 @@ export const SOURCE_GROUPS = {
 
 export type SourceGroup = keyof typeof SOURCE_GROUPS;
 
+export interface SourceDescriptor {
+  id: string;
+  group: SourceGroup;
+  name: string;
+  requiresAuth?: boolean;
+}
+
 export const SOURCES = [
   { id: "bn", group: "nauka", name: "Biblioteka Nauki" },
   { id: "rcin", group: "nauka", name: "RCIN — Repozytorium Cyfrowe Instytutów Naukowych" },
@@ -32,10 +39,11 @@ export const SOURCES = [
   { id: "rodbuk", group: "nauka", name: "RODBuK" },
   { id: "repod", group: "nauka", name: "RePOD" },
   { id: "polon", group: "nauka", name: "POL-on / RAD-on" },
-  { id: "pbn", group: "nauka", name: "Polska Bibliografia Naukowa (wymaga kluczy)" },
+  { id: "pbn", group: "nauka", name: "Polska Bibliografia Naukowa (wymaga kluczy)", requiresAuth: true },
   { id: "ludzie", group: "nauka", name: "Ludzie Nauki" },
   { id: "baztol", group: "nauka", name: "BazTOL (Politechnika Poznańska)" },
   { id: "sum", group: "nauka", name: "Katalog Biblioteki ŚUM" },
+  { id: "ppm", group: "nauka", name: "Polska Platforma Medyczna" },
   { id: "dane", group: "dane", name: "dane.gov.pl" },
   { id: "bdl", group: "dane", name: "Bank Danych Lokalnych GUS" },
   { id: "imgw", group: "dane", name: "IMGW-PIB" },
@@ -55,7 +63,26 @@ export const SOURCES = [
   { id: "pauart", group: "kultura", name: "PAUart" },
   { id: "blz", group: "kultura", name: "Baza Legalnych Źródeł" },
   { id: "dokumenty_slaska", group: "kultura", name: "Dokumenty Śląska" },
-] as const satisfies readonly { id: string; group: SourceGroup; name: string }[];
+  { id: "jbc", group: "kultura", name: "Jagiellońska Biblioteka Cyfrowa (JBC UJ)" },
+  { id: "sbc", group: "kultura", name: "Śląska Biblioteka Cyfrowa (SBC)" },
+  { id: "fbc", group: "kultura", name: "Federacja Bibliotek Cyfrowych PIONIER (FBC)" },
+  { id: "pbm", group: "kultura", name: "Polska Biblioteka Muzyczna" },
+  { id: "swa", group: "kultura", name: "Szukaj w Archiwach" },
+  { id: "gwa", group: "kultura", name: "Genealogia w Archiwach" },
+  { id: "plock_genea", group: "kultura", name: "AP Płock — Baza GENEA" },
+  { id: "ekartoteka", group: "kultura", name: "e-kartoteka — Kartoteka ewidencji ludności Poznania" },
+  { id: "archiwum_powstania", group: "kultura", name: "Archiwum Powstania Wielkopolskiego" },
+  { id: "warszawa_ap", group: "kultura", name: "AP Warszawa — Ekshumacje, RHA, Grodzisk, Łowicz, Pułtusk" },
+  { id: "zamosc_ap", group: "kultura", name: "AP Zamość — Ludność Zamościa" },
+  { id: "archiwa_jency", group: "kultura", name: "Archiwa Państwowe — Baza Jeńców Wojennych" },
+  { id: "archiwa_dziedzictwo", group: "kultura", name: "Archiwa Państwowe — Baza Dziedzictwo" },
+  { id: "straty", group: "kultura", name: "Straty.pl — Ofiary represji pod okupacją niemiecką (IPN)" },
+  { id: "agad", group: "kultura", name: "AGAD — Metrykalia, Inwentarze, Dorpat, Michalewicz, Luceoria, Cmentarze" },
+  { id: "postdiploma", group: "kultura", name: "Postdiploma.pl — Politechnika Ryska i Extranea" },
+  { id: "lublin_ap", group: "kultura", name: "AP Lublin — Księgi Meldunkowe (Lublin, Kock, Radzyń)" },
+  { id: "opole_ap", group: "kultura", name: "AP Opole — Baza Danych Archiwalnych" },
+  { id: "piotrkow_ap", group: "kultura", name: "AP Piotrków Trybunalski — Indeksy Archiwalne" },
+] as const satisfies readonly SourceDescriptor[];
 
 export type SourceId = (typeof SOURCES)[number]["id"];
 

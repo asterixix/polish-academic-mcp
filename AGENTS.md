@@ -100,7 +100,13 @@ tsconfig.json          TypeScript config (strict, module: ES2022, target: ES2022
 docs/
 ├── CLIENTS.md         per-client MCP configuration (what `setup` writes + manual steps)
 ├── AGENT-GUIDE.md     prompt for AI agents configuring the server (uses `setup --yes`)
+├── CLOUDFLARE.md      remote Workers+Pages (OAuth 2.1, AI Search, connectors)
 └── plans/             implementation plans
+
+cloud/                optional Cloudflare Workers + Static Assets (separate package.json).
+                       Shares src/tools/* via tool-bridge; not part of the npm CLI package.
+                       OAuth 2.1 (/mcp), ORCID/email/passkey, D1 quotas, AI Gateway Haiku.
+                       See docs/CLOUDFLARE.md.
 ```
 
 ---

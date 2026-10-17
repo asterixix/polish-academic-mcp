@@ -434,9 +434,16 @@ Następnie w Open WebUI: Settings → Tools → „+” → `http://localhost:80
 
 ---
 
-## ChatGPT i Claude.ai w przeglądarce
+## ChatGPT, Claude.ai i Perplexity w przeglądarce (zdalny konektor `pamcp.pl`)
 
-ChatGPT (także w trybie deweloperskim) i Claude.ai w przeglądarce łączą się tylko ze **zdalnymi** serwerami MCP przez HTTPS. Ten pakiet jest serwerem lokalnym (stdio), więc nie da się go w nich bezpośrednio podłączyć. Użyj aplikacji desktopowej (Claude Desktop) albo jednego z edytorów lub narzędzi terminalowych powyżej.
+ChatGPT, Claude.ai oraz Perplexity w przeglądarce łączą się ze **zdalnymi** serwerami MCP przez HTTPS (OAuth 2.1 + PKCE). Oficjalna instancja chmurowa projektu działa pod adresem **[https://pamcp.pl](https://pamcp.pl)**:
+
+- **Remote MCP URL:** `https://pamcp.pl/mcp` (tryb Meta-Router: 3 narzędzia obejmujące 51 baz) lub `https://pamcp.pl/mcp?mode=granular` (pełne 113 narzędzi)
+- **Dokumentacja konektora i przykładowe prompty:** [https://pamcp.pl/connectors](https://pamcp.pl/connectors)
+- **Polityka prywatności:** [https://pamcp.pl/privacy](https://pamcp.pl/privacy)
+- **Kod źródłowy:** [https://github.com/asterixix/polish-academic-mcp](https://github.com/asterixix/polish-academic-mcp)
+
+Jeśli wolisz uruchamiać serwer całkowicie lokalnie przez `stdio` (bez konta i bez limitów), użyj aplikacji desktopowej (Claude Desktop) albo jednego z edytorów lub narzędzi terminalowych powyżej.
 
 ---
 

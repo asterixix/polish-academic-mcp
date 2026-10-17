@@ -1,0 +1,1363 @@
+import { SOURCE_GROUPS, SOURCES, type SourceGroup, type SourceId } from "../../src/sources.js";
+import { normalizeResearchQuery } from "../../src/query-normalize.js";
+import type { CloudEnv } from "./env.js";
+import { ensureAnonKey, readSessionUser } from "./auth.js";
+import { jsonResponse } from "./crypto-util.js";
+import {
+  aiSearchLimit,
+  aiSubject,
+  consumeQuota,
+  getQuota,
+  isoWeekPeriodKey,
+  resolveAiSearchLimit,
+  resolveMcpLimit,
+  mcpSubject,
+  monthPeriodKey,
+  nextWeekResetMessage,
+} from "./quota.js";
+import { callMcpTool, listMcpTools, type ToolInfo } from "./tool-bridge.js";
+import { getUserPreferences, type UserPreferences } from "./account-api.js";
+import { getAppSetting } from "./admin.js";
+import { withDeveloperContact } from "./error-contact.js";
+import { logActivity, purgeExpiredActivityLogs } from "./activity-log.js";
+
+
+
+interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+interface AiSearchBody {
+  query?: string;
+  messages?: ChatMessage[];
+  sources?: string;
+  thread_id?: string;
+}
+
+/** Approximate tokens when provider omits usage (≈4 chars/token for PL/EN mix). */
+function estimateTokens(text: string): number {
+  if (!text) return 0;
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated: boolean;
+}
+
+export interface AuditStep {
+  id: string;
+  phase:
+    | "routing"
+    | "tool_discovery"
+    | "llm_plan"
+    | "tool_call"
+    | "llm_synthesis"
+    | "complete"
+    | "error";
+  title: string;
+  detail?: string;
+  started_at: string;
+  ended_at?: string;
+  duration_ms?: number;
+  data?: Record<string, unknown>;
+}
+
+export interface LlmCallRecord {
+  id: string;
+  phase: "plan" | "synthesis";
+  provider: string;
+  model: string;
+  temperature: number | null;
+  max_tokens: number;
+  system_prompt: string;
+  messages: ChatMessage[];
+  tools_offered?: Array<{ name: string; description?: string }>;
+  response_text: string;
+  tool_calls: LlmToolCall[];
+  usage: TokenUsage;
+  started_at: string;
+  ended_at: string;
+  duration_ms: number;
+  raw_stop_reason?: string;
+}
+
+export interface ToolCallRecord {
+  name: string;
+  arguments: Record<string, unknown>;
+  started_at: string;
+  ended_at: string;
+  duration_ms: number;
+  response_text: string;
+  response_chars: number;
+  is_error?: boolean;
+}
+
+export interface AuditLog {
+  schema: "polish_academic_mcp_ai_provenance_v1";
+  trace_id: string;
+  created_at: string;
+  completed_at?: string;
+  query: string;
+  authenticated: boolean;
+  user_id: string | null;
+  groups: SourceGroup[];
+  source_ids: SourceId[];
+  quota: unknown;
+  steps: AuditStep[];
+  llm_calls: LlmCallRecord[];
+  tool_calls: ToolCallRecord[];
+  token_totals: TokenUsage;
+  answer?: string;
+  followups?: string[];
+  error?: string;
+}
+
+interface LlmToolCall {
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+interface LlmResult {
+  text: string;
+  toolCalls: LlmToolCall[];
+  provider: string;
+  model: string;
+  temperature: number | null;
+  max_tokens: number;
+  usage: TokenUsage;
+  stop_reason?: string;
+}
+
+function pickGroups(query: string): SourceGroup[] {
+  const q = query.toLowerCase();
+  const scores: Record<SourceGroup, number> = {
+    nauka: 0,
+    dane: 0,
+    prawo: 0,
+    normy: 0,
+    kultura: 0,
+  };
+  const rules: Array<[SourceGroup, RegExp]> = [
+    ["nauka", /nauka|publikac|artykuł|artykuł|orcid|doi|repozytor|badaw|doktor|profesor|bibliograf|uczelni|student/i],
+    ["dane", /gus|statyst|bdl|pogod|imgw|dane\.gov|ludność|bezroboc|inflac|demograf/i],
+    ["prawo", /ustaw|rozporząd|orzeczen|sąd|saos|isap|kodeks|wyrok|sejm|prawo/i],
+    ["normy", /norma|pkn|iso\b|pn-|standard/i],
+    ["kultura", /film|książ|lektur|fotografi|plakat|archiw|muzeum|sztuk|ninateka|teatr/i],
+  ];
+  for (const [group, re] of rules) {
+    if (re.test(q)) scores[group] += 2;
+  }
+  if (Object.values(scores).every((s) => s === 0)) scores.nauka = 1;
+  return (Object.keys(scores) as SourceGroup[])
+    .filter((g) => scores[g] > 0)
+    .sort((a, b) => scores[b] - scores[a])
+    .slice(0, 3);
+}
+
+function sourcesForGroups(groups: SourceGroup[]): SourceId[] {
+  const set = new Set(groups);
+  return SOURCES.filter((s) => set.has(s.group) && s.id !== "pbn").map((s) => s.id);
+}
+
+function sumUsage(parts: TokenUsage[]): TokenUsage {
+  const input = parts.reduce((a, p) => a + p.input_tokens, 0);
+  const output = parts.reduce((a, p) => a + p.output_tokens, 0);
+  return {
+    input_tokens: input,
+    output_tokens: output,
+    total_tokens: input + output,
+    estimated: parts.some((p) => p.estimated),
+  };
+}
+
+function usageFromText(system: string, messages: ChatMessage[], response: string): TokenUsage {
+  const inputText = [system, ...messages.map((m) => m.content)].join("\n");
+  const input_tokens = estimateTokens(inputText);
+  const output_tokens = estimateTokens(response);
+  return {
+    input_tokens,
+    output_tokens,
+    total_tokens: input_tokens + output_tokens,
+    estimated: true,
+  };
+}
+
+async function callEdenAi(
+  env: CloudEnv,
+  system: string,
+  messages: ChatMessage[],
+  tools: ToolInfo[] | undefined,
+  model: string,
+): Promise<LlmResult> {
+  const apiKey = env.EDENAI_API_KEY!.trim();
+  const base = (env.EDENAI_API_BASE?.trim() || "https://api.edenai.run/v3").replace(/\/$/, "");
+  const url = `${base}/chat/completions`;
+  const maxTokens = 8192;
+  const edenModel = model.includes("/") ? model : `anthropic/${model}`;
+
+  const anthropicTools = (tools ?? []).slice(0, 40).map((t) => ({
+    type: "function",
+    function: {
+      name: t.name,
+      description: t.description ?? "",
+      parameters: t.inputSchema?.type
+        ? t.inputSchema
+        : { type: "object", properties: {}, ...t.inputSchema },
+    },
+  }));
+
+  const body: Record<string, unknown> = {
+    model: edenModel,
+    max_tokens: maxTokens,
+    messages: [
+      { role: "system", content: system },
+      ...messages.map((m) => ({ role: m.role, content: m.content })),
+    ],
+  };
+  if (anthropicTools.length > 0) body.tools = anthropicTools;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`Eden AI HTTP ${res.status}: ${(await res.text()).slice(0, 500)}`);
+  }
+  const json = (await res.json()) as {
+    choices?: Array<{
+      message?: {
+        content?: string | null;
+        tool_calls?: Array<{ function?: { name?: string; arguments?: string } }>;
+      };
+      finish_reason?: string;
+    }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    model?: string;
+    cost?: number;
+  };
+  const msg = json.choices?.[0]?.message;
+  const text = typeof msg?.content === "string" ? msg.content : "";
+  const toolCalls: LlmToolCall[] = [];
+  for (const tc of msg?.tool_calls ?? []) {
+    let args: Record<string, unknown> = {};
+    try {
+      args = JSON.parse(tc.function?.arguments ?? "{}") as Record<string, unknown>;
+    } catch {
+      args = {};
+    }
+    if (tc.function?.name) toolCalls.push({ name: tc.function.name, arguments: args });
+  }
+  const usage: TokenUsage = json.usage
+    ? {
+        input_tokens: json.usage.prompt_tokens ?? 0,
+        output_tokens: json.usage.completion_tokens ?? 0,
+        total_tokens:
+          json.usage.total_tokens ??
+          (json.usage.prompt_tokens ?? 0) + (json.usage.completion_tokens ?? 0),
+        estimated: false,
+      }
+    : usageFromText(system, messages, text);
+
+  return {
+    text,
+    toolCalls,
+    provider: "edenai",
+    model: json.model ?? edenModel,
+    temperature: null,
+    max_tokens: maxTokens,
+    usage,
+    stop_reason: json.choices?.[0]?.finish_reason,
+  };
+}
+
+async function callLlm(
+  env: CloudEnv,
+  system: string,
+  messages: ChatMessage[],
+  tools?: ToolInfo[],
+): Promise<LlmResult> {
+  const model = env.AI_MODEL?.trim() || "anthropic/claude-haiku-5.5";
+  const gatewayUrl = env.AI_GATEWAY_URL?.trim();
+  const anthropicKey = env.ANTHROPIC_API_KEY?.trim();
+  const openrouterKey = env.OPENROUTER_API_KEY?.trim();
+  const aigToken = env.CF_AIG_TOKEN?.trim();
+  const edenKey = env.EDENAI_API_KEY?.trim();
+
+  // Prefer Eden AI (OpenAI-compatible) for Claude Haiku research synthesis.
+  if (edenKey) {
+    try {
+      return await callEdenAi(env, system, messages, tools, model);
+    } catch (err) {
+      console.error("Eden AI call failed, trying other providers:", err);
+    }
+  }
+
+  if (gatewayUrl || anthropicKey || openrouterKey) {
+    try {
+      return await callAnthropicCompatible(env, system, messages, tools, {
+        model,
+        gatewayUrl,
+        anthropicKey,
+        openrouterKey,
+        aigToken,
+      });
+    } catch (err) {
+      console.error("AI Gateway call failed, falling back to Workers AI:", err);
+    }
+  }
+
+  return callWorkersAiFallback(env, system, messages, tools);
+}
+
+/** Pull get_record targets from Meta-Router search JSON for a deepen round. */
+function extractRecordTargets(
+  toolResults: Array<{ name: string; text: string; isError?: boolean }>,
+  limit = 6,
+): LlmToolCall[] {
+  const out: LlmToolCall[] = [];
+  const seen = new Set<string>();
+
+  for (const r of toolResults) {
+    if (r.isError || r.name !== "search") continue;
+    try {
+      const parsed = JSON.parse(r.text) as unknown;
+      const bag: unknown[] = [];
+      const walk = (node: unknown, depth = 0) => {
+        if (depth > 6 || node == null) return;
+        if (Array.isArray(node)) {
+          for (const item of node.slice(0, 40)) walk(item, depth + 1);
+          return;
+        }
+        if (typeof node !== "object") return;
+        const o = node as Record<string, unknown>;
+        if (Array.isArray(o.results)) walk(o.results, depth + 1);
+        if (Array.isArray(o.items)) walk(o.items, depth + 1);
+        if (Array.isArray(o.documents)) walk(o.documents, depth + 1);
+        if (typeof o.source === "string" && (o.id != null || o.record_id != null || o.publicationId != null)) {
+          bag.push(o);
+        } else if (typeof o.tool === "string" && o.id != null) {
+          bag.push(o);
+        }
+        for (const v of Object.values(o)) {
+          if (typeof v === "object") walk(v, depth + 1);
+        }
+      };
+      walk(parsed);
+
+      for (const item of bag) {
+        if (out.length >= limit) break;
+        const o = item as Record<string, unknown>;
+        const source = String(o.source ?? o.tool ?? "").replace(/_search.*$/, "").replace(/_get.*$/, "");
+        const id = String(o.id ?? o.record_id ?? o.publicationId ?? o.uuid ?? "");
+        if (!source || !id) continue;
+        const key = `${source}:${id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          name: "get_record",
+          arguments: {
+            source,
+            id,
+            extract_content: true,
+          },
+        });
+      }
+    } catch {
+      /* ignore non-JSON */
+    }
+  }
+  return out;
+}
+
+async function callAnthropicCompatible(
+  _env: CloudEnv,
+  system: string,
+  messages: ChatMessage[],
+  tools: ToolInfo[] | undefined,
+  opts: {
+    model: string;
+    gatewayUrl?: string;
+    anthropicKey?: string;
+    openrouterKey?: string;
+    aigToken?: string;
+  },
+): Promise<LlmResult> {
+  const maxTokens = 4096;
+  const anthropicTools = (tools ?? []).slice(0, 40).map((t) => ({
+    name: t.name,
+    description: t.description ?? "",
+    input_schema: t.inputSchema?.type ? t.inputSchema : { type: "object", properties: {}, ...t.inputSchema },
+  }));
+
+  const body: Record<string, unknown> = {
+    model: opts.model.startsWith("anthropic/") ? opts.model.replace(/^anthropic\//, "") : opts.model,
+    max_tokens: maxTokens,
+    system,
+    messages: messages.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content })),
+  };
+  if (anthropicTools.length > 0) body.tools = anthropicTools;
+
+  let url: string;
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+
+  if (opts.openrouterKey) {
+    url = opts.gatewayUrl?.includes("openrouter")
+      ? opts.gatewayUrl
+      : "https://openrouter.ai/api/v1/chat/completions";
+    headers.authorization = `Bearer ${opts.openrouterKey}`;
+    const orModel = opts.model.includes("/") ? opts.model : `anthropic/${opts.model}`;
+    const orBody = {
+      model: orModel,
+      messages: [
+        { role: "system", content: system },
+        ...messages.map((m) => ({ role: m.role, content: m.content })),
+      ],
+      tools: anthropicTools.map((t) => ({
+        type: "function",
+        function: { name: t.name, description: t.description, parameters: t.input_schema },
+      })),
+      max_tokens: maxTokens,
+    };
+    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(orBody) });
+    if (!res.ok) throw new Error(`OpenRouter HTTP ${res.status}: ${(await res.text()).slice(0, 400)}`);
+    const json = (await res.json()) as {
+      choices?: Array<{
+        message?: {
+          content?: string;
+          tool_calls?: Array<{ function?: { name?: string; arguments?: string } }>;
+        };
+        finish_reason?: string;
+      }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+      model?: string;
+    };
+    const msg = json.choices?.[0]?.message;
+    const toolCalls: LlmToolCall[] = [];
+    for (const tc of msg?.tool_calls ?? []) {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(tc.function?.arguments ?? "{}") as Record<string, unknown>;
+      } catch {
+        args = {};
+      }
+      if (tc.function?.name) toolCalls.push({ name: tc.function.name, arguments: args });
+    }
+    const text = msg?.content ?? "";
+    const usage: TokenUsage = json.usage
+      ? {
+          input_tokens: json.usage.prompt_tokens ?? 0,
+          output_tokens: json.usage.completion_tokens ?? 0,
+          total_tokens:
+            json.usage.total_tokens ??
+            (json.usage.prompt_tokens ?? 0) + (json.usage.completion_tokens ?? 0),
+          estimated: false,
+        }
+      : usageFromText(system, messages, text);
+    return {
+      text,
+      toolCalls,
+      provider: "openrouter",
+      model: json.model ?? orModel,
+      temperature: null,
+      max_tokens: maxTokens,
+      usage,
+      stop_reason: json.choices?.[0]?.finish_reason,
+    };
+  }
+
+  if (opts.gatewayUrl) {
+    url = opts.gatewayUrl.replace(/\/$/, "");
+    if (!url.includes("/v1/messages") && !url.includes("/anthropic")) {
+      url = `${url}/v1/messages`;
+    } else if (!url.endsWith("/v1/messages") && url.includes("gateway.ai.cloudflare.com")) {
+      url = `${url}/anthropic/v1/messages`;
+    }
+  } else {
+    url = "https://api.anthropic.com/v1/messages";
+  }
+  if (opts.anthropicKey) {
+    headers["x-api-key"] = opts.anthropicKey;
+    headers["anthropic-version"] = "2023-06-01";
+  }
+  if (opts.aigToken) headers["cf-aig-authorization"] = `Bearer ${opts.aigToken}`;
+
+  if (typeof body.model === "string" && body.model === "claude-haiku-5.5") {
+    body.model = "claude-haiku-4-5-20251001";
+  }
+
+  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`Anthropic HTTP ${res.status}: ${(await res.text()).slice(0, 400)}`);
+  const json = (await res.json()) as {
+    content?: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown> }>;
+    usage?: { input_tokens?: number; output_tokens?: number };
+    model?: string;
+    stop_reason?: string;
+  };
+  let text = "";
+  const toolCalls: LlmToolCall[] = [];
+  for (const block of json.content ?? []) {
+    if (block.type === "text" && block.text) text += block.text;
+    if (block.type === "tool_use" && block.name) {
+      toolCalls.push({ name: block.name, arguments: block.input ?? {} });
+    }
+  }
+  const usage: TokenUsage = json.usage
+    ? {
+        input_tokens: json.usage.input_tokens ?? 0,
+        output_tokens: json.usage.output_tokens ?? 0,
+        total_tokens: (json.usage.input_tokens ?? 0) + (json.usage.output_tokens ?? 0),
+        estimated: false,
+      }
+    : usageFromText(system, messages, text);
+
+  return {
+    text,
+    toolCalls,
+    provider: opts.gatewayUrl ? "anthropic_via_ai_gateway" : "anthropic",
+    model: json.model ?? String(body.model),
+    temperature: null,
+    max_tokens: maxTokens,
+    usage,
+    stop_reason: json.stop_reason,
+  };
+}
+
+async function callWorkersAiFallback(
+  env: CloudEnv,
+  system: string,
+  messages: ChatMessage[],
+  tools?: ToolInfo[],
+): Promise<LlmResult> {
+  const fallback = env.AI_FALLBACK_MODEL?.trim() || "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+  const maxTokens = 2048;
+  const toolHint =
+    tools && tools.length > 0
+      ? `\nDostępne narzędzia (wybierz max 3 jako JSON w bloku \`\`\`tools ... \`\`\`):\n${tools
+          .slice(0, 25)
+          .map((t) => `- ${t.name}: ${t.description?.slice(0, 120) ?? ""}`)
+          .join("\n")}\nFormat: [{"name":"tool_name","arguments":{...}}]`
+      : "";
+
+  const prompt = [
+    system + toolHint,
+    ...messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`),
+    "ASSISTANT:",
+  ].join("\n\n");
+
+  const result = (await env.AI.run(fallback as keyof AiModels, {
+    prompt,
+    max_tokens: maxTokens,
+  })) as { response?: string };
+
+  const text = result.response ?? "";
+  const toolCalls: LlmToolCall[] = [];
+  const match = /```tools\s*([\s\S]*?)```/i.exec(text) || /\[(\s*\{[\s\S]*"name"[\s\S]*\})\s*\]/.exec(text);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[1].startsWith("[") ? match[1] : match[0]) as LlmToolCall[];
+      if (Array.isArray(parsed)) {
+        for (const item of parsed.slice(0, 5)) {
+          if (item?.name) toolCalls.push({ name: item.name, arguments: item.arguments ?? {} });
+        }
+      }
+    } catch {
+      /* ignore parse errors */
+    }
+  }
+  const cleaned = text.replace(/```tools[\s\S]*?```/gi, "").trim();
+  return {
+    text: cleaned,
+    toolCalls,
+    provider: "workers_ai",
+    model: fallback,
+    temperature: null,
+    max_tokens: maxTokens,
+    usage: usageFromText(system + toolHint, messages, cleaned),
+  };
+}
+
+function sseEncode(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+function newStepId(): string {
+  return crypto.randomUUID();
+}
+
+export async function handleAiSearchRoutes(
+  request: Request,
+  env: CloudEnv,
+  path: string,
+): Promise<Response | null> {
+  if (path === "/api/quota" && request.method === "GET") {
+    const user = await readSessionUser(env, request);
+    const { anonKey, setCookie } = await ensureAnonKey(env, request);
+    const subject = aiSubject(user?.id ?? null, anonKey);
+    const period = isoWeekPeriodKey();
+    const limit = await resolveAiSearchLimit(env, user?.id ?? null, Boolean(user));
+    const ai = await getQuota(env, subject, "ai_search_weekly", period, limit);
+    let mcp = null;
+    if (user) {
+      mcp = await getQuota(
+        env,
+        mcpSubject(user.id),
+        "mcp_monthly",
+        monthPeriodKey(),
+        await resolveMcpLimit(env, user.id),
+      );
+    }
+    const headers = new Headers({ "content-type": "application/json" });
+    if (setCookie) headers.append("set-cookie", setCookie);
+    return new Response(JSON.stringify({ ai_search: ai, mcp, authenticated: Boolean(user) }), {
+      headers,
+    });
+  }
+
+  if (path !== "/api/ai-search" || request.method !== "POST") return null;
+
+  const user = await readSessionUser(env, request);
+  const { anonKey, setCookie } = await ensureAnonKey(env, request);
+  const subject = aiSubject(user?.id ?? null, anonKey);
+  const period = isoWeekPeriodKey();
+  const limit = await resolveAiSearchLimit(env, user?.id ?? null, Boolean(user));
+  const before = await getQuota(env, subject, "ai_search_weekly", period, limit);
+
+  if (!before.allowed) {
+    const headers = new Headers({ "content-type": "application/json" });
+    if (setCookie) headers.append("set-cookie", setCookie);
+    const quotaMsg = user
+      ? `Wykorzystano limit ${limit} wyszukiwań AI w tym tygodniu. Odnowienie: ${nextWeekResetMessage(period)}.`
+      : `Wykorzystano limit ${limit} wyszukiwań bez logowania w tym tygodniu. Zaloguj się (ORCID / email / passkey), aby zwiększyć limit do ${aiSearchLimit(env, true)}/tydzień.`;
+    return new Response(
+      JSON.stringify({
+        error: "quota_exceeded",
+        message: withDeveloperContact(quotaMsg),
+        quota: before,
+        login_required: !user,
+      }),
+      { status: 429, headers },
+    );
+  }
+
+  const maintenance = await getAppSetting<string>(env, "maintenance_message", "");
+  if (maintenance && String(maintenance).trim()) {
+    return jsonResponse(
+      {
+        error: "maintenance",
+        message: withDeveloperContact(String(maintenance).trim()),
+      },
+      { status: 503 },
+    );
+  }
+
+  const body = (await request.json().catch(() => ({}))) as AiSearchBody;
+  const query = body.query?.trim() || body.messages?.filter((m) => m.role === "user").at(-1)?.content?.trim() || "";
+  if (!query) {
+    return jsonResponse({ error: "Podaj query lub messages." }, { status: 400 });
+  }
+
+  await consumeQuota(env, subject, "ai_search_weekly", period, limit);
+  const quota = await getQuota(env, subject, "ai_search_weekly", period, limit);
+
+  const groups = pickGroups(query);
+  const sourceIds = body.sources
+    ? sourcesForGroups(
+        body.sources
+          .split(/[\s,]+/)
+          .map((s) => s.trim())
+          .filter((s): s is SourceGroup => s in SOURCE_GROUPS),
+      )
+    : sourcesForGroups(groups);
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const enc = new TextEncoder();
+      const send = (event: string, data: unknown) => {
+        controller.enqueue(enc.encode(sseEncode(event, data)));
+      };
+
+      const traceId = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const audit: AuditLog = {
+        schema: "polish_academic_mcp_ai_provenance_v1",
+        trace_id: traceId,
+        created_at: createdAt,
+        query,
+        authenticated: Boolean(user),
+        user_id: user?.id ?? null,
+        groups,
+        source_ids: sourceIds,
+        quota,
+        steps: [],
+        llm_calls: [],
+        tool_calls: [],
+        token_totals: { input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated: false },
+      };
+
+      const pushStep = (
+        phase: AuditStep["phase"],
+        title: string,
+        detail?: string,
+        data?: Record<string, unknown>,
+      ): AuditStep => {
+        const step: AuditStep = {
+          id: newStepId(),
+          phase,
+          title,
+          detail,
+          started_at: new Date().toISOString(),
+          data,
+        };
+        audit.steps.push(step);
+        send("step", step);
+        send("status", { message: title, phase, quota });
+        return step;
+      };
+
+      const endStep = (step: AuditStep, extra?: Record<string, unknown>) => {
+        step.ended_at = new Date().toISOString();
+        step.duration_ms = Date.parse(step.ended_at) - Date.parse(step.started_at);
+        if (extra) step.data = { ...step.data, ...extra };
+        send("step", step);
+      };
+
+      send("audit_meta", {
+        trace_id: traceId,
+        schema: audit.schema,
+        created_at: createdAt,
+        query,
+        authenticated: audit.authenticated,
+      });
+
+      try {
+        const routeStep = pushStep(
+          "routing",
+          `Dobieram bazy: ${groups.map((g) => SOURCE_GROUPS[g]).join("; ")}`,
+          `Grupy: ${groups.join(", ")}. Źródła: ${sourceIds.length}.`,
+          { groups, source_ids: sourceIds },
+        );
+        endStep(routeStep);
+
+        const discStep = pushStep("tool_discovery", "Ładuję narzędzia Meta-Router (list_sources, search, get_record)");
+        const tools = await listMcpTools(env, sourceIds, "router");
+        endStep(discStep, {
+          tool_count: tools.length,
+          tool_names: tools.map((t) => t.name),
+        });
+        send("status", { message: `Dostępnych narzędzi: ${tools.length}`, toolCount: tools.length });
+
+        const history: ChatMessage[] = body.messages?.length
+          ? body.messages
+          : [{ role: "user", content: query }];
+
+        const routerExtraEarly = String(await getAppSetting<string>(env, "router_extra", "") || "").trim();
+        const routerSystem =
+          "Jesteś routerem Polish Academic MCP (tryb Meta-Router) dla badaczy. Masz narzędzia list_sources, search i get_record. " +
+          "Cel: w jednym przebiegu zebrać jak najwięcej materiału (publikacje, dane, akty, linki, pełne rekordy). " +
+          "Wywołaj 2-4 równoległe search z category (nauka|dane|prawo|normy|kultura) lub sources=[...] oraz warianty zapytań. " +
+          "Zasady zapytań (krytyczne dla recall): " +
+          "1) krótkie frazy merytoryczne po polsku (rzeczowniki + przymiotniki tematu); " +
+          "2) NIE wstawiaj nazw baz (SAOS, ISAP, BDL, GUS, Biblioteka Nauki, RUJ…) ani słów meta (orzeczenia, baza, wyniki); " +
+          "3) lata oddawaj filtrami / osobnym wariantem, nie jako śmieci w frazie; " +
+          '4) przykłady dobre: "kredyt frankowy", "energia odnawialna", "bezrobocie małopolska"; złe: "SAOS orzeczenia kredyty frankowe 2020". ' +
+          "KRYTYCZNE: NIE pisz odpowiedzi użytkownikowi. NIE zmyślaj publikacji, orzeczeń, DOI, sygnatur, liczb ani streszczeń. " +
+          "Wyłącznie tool_use / function calls." +
+          (routerExtraEarly ? ` ${routerExtraEarly.slice(0, 2000)}` : "");
+
+        const planStep = pushStep(
+          "llm_plan",
+          "Model planuje wyszukiwanie (LLM #1)",
+          "Pełny prompt systemowy i wiadomości trafiają do logu audytu.",
+        );
+        send("thought", {
+          phase: "plan",
+          message: "Model otrzymuje listę narzędzi Meta-Router i decyduje, które wywołać.",
+        });
+
+        const planStarted = new Date().toISOString();
+        const plan = await callLlm(env, routerSystem, history, tools);
+        const planEnded = new Date().toISOString();
+
+        const planRecord: LlmCallRecord = {
+          id: newStepId(),
+          phase: "plan",
+          provider: plan.provider,
+          model: plan.model,
+          temperature: plan.temperature,
+          max_tokens: plan.max_tokens,
+          system_prompt: routerSystem,
+          messages: history,
+          tools_offered: tools.map((t) => ({ name: t.name, description: t.description?.slice(0, 200) })),
+          response_text: plan.text,
+          tool_calls: plan.toolCalls,
+          usage: plan.usage,
+          started_at: planStarted,
+          ended_at: planEnded,
+          duration_ms: Date.parse(planEnded) - Date.parse(planStarted),
+          raw_stop_reason: plan.stop_reason,
+        };
+        audit.llm_calls.push(planRecord);
+        send("llm", {
+          id: planRecord.id,
+          phase: planRecord.phase,
+          provider: planRecord.provider,
+          model: planRecord.model,
+          temperature: planRecord.temperature,
+          max_tokens: planRecord.max_tokens,
+          system_prompt: planRecord.system_prompt,
+          messages: planRecord.messages,
+          tools_offered: planRecord.tools_offered,
+          response_text: planRecord.response_text,
+          tool_calls: planRecord.tool_calls,
+          usage: planRecord.usage,
+          duration_ms: planRecord.duration_ms,
+          stop_reason: planRecord.raw_stop_reason,
+        });
+        send("tokens", {
+          call_id: planRecord.id,
+          phase: "plan",
+          usage: plan.usage,
+          cumulative: sumUsage(audit.llm_calls.map((c) => c.usage)),
+        });
+        endStep(planStep, {
+          model: plan.model,
+          provider: plan.provider,
+          usage: plan.usage,
+          tool_call_count: plan.toolCalls.length,
+        });
+
+        const normQ = normalizeResearchQuery(query);
+        const coreQ = normQ.core || query;
+
+        /** Rewrite every search tool-call query through the universal normalizer. */
+        const rewriteSearchArgs = (args: Record<string, unknown>): Record<string, unknown> => {
+          const next = { ...args };
+          if (typeof next.query === "string" && next.query.trim()) {
+            const n = normalizeResearchQuery(next.query);
+            next.query = n.core || next.query;
+            if (n.yearFrom) {
+              const filters =
+                next.filters && typeof next.filters === "object" && !Array.isArray(next.filters)
+                  ? { ...(next.filters as Record<string, unknown>) }
+                  : {};
+              if (!filters.judgment_date_from) filters.judgment_date_from = n.yearFrom;
+              next.filters = filters;
+            }
+          }
+          return next;
+        };
+
+        let toolCalls: LlmToolCall[] = plan.toolCalls.slice(0, 6).map((tc) =>
+          tc.name === "search"
+            ? { ...tc, arguments: rewriteSearchArgs(tc.arguments as Record<string, unknown>) }
+            : tc,
+        );
+        let heuristicFallback = false;
+
+        const pushUnique = (list: LlmToolCall[], item: LlmToolCall) => {
+          const key = JSON.stringify({ name: item.name, arguments: item.arguments });
+          if (list.some((t) => JSON.stringify({ name: t.name, arguments: t.arguments }) === key)) {
+            return list;
+          }
+          return [...list, item];
+        };
+
+        /** Targeted fan-out for every routed group + hint-specific sources. */
+        const buildFanout = (): LlmToolCall[] => {
+          const extra: LlmToolCall[] = [];
+          const cats = groups.length ? groups : (["nauka"] as SourceGroup[]);
+          for (const cat of cats.slice(0, 3)) {
+            extra.push({
+              name: "search",
+              arguments: {
+                query: coreQ,
+                category: cat,
+                limit_per_source: 8,
+              },
+            });
+          }
+          // Shorter variant improves recall on noisy APIs
+          if (normQ.variants[0] && normQ.variants[0] !== coreQ) {
+            extra.push({
+              name: "search",
+              arguments: {
+                query: normQ.variants[0],
+                category: cats[0],
+                limit_per_source: 8,
+              },
+            });
+          }
+          if (normQ.hints.judgments || cats.includes("prawo")) {
+            extra.push({
+              name: "search",
+              arguments: {
+                query: coreQ,
+                sources: ["saos"],
+                limit_per_source: 10,
+                ...(normQ.yearFrom
+                  ? { filters: { judgment_date_from: normQ.yearFrom } }
+                  : {}),
+              },
+            });
+            extra.push({
+              name: "search",
+              arguments: { query: coreQ, sources: ["isap"], limit_per_source: 8 },
+            });
+          }
+          if (normQ.hints.stats || cats.includes("dane")) {
+            extra.push({
+              name: "search",
+              arguments: {
+                query: coreQ,
+                sources: ["bdl", "dane"],
+                limit_per_source: 8,
+              },
+            });
+          }
+          if (normQ.hints.publications || cats.includes("nauka")) {
+            extra.push({
+              name: "search",
+              arguments: {
+                query: coreQ,
+                sources: ["bn", "ruj", "rodbuk"],
+                limit_per_source: 8,
+              },
+            });
+          }
+          if (normQ.hints.culture || cats.includes("kultura")) {
+            extra.push({
+              name: "search",
+              arguments: {
+                query: coreQ,
+                category: "kultura",
+                limit_per_source: 8,
+              },
+            });
+          }
+          if (normQ.hints.norms || cats.includes("normy")) {
+            extra.push({
+              name: "search",
+              arguments: {
+                query: coreQ,
+                category: "normy",
+                limit_per_source: 8,
+              },
+            });
+          }
+          return extra;
+        };
+
+        const fanout = buildFanout();
+        if (toolCalls.length === 0) {
+          heuristicFallback = true;
+          toolCalls = fanout.slice(0, 6);
+          send("thought", {
+            phase: "plan",
+            message: `Model nie zwrócił tool_use. Heurystyka: oczyszczone zapytanie „${coreQ}” + fan-out po kategoriach/źródłach.`,
+          });
+        } else {
+          // Always merge cleaned fan-out so noisy model queries don't leave empty results.
+          for (const e of fanout) {
+            toolCalls = pushUnique(toolCalls, e);
+          }
+          toolCalls = toolCalls.slice(0, 6);
+          send("thought", {
+            phase: "plan",
+            message: `Normalizuję zapytania narzędzi i dokładam fan-out (core: „${coreQ}”). Nazwy baz i papka rozmowy psują recall API.`,
+          });
+        }
+
+        send("tools", {
+          calls: toolCalls.map((t) => ({ name: t.name, arguments: t.arguments })),
+          heuristic_fallback: heuristicFallback,
+        });
+
+        const toolResults: Array<{ name: string; text: string; isError?: boolean }> = [];
+
+        const runToolBatch = async (batch: LlmToolCall[], label: string) => {
+          send("thought", {
+            phase: "tool_call",
+            message: `${label}: ${batch.map((t) => t.name).join(", ")}`,
+          });
+          await Promise.all(
+            batch.map(async (tc) => {
+              const toolStep = pushStep(
+                "tool_call",
+                `Narzędzie: ${tc.name}`,
+                JSON.stringify(tc.arguments).slice(0, 500),
+                { name: tc.name, arguments: tc.arguments, batch: label },
+              );
+              const started = new Date().toISOString();
+              try {
+                const result = await callMcpTool(env, tc.name, tc.arguments, sourceIds, "router");
+                const text = result.content
+                  .map((c) => (typeof c.text === "string" ? c.text : JSON.stringify(c)))
+                  .join("\n")
+                  .slice(0, 14_000);
+                const ended = new Date().toISOString();
+                const rec: ToolCallRecord = {
+                  name: tc.name,
+                  arguments: tc.arguments,
+                  started_at: started,
+                  ended_at: ended,
+                  duration_ms: Date.parse(ended) - Date.parse(started),
+                  response_text: text,
+                  response_chars: text.length,
+                  is_error: result.isError,
+                };
+                audit.tool_calls.push(rec);
+                toolResults.push({ name: tc.name, text, isError: result.isError });
+                endStep(toolStep, {
+                  is_error: result.isError,
+                  response_chars: text.length,
+                  duration_ms: rec.duration_ms,
+                });
+                send("tool_result", {
+                  name: tc.name,
+                  arguments: tc.arguments,
+                  is_error: result.isError,
+                  response_chars: text.length,
+                  preview: text.slice(0, 800),
+                  response_text: text,
+                  duration_ms: rec.duration_ms,
+                });
+              } catch (err) {
+                const ended = new Date().toISOString();
+                const msg = err instanceof Error ? err.message : String(err);
+                const rec: ToolCallRecord = {
+                  name: tc.name,
+                  arguments: tc.arguments,
+                  started_at: started,
+                  ended_at: ended,
+                  duration_ms: Date.parse(ended) - Date.parse(started),
+                  response_text: msg,
+                  response_chars: msg.length,
+                  is_error: true,
+                };
+                audit.tool_calls.push(rec);
+                toolResults.push({ name: tc.name, text: msg, isError: true });
+                endStep(toolStep, { is_error: true, error: msg });
+                send("tool_result", {
+                  name: tc.name,
+                  arguments: tc.arguments,
+                  is_error: true,
+                  response_chars: msg.length,
+                  preview: msg.slice(0, 800),
+                  response_text: msg,
+                  duration_ms: rec.duration_ms,
+                });
+              }
+            }),
+          );
+        };
+
+        await runToolBatch(toolCalls, "Runda 1 (wyszukiwanie)");
+
+        const resultsLookEmpty = (rows: typeof toolResults) =>
+          rows.length === 0 ||
+          rows.every(
+            (r) =>
+              r.isError ||
+              r.text.length < 80 ||
+              /"items"\s*:\s*\[\s*\]|items":\[\]|noRecordsMatch|brak wyników/i.test(r.text),
+          );
+
+        // Second chance: shorter variants / alternate categories when round 1 is empty
+        if (resultsLookEmpty(toolResults) && normQ.variants.length > 0) {
+          const retry: LlmToolCall[] = normQ.variants.slice(0, 2).flatMap((v) =>
+            (groups.length ? groups : (["nauka"] as SourceGroup[])).slice(0, 2).map((cat) => ({
+              name: "search" as const,
+              arguments: { query: v, category: cat, limit_per_source: 10 },
+            })),
+          );
+          if (normQ.hints.judgments) {
+            retry.push({
+              name: "search",
+              arguments: {
+                query: normQ.variants[0] || coreQ,
+                sources: ["saos"],
+                limit_per_source: 10,
+                ...(normQ.yearFrom
+                  ? { filters: { judgment_date_from: normQ.yearFrom } }
+                  : {}),
+              },
+            });
+          }
+          if (retry.length) {
+            send("thought", {
+              phase: "plan",
+              message: `Runda 1 bez trafień — ponawiam z krótszymi wariantami: ${normQ.variants.slice(0, 2).join(" · ")}`,
+            });
+            await runToolBatch(retry.slice(0, 4), "Runda 1b (warianty zapytania)");
+          }
+        }
+
+        const deepenLimit = Number(await getAppSetting<number>(env, "deepen_record_limit", 10)) || 10;
+        const deepenCalls = extractRecordTargets(toolResults, Math.min(20, Math.max(1, deepenLimit)));
+        if (deepenCalls.length > 0) {
+          send("thought", {
+            phase: "deepen",
+            message: `Pogłębiam ${deepenCalls.length} rekordów (get_record + extract_content) pod pełniejszą odpowiedź badawczą.`,
+          });
+          send("tools", {
+            calls: deepenCalls.map((t) => ({ name: t.name, arguments: t.arguments })),
+            heuristic_fallback: false,
+            deepen: true,
+          });
+          await runToolBatch(deepenCalls, "Runda 2 (pełne rekordy)");
+        }
+
+        send("sources", {
+          items: toolResults.map((r) => ({
+            tool: r.name,
+            preview: r.text.slice(0, 400),
+            isError: r.isError,
+          })),
+        });
+
+        let prefs: UserPreferences = {
+          research_context: "",
+          response_style: "detailed",
+          memory_notes: "",
+        };
+        if (user) {
+          try {
+            prefs = await getUserPreferences(env, user.id);
+          } catch {
+            /* ignore prefs load failure */
+          }
+        }
+
+        const styleHint =
+          prefs.response_style === "concise"
+            ? "Styl: zwięzły (krótsze sekcje, bullet points, bez rozwlekłości)."
+            : prefs.response_style === "academic"
+              ? "Styl: akademicki (precyzyjna terminologia, ostrożne wnioskowanie, jawne ograniczenia źródeł)."
+              : "Styl: szczegółowy (pogłębiony briefing, pełne cytowania, bogate tabele gdy dane na to pozwalają).";
+
+        const prefsBlock = [
+          prefs.research_context.trim()
+            ? `Prywatny kontekst badacza (uwzględnij w doborze źródeł i tonie):\n${prefs.research_context.trim().slice(0, 2000)}`
+            : "",
+          prefs.memory_notes.trim()
+            ? `Notatki pamięci użytkownika:\n${prefs.memory_notes.trim().slice(0, 2000)}`
+            : "",
+          styleHint,
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+
+        const synthesisExtra = String(await getAppSetting<string>(env, "synthesis_extra", "") || "").trim();
+
+        const synthesisSystem = `Jesteś asystentem badawczym Polish Academic MCP. Piszesz po polsku, konkretnie, bez marketingu.
+Na podstawie wyników narzędzi (wyszukiwania + pełne rekordy / wyciągi PDF, arkusze, XML/HTML) przygotuj **kompletny, pogłębiony briefing badawczy** w jednej odpowiedzi: maksimum użytecznej treści za jedno pytanie, bez odesłań typu "mogę wyszukać więcej".
+
+${prefsBlock ? `${prefsBlock}\n\n` : ""}${synthesisExtra ? `Dodatkowe wytyczne administratora:\n${synthesisExtra.slice(0, 4000)}\n\n` : ""}Struktura odpowiedzi (użyj nagłówków Markdown; wypełnij każdą sekcję treścią ze źródeł lub napisz wprost "brak danych w wynikach"):
+1. **Streszczenie** (4-8 zdań) - kim / czym jest temat, zakres źródeł i główne ustalenia.
+2. **Kluczowe fakty i wyniki** - wypunktowane, z konkretnymi liczbami, datami, DOI, afiliacjami, identyfikatorami gdy są w źródłach. Preferuj 8-20 punktów gdy materiał na to pozwala.
+3. **Źródła i linki do pobrania** - lista z pełnymi URL, DOI, ID rekordów; zaznacz format (PDF, CSV, XML, HTML, API).
+4. **Dane tabelaryczne** - gdy są szeregi liczbowe, porównania lub listy publikacji, oddaj jako tabelę Markdown (czytelne kolumny: tytuł, rok, baza, DOI/URL).
+5. **Wizualizacja** - gdy dane na to pozwalają, dodaj diagram Mermaid (\`\`\`mermaid): timeline kariery/publikacji, flowchart procesu, pie/bar przez flowchart z podziałem kategorii. Nie wymyślaj liczb. Gdy brak danych liczbowych, narysuj timeline lub mapę relacji ze źródłami zamiast pisać "brak wizualizacji".
+6. **Analiza / wnioski** - synteza cross-source, luki, ograniczenia danych, rozbieżności między bazami.
+7. **Wytyczne dalszej pracy** - konkretne kolejne kroki (zapytania, bazy, rekordy do weryfikacji).
+8. **Pytania dopytujące** - 2-3 naturalne pytania na końcu.
+
+Zasady twarde (anty-halucynacja):
+- Jedynym źródłem faktów są wyniki narzędzi poniżej (tool results). Ignoruj prozę modelu planującego i wszelkie „pamięciowe” orzeczenia/publikacje.
+- Nie zmyślaj publikacji, aktów, DOI, sygnatur, dat, kwot ani cytatów. Jeśli czegoś nie ma w tool results - nie pisz tego jako faktu.
+- Gdy wyniki są puste lub bez trafień: napisz wprost „brak danych w wynikach”, wskaż jakie zapytania były użyte i zaproponuj 2-3 konkretne krótsze frazy (bez nazw baz).
+- Gdy wyniki są bogate: maksymalnie je wykorzystaj (tytuły, daty, URL, DOI, sygnatury ze źródeł).
+- Cytuj źródła inline. Preferuj pełne URL. Przy kontynuacji rozmowy buduj na historii użytkownika, nie na zmyślonych treściach.`;
+
+        const toolChars = toolResults.reduce((n, r) => n + (r.text?.length || 0), 0);
+        const toolsLookEmpty =
+          toolResults.length === 0 ||
+          toolChars < 120 ||
+          toolResults.every((r) =>
+            /"items"\s*:\s*\[\s*\]|noRecordsMatch|brak wyników|0 wyników|items":\[\]/i.test(
+              r.text || "",
+            ),
+          );
+
+        const synthesisMessages: ChatMessage[] = [
+          ...history.filter((m) => m.role === "user" || m.role === "system"),
+          {
+            role: "user",
+            content:
+              (toolsLookEmpty
+                ? "UWAGA: wyniki narzędzi wyglądają na puste lub bez trafień. Nie zmyślaj orzeczeń ani aktów. Opisz brak danych i zaproponuj lepsze zapytania.\n\n"
+                : "") +
+              `Wyniki narzędzi (runda wyszukiwania + pogłębienie):\n` +
+              toolResults
+                .map((r) => `### ${r.name}${r.isError ? " (błąd)" : ""}\n${r.text.slice(0, 7000)}`)
+                .join("\n\n"),
+          },
+        ];
+
+        const synStep = pushStep(
+          "llm_synthesis",
+          "Model syntezuje odpowiedź (LLM #2)",
+          "Pełny kontekst wyników narzędzi jest w prompcie i w logu audytu.",
+        );
+        send("thought", {
+          phase: "synthesis",
+          message: "Model łączy wyniki narzędzi w odpowiedź z cytowaniami. Brak zmyślania poza źródłami.",
+        });
+
+        const synStarted = new Date().toISOString();
+        const answer = await callLlm(env, synthesisSystem, synthesisMessages);
+        const synEnded = new Date().toISOString();
+
+        const synRecord: LlmCallRecord = {
+          id: newStepId(),
+          phase: "synthesis",
+          provider: answer.provider,
+          model: answer.model,
+          temperature: answer.temperature,
+          max_tokens: answer.max_tokens,
+          system_prompt: synthesisSystem,
+          messages: synthesisMessages,
+          response_text: answer.text,
+          tool_calls: answer.toolCalls,
+          usage: answer.usage,
+          started_at: synStarted,
+          ended_at: synEnded,
+          duration_ms: Date.parse(synEnded) - Date.parse(synStarted),
+          raw_stop_reason: answer.stop_reason,
+        };
+        audit.llm_calls.push(synRecord);
+        send("llm", {
+          id: synRecord.id,
+          phase: synRecord.phase,
+          provider: synRecord.provider,
+          model: synRecord.model,
+          temperature: synRecord.temperature,
+          max_tokens: synRecord.max_tokens,
+          system_prompt: synRecord.system_prompt,
+          messages: synRecord.messages,
+          response_text: synRecord.response_text,
+          tool_calls: synRecord.tool_calls,
+          usage: synRecord.usage,
+          duration_ms: synRecord.duration_ms,
+          stop_reason: synRecord.raw_stop_reason,
+        });
+
+        audit.token_totals = sumUsage(audit.llm_calls.map((c) => c.usage));
+        send("tokens", {
+          call_id: synRecord.id,
+          phase: "synthesis",
+          usage: answer.usage,
+          cumulative: audit.token_totals,
+        });
+        endStep(synStep, {
+          model: answer.model,
+          provider: answer.provider,
+          usage: answer.usage,
+        });
+
+        const answerText = answer.text || plan.text || "Brak odpowiedzi modelu.";
+        const followups = extractFollowups(answer.text);
+        audit.answer = answerText;
+        audit.followups = followups;
+        audit.completed_at = new Date().toISOString();
+
+        const doneStep = pushStep("complete", "Gotowe", `Trace ${traceId}`);
+        endStep(doneStep, { token_totals: audit.token_totals });
+
+        send("answer", {
+          text: answerText,
+          followups,
+          quota,
+          authenticated: Boolean(user),
+          trace_id: traceId,
+          token_totals: audit.token_totals,
+        });
+        send("audit", audit);
+        send("done", { ok: true, trace_id: traceId, token_totals: audit.token_totals });
+
+        const emptyTools =
+          audit.tool_calls.length === 0 ||
+          audit.tool_calls.every(
+            (t) =>
+              t.is_error ||
+              t.response_chars < 80 ||
+              /"items"\s*:\s*\[\s*\]|items":\[\]/i.test(t.response_text || ""),
+          );
+        void logActivity(env, {
+          eventType: "ai_search",
+          subjectKind: user ? "user" : "anon",
+          userId: user?.id ?? null,
+          anonKey: user ? null : anonKey,
+          traceId,
+          path: "/api/ai-search",
+          summary: query.slice(0, 200),
+          status: emptyTools ? "empty" : audit.tool_calls.some((t) => t.is_error) ? "partial" : "ok",
+          durationMs: Date.parse(audit.completed_at || "") - Date.parse(audit.created_at),
+          meta: {
+            groups,
+            source_ids: sourceIds.slice(0, 20),
+            tool_count: audit.tool_calls.length,
+            tool_names: audit.tool_calls.map((t) => t.name).slice(0, 12),
+            models: audit.llm_calls.map((c) => `${c.provider}/${c.model}`),
+            token_totals: audit.token_totals,
+            answer_chars: answerText.length,
+            empty_tools: emptyTools,
+          },
+        });
+        void purgeExpiredActivityLogs(env);
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        const message = withDeveloperContact(
+          `Błąd wyszukiwania AI: ${raw}. Jeśli problem się powtarza (np. awaria MCP lub modelu), skontaktuj się z developerem.`,
+        );
+        audit.error = message;
+        audit.completed_at = new Date().toISOString();
+        audit.token_totals = sumUsage(audit.llm_calls.map((c) => c.usage));
+        pushStep("error", "Błąd wyszukiwania", message);
+        send("error", { message, trace_id: traceId });
+        send("audit", audit);
+        void logActivity(env, {
+          eventType: "ai_search",
+          subjectKind: user ? "user" : "anon",
+          userId: user?.id ?? null,
+          anonKey: user ? null : anonKey,
+          traceId,
+          path: "/api/ai-search",
+          summary: query.slice(0, 200),
+          status: "error",
+          meta: { error: raw.slice(0, 400) },
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  const headers = new Headers({
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache",
+    connection: "keep-alive",
+  });
+  if (setCookie) headers.append("set-cookie", setCookie);
+  return new Response(stream, { headers });
+}
+
+function extractFollowups(text: string): string[] {
+  const lines = text.split("\n").map((l) => l.trim());
+  const out: string[] = [];
+  for (const line of lines) {
+    const m = /^[-*]?\s*\d+[.)]\s*(.+\?)\s*$/.exec(line) || /^[-*]\s*(.+\?)\s*$/.exec(line);
+    if (m) out.push(m[1]);
+  }
+  return out.slice(0, 3);
+}

@@ -1,0 +1,30 @@
+{
+  "name": "polish-academic-mcp-cloud",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Workers + Pages deployment of Polish Academic MCP with OAuth 2.1, ORCID/email/passkey auth, quotas, and AI Search Mode.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:web": "npm run dev --prefix web",
+    "build:web": "npm run build --prefix web",
+    "deploy": "npm run build:web && wrangler deploy",
+    "types": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply polish-academic-mcp --local",
+    "db:migrate:remote": "wrangler d1 migrations apply polish-academic-mcp --remote",
+    "test": "node --import tsx --test ../tests/cloud-platform.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.26.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261006.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.14.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

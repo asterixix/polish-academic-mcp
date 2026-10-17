@@ -1,0 +1,83 @@
+@import "tailwindcss";
+@import "./styles/theme.css";
+@plugin "tailwindcss-animate";
+@plugin "tailwindcss-react-aria-components";
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply m-0 min-h-[100dvh] bg-bg-primary font-sans text-fg-primary antialiased;
+    background-image:
+      radial-gradient(900px 480px at 8% -10%, rgb(123 82 171 / 0.12), transparent 55%),
+      radial-gradient(700px 400px at 100% 0%, rgb(54 5 79 / 0.08), transparent 45%);
+  }
+
+  ::selection {
+    background: rgb(123 82 171 / 0.24);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 2px;
+  }
+
+  a:focus:not(:focus-visible),
+  button:focus:not(:focus-visible) {
+    outline: none;
+  }
+}
+
+@layer components {
+  .skip-link {
+    position: absolute;
+    left: 1rem;
+    top: -100%;
+    z-index: 100;
+    border-radius: 999px;
+    background: var(--color-brand-700);
+    color: #fff;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .skip-link:focus {
+    top: 0.75rem;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

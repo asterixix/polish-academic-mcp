@@ -8,10 +8,17 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const targetVersion = "1.2.0";
 const expectedToolNames = [
+  "agad_search",
   "agh_get_item",
   "agh_search",
   "amu_get_item",
   "amu_search",
+  "archiwa_dziedzictwo_get_record",
+  "archiwa_dziedzictwo_search",
+  "archiwa_jency_get_record",
+  "archiwa_jency_search",
+  "archiwum_powstania_get_record",
+  "archiwum_powstania_search",
   "baztol_browse_domain",
   "baztol_get_resource",
   "baztol_search",
@@ -33,6 +40,9 @@ const expectedToolNames = [
   "dane_search",
   "dokumenty_slaska_get_page",
   "dokumenty_slaska_medieval_catalog",
+  "ekartoteka_search",
+  "fbc_get_record",
+  "fbc_search",
   "filmpolski_get_item",
   "filmpolski_search",
   "fn_repo_browse_kind",
@@ -45,6 +55,7 @@ const expectedToolNames = [
   "fototekaslaska_search",
   "gapla_get_poster",
   "gapla_search",
+  "gwa_search",
   "icm_get_item",
   "icm_search",
   "imgw_hydro",
@@ -53,6 +64,10 @@ const expectedToolNames = [
   "imgw_warnings",
   "isap_get_act",
   "isap_search_acts",
+  "jbc_get_publication",
+  "jbc_ocr_htr",
+  "jbc_search",
+  "lublin_ap_search",
   "ludzie_get_scientist",
   "ludzie_search",
   "ludzie_semantic_search",
@@ -62,13 +77,21 @@ const expectedToolNames = [
   "nac_site_search",
   "ninateka_get_vod",
   "ninateka_search",
+  "opole_ap_search",
   "pauart_get_artwork",
   "pauart_search",
+  "pbm_get_item",
+  "pbm_search",
   "pbn_get_publication",
   "pbn_search_persons",
   "pbn_search_publications",
+  "piotrkow_ap_search",
   "pkn_search",
+  "plock_genea_search",
   "polon_search",
+  "postdiploma_search",
+  "ppm_get_record",
+  "ppm_search",
   "rcin_get_record",
   "rcin_search",
   "repod_get_dataset",
@@ -83,21 +106,37 @@ const expectedToolNames = [
   "saos_dump_services",
   "saos_get_judgment",
   "saos_search_judgments",
+  "sbc_get_publication",
+  "sbc_search",
+  "straty_get_person",
+  "straty_search",
   "sum_aleph_find",
   "sum_aleph_present",
+  "swa_get_unit",
+  "swa_search",
   "uafm_get_item",
   "uafm_search",
+  "warszawa_ap_search",
   "wiedza_get_standard",
   "wiedza_search_norms",
   "wolnelektury_filter_books",
   "wolnelektury_get_book",
   "wolnelektury_get_collection",
   "wolnelektury_list_taxonomy",
+  "zamosc_ap_search",
 ] as const;
 
 type Tool = {
   name: string;
+  title?: string;
   description?: string;
+  annotations?: {
+    title?: string;
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  };
   inputSchema: { properties?: Record<string, { description?: string }> };
 };
 
@@ -248,7 +287,7 @@ test("handshake MCP zgłasza wersję serwera 1.2.0", () => {
   assert.equal(client.getServerVersion()?.version, targetVersion);
 });
 
-test("tools/list zachowuje dokładnie 85 stabilnych identyfikatorów", () => {
+test("tools/list zachowuje dokładnie 116 stabilnych identyfikatorów", () => {
   assert.deepEqual(tools.map(({ name }) => name).sort(), [...expectedToolNames]);
 });
 
@@ -266,4 +305,25 @@ test("wszystkie parametry mają polskie opisy", () => {
       .map(([name]) => `${tool.name}.${name}`),
   );
   assert.equal(invalid.length, 0, `Niepolskie lub puste opisy parametrów (${summarize(invalid)})`);
+});
+
+test("wszystkie narzędzia mają title oraz jawne adnotacje readOnlyHint, destructiveHint i openWorldHint (wymogi Claude i ChatGPT)", () => {
+  for (const tool of tools) {
+    assert.ok(tool.title && tool.title.trim().length > 0, `${tool.name} nie ma pola title`);
+    assert.ok(
+      tool.annotations?.title && tool.annotations.title.trim().length > 0,
+      `${tool.name} nie ma pola annotations.title`,
+    );
+    assert.equal(tool.annotations?.readOnlyHint, true, `${tool.name} musi mieć readOnlyHint: true`);
+    assert.equal(
+      tool.annotations?.destructiveHint,
+      false,
+      `${tool.name} musi mieć destructiveHint: false`,
+    );
+    assert.equal(
+      tool.annotations?.openWorldHint,
+      true,
+      `${tool.name} musi mieć openWorldHint: true`,
+    );
+  }
 });

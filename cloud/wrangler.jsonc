@@ -1,0 +1,64 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "polish-academic-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": {
+    "directory": "./web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+      "/mcp",
+      "/mcp/*",
+      "/sse",
+      "/messages",
+      "/oauth/*",
+      "/.well-known/*",
+      "/openapi.json",
+      "/server.json"
+    ]
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "polish-academic-mcp",
+      "database_id": "128b0b4b-7a42-4a66-a3b6-f0e0dd6cf70c",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "CACHE_KV",
+      "id": "3a65887199da444388b42a88ee993376",
+      "preview_id": "9ab7d644e4fd40bfaf18165023ccfe37"
+    }
+  ],
+  "vars": {
+    "APP_NAME": "Polish Academic MCP",
+    "PUBLIC_BASE_URL": "https://pamcp.pl",
+    "CF_WORKER_SCRIPT_NAME": "polish-academic-mcp",
+    "MCP_MONTHLY_LIMIT": "100",
+    "AI_SEARCH_ANON_WEEKLY_LIMIT": "2",
+    "AI_SEARCH_USER_WEEKLY_LIMIT": "5",
+    "AI_MODEL": "anthropic/claude-haiku-5.5",
+    "AI_FALLBACK_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+  }
+  // Sensitive / environment-specific — set in Cloudflare dashboard or:
+  //   npx wrangler secret put SESSION_SECRET
+  //   npx wrangler secret put ADMIN_UIDS
+  //   npx wrangler secret put ADMIN_EMAILS
+  //   npx wrangler secret put CF_ACCOUNT_ID
+  //   npx wrangler secret put ORCID_CLIENT_ID / ORCID_CLIENT_SECRET
+  //   npx wrangler secret put EDENAI_API_KEY / EDENAI_MANAGEMENT_KEY
+  //   npx wrangler secret put CF_API_TOKEN
+  //   npx wrangler secret put ANTHROPIC_API_KEY or OPENROUTER_API_KEY / CF_AIG_TOKEN
+  //   npx wrangler secret put AI_GATEWAY_URL / BDL_CLIENT_ID / PBN_APP_ID / PBN_APP_TOKEN
+  //   npx wrangler secret put REVIEWER_DEMO_EMAIL / REVIEWER_DEMO_PASSWORD
+  // Local: copy .dev.vars.example → .dev.vars (gitignored).
+}

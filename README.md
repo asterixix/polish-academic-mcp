@@ -66,9 +66,20 @@ Install [Node.js LTS](https://nodejs.org), then run `npx -y polish-academic-mcp 
 | Gemini CLI, OpenAI Codex CLI, opencode, GitHub Copilot CLI                                 | kreator `setup`                                                                                  |                                                                                          |
 | Zed, Continue, Goose, Hermes Agent, OpenClaw, Jan, Perplexity (macOS), Msty, Cherry Studio | `npx -y polish-academic-mcp setup --print <id>` wypisze gotową instrukcję                        | id: `zed`, `continue`, `goose`, `hermes`, `openclaw`, `jan`, `perplexity`, `generic`     |
 | Open WebUI                                                                                 | przez most [mcpo](https://github.com/open-webui/mcpo): `setup --print open-webui`                | Open WebUI obsługuje natywnie tylko MCP po HTTP                                          |
-| ChatGPT, Claude.ai w przeglądarce                                                          | nieobsługiwane                                                                                   | te usługi łączą się tylko ze zdalnymi serwerami MCP (HTTP), a ten serwer działa lokalnie |
+| ChatGPT, Claude.ai, Perplexity (konektory zdalne)                                          | wdrożenie Cloudflare w [`cloud/`](cloud/) — OAuth 2.1 pod `/mcp`                                 | limity: 100 wywołań MCP / miesiąc; AI Search w przeglądarce 2/tydz. (gość) lub 5/tydz. (konto) — szczegóły: [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md) |
 
 Szczegółowe instrukcje dla każdej aplikacji (pliki konfiguracyjne, ręczna konfiguracja, weryfikacja): [docs/CLIENTS.md](docs/CLIENTS.md). Jeśli konfigurację ma wykonać agent AI, daj mu [docs/AGENT-GUIDE.md](docs/AGENT-GUIDE.md).
+
+### Wersja chmurowa (Cloudflare Workers + Pages)
+
+Oprócz lokalnego `npx` możesz wdrożyć zdalne środowisko z katalogu [`cloud/`](cloud/):
+
+- serwer MCP HTTP z OAuth 2.1 (ORCID, email+hasło, passkey) pod `/mcp`,
+- limity: **100** zapytań narzędzi / miesiąc (MCP), **2** / tydzień AI Search bez logowania, **5** / tydzień po zalogowaniu,
+- wyszukiwanie językiem naturalnym w przeglądarce (AI Mode) z Cloudflare AI Gateway i modelem `anthropic/claude-haiku-5.5`,
+- strony `/connectors`, `/privacy`, `/terms` pod oficjalne konektory Claude, ChatGPT i Perplexity.
+
+Instrukcja wdrożenia i sekrety: **[docs/CLOUDFLARE.md](docs/CLOUDFLARE.md)**.
 
 ### Opcje kreatora
 
@@ -299,6 +310,33 @@ src/cache.ts   cache w pamięci, limit 30 s, jedna ponowna próba przy błędach
 ```
 
 Jak dodać nową bazę: [AGENTS.md](AGENTS.md). Zasady współpracy: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## Polityka prywatności (Privacy Policy)
+
+Niniejsza sekcja określa zasady prywatności dla lokalnego serwera MCP (`polish-academic-mcp`, repozytorium: [https://github.com/asterixix/polish-academic-mcp](https://github.com/asterixix/polish-academic-mcp)) oraz zdalnego konektora chmurowego dostępnego pod adresem **[https://pamcp.pl](https://pamcp.pl)** (wymóg katalogów Anthropic Claude, OpenAI ChatGPT oraz Perplexity). Pełna wersja online jest dostępna pod adresem **[https://pamcp.pl/privacy](https://pamcp.pl/privacy)** (oraz regulamin pod **[https://pamcp.pl/terms](https://pamcp.pl/terms)**, dokumentacja konektora pod **[https://pamcp.pl/connectors](https://pamcp.pl/connectors)**).
+
+1. **Praktyki zbierania danych (Data Collection Practices):**
+   - **Serwer lokalny (`npx polish-academic-mcp`):** działa w całości na komputerze użytkownika i nie zbiera, nie przechowuje ani nie przesyła żadnych danych osobowych, telemetrii ani identyfikatorów sesji do autora pakietu.
+   - **Zdalny konektor chmurowy (`https://pamcp.pl/mcp`):** stosuje minimalizację danych (Privacy by Design). Narzędzia przyjmują wyłącznie parametry wyszukiwania (frazy, identyfikatory rekordów, sygnatury aktów). Serwer nie pobiera historii czatu klienta, nie zbiera lokalizacji GPS ani danych wrażliwych (PHI, PCI DSS, numerów PESEL/SSN, haseł). Dla potrzeb autoryzacji OAuth 2.1 przetwarzany jest wyłącznie adres e-mail (lub ORCID iD / klucz publiczny passkey WebAuthn), kryptograficzny skrót SHA-256 tokenu OAuth oraz licznik przydziału zapytań.
+2. **Wykorzystanie i przechowywanie (Usage and Storage):**
+   - Dane konta i autoryzacji w wersji chmurowej służą wyłącznie do uwierzytelniania OAuth 2.1 (PKCE S256), realizacji zapytań w trybie tylko do odczytu (`readOnlyHint: true`, `destructiveHint: false`) oraz egzekwowania limitów zapytań w bazie Cloudflare D1.
+   - Odpowiedzi z publicznych API są tymczasowo buforowane (cache) w pamięci RAM (lokalnie) lub Cloudflare KV (w chmurze) bez powiązania z tożsamością użytkownika.
+3. **Udostępnianie podmiotom trzecim (Third-Party Sharing):**
+   - Nie sprzedajemy ani nie udostępniamy danych osobowych podmiotom trzecim ani sieciom reklamowym.
+   - Zapytania wyszukiwawcze (bez danych konta użytkownika) są wysyłane bezpośrednio do publicznych interfejsów API 51 polskich instytucji naukowych, statystycznych, prawnych i archiwalnych (m.in. Biblioteka Nauki, GUS BDL, Sejm ELI / ISAP, SAOS, Wolne Lektury, Archiwa Państwowe).
+   - W wersji chmurowej podmiotem przetwarzającym infrastrukturę jest Cloudflare, Inc., a przy logowaniu przez ORCID — ORCID, Inc.
+4. **Okres przechowywania (Data Retention):**
+   - Dane konta: do momentu usunięcia konta na żądanie użytkownika.
+   - Kody autoryzacyjne OAuth: 10 minut; tokeny dostępowe: 1 godzina; tokeny odświeżające: 30 dni lub do odwołania.
+   - Cache publicznych odpowiedzi API: od 1 do 24 godzin.
+5. **Dane kontaktowe (Contact Information):**
+   - Administrator danych i wsparcie techniczne: **Artur Sendyka**
+   - E-mail: [artur@sendyka.dev](mailto:artur@sendyka.dev)
+   - Serwis chmurowy i konektor MCP: [https://pamcp.pl](https://pamcp.pl) (`https://pamcp.pl/mcp`)
+   - Strona autora: [https://sendyka.dev](https://sendyka.dev)
+   - Kod źródłowy oraz zgłoszenia błędów i bezpieczeństwa: [https://github.com/asterixix/polish-academic-mcp](https://github.com/asterixix/polish-academic-mcp) / [Issues](https://github.com/asterixix/polish-academic-mcp/issues)
 
 ---
 

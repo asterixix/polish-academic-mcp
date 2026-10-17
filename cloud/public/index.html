@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polish Academic MCP — AI Search</title>
+  <meta name="description" content="Wyszukiwanie w polskich bazach naukowych, prawnych i kulturowych językiem naturalnym (AI Mode)." />
+  <link rel="icon" href="/logo.jpg" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <img src="/logo.jpg" alt="Polish Academic MCP" />
+        <div>
+          <h1>Polish Academic</h1>
+          <p>AI Search Mode · 51 baz · 113 narzędzi · pamcp.pl</p>
+        </div>
+      </div>
+      <div class="row">
+        <span class="quota-pill" id="quota-pill">Limit: …</span>
+        <a class="btn ghost" href="/connectors">Konektory</a>
+        <a class="btn ghost" href="/account" id="account-link">Konto</a>
+        <a class="btn primary" href="/login" id="auth-link">Zaloguj</a>
+      </div>
+    </header>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="search">AI Search</button>
+      <button class="tab" data-tab="catalog">Katalog 113 narzędzi</button>
+    </div>
+
+    <section id="tab-search">
+      <div class="hero">
+        <h2>Szukaj w polskich bazach jak w Google AI Mode</h2>
+        <p class="muted">Bez logowania: 2 wyszukiwania / tydzień · Po zalogowaniu: 5 / tydzień · MCP OAuth: 100 / miesiąc</p>
+        <form class="search-box" id="search-form">
+          <input id="query" type="search" placeholder="Np. orzeczenia SAOS o ochronie danych osobowych 2023…" autocomplete="off" required />
+          <button class="btn primary" type="submit">Szukaj</button>
+        </form>
+        <div class="chips" id="group-chips">
+          <button type="button" class="chip active" data-sources="">Wszystkie grupy</button>
+          <button type="button" class="chip" data-sources="nauka">Nauka</button>
+          <button type="button" class="chip" data-sources="prawo">Prawo</button>
+          <button type="button" class="chip" data-sources="dane">Dane GUS/IMGW</button>
+          <button type="button" class="chip" data-sources="normy">Normy</button>
+          <button type="button" class="chip" data-sources="kultura">Kultura</button>
+        </div>
+        <div class="chips" id="suggestions">
+          <button type="button" class="chip" data-q="Artykuły o energii odnawialnej w Bibliotece Nauki z 2024">Energia odnawialna 2024</button>
+          <button type="button" class="chip" data-q="Ustawa o ochronie danych osobowych ISAP">RODO / ISAP</button>
+          <button type="button" class="chip" data-q="Orzeczenia SAOS o umowach kredytowych frankowych">Franki SAOS</button>
+          <button type="button" class="chip" data-q="Bezrobocie w województwie mazowieckim GUS BDL">Bezrobocie GUS</button>
+        </div>
+      </div>
+
+      <div class="layout-grid">
+        <div class="panel">
+          <h3>Odpowiedź</h3>
+          <div class="status-line" id="status">Wpisz pytanie badawcze, aby rozpocząć.</div>
+          <div class="answer" id="answer"></div>
+          <div class="followups" id="followups"></div>
+        </div>
+        <div class="panel">
+          <h3>Źródła i narzędzia</h3>
+          <div id="sources"><p class="muted">Tu pojawią się karty baz odpytywanych podczas wyszukiwania.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-catalog" class="hidden">
+      <div class="panel">
+        <h3>Katalog narzędzi MCP</h3>
+        <p class="muted">Pełna lista narzędzi dostępnych dla Claude, ChatGPT i Perplexity przez <code>/mcp</code>.</p>
+        <div class="tool-list" id="tool-list"><p class="muted">Ładowanie…</p></div>
+      </div>
+    </section>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

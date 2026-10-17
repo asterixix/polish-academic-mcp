@@ -1,0 +1,35 @@
+@theme {
+  --font-sans: "Segoe UI", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Segoe UI Semibold", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+
+  /* Brand from PAMCP logo: deep purple + lavender */
+  --color-brand-25: #faf7fc;
+  --color-brand-50: #f3ebf8;
+  --color-brand-100: #e6d5f0;
+  --color-brand-200: #d0b0e0;
+  --color-brand-300: #b07dcb;
+  --color-brand-400: #7b52ab;
+  --color-brand-500: #5c2d8a;
+  --color-brand-600: #4a1f72;
+  --color-brand-700: #36054f;
+  --color-brand-800: #2a043d;
+  --color-brand-900: #1f0330;
+  --color-brand-950: #140220;
+
+  --color-fg-primary: #1a0f24;
+  /* Secondary/tertiary darkened for WCAG 2.2 AA (≥4.5:1 on #faf8fc) */
+  --color-fg-secondary: #4a3a58;
+  --color-fg-tertiary: #5c4a6e;
+  --color-bg-primary: #faf8fc;
+  --color-bg-secondary: #ffffff;
+  --color-border-primary: #e5d9ef;
+  --color-accent: #7b52ab;
+  --color-danger: #b42318;
+  --color-success: #067647;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --shadow-soft: 0 12px 40px rgb(54 5 79 / 0.08);
+}

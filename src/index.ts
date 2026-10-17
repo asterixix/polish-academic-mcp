@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createMemoryCacheStore } from "./cache.js";
 import { helpText, listSourcesText, readOption, runDoctor, runSetup } from "./cli.js";
-import { createServer } from "./server.js";
+import { createServer, MODE_ENV, type ServerMode } from "./server.js";
 import { SOURCES, SOURCES_ENV, parseSourceSelection, type SourceId } from "./sources.js";
 import type { Env } from "./types.js";
 
@@ -64,6 +64,14 @@ function selectSources(argv: readonly string[]): SourceId[] {
   return ids;
 }
 
+function selectMode(argv: readonly string[]): ServerMode {
+  const raw = (readOption(argv, "--mode") ?? process.env[MODE_ENV] ?? "").trim().toLowerCase();
+  if (raw === "router" || raw === "meta" || raw === "compact") return "router";
+  if (raw === "granular" || raw === "full" || raw === "all" || raw === "") return "granular";
+  console.error(`Ignoring unknown mode "${raw}"; using "granular" (supported: router, granular)`);
+  return "granular";
+}
+
 function installProcessDiagnostics(): void {
   const onStreamError = (label: string) => (error: unknown) => {
     const err = error as NodeJS.ErrnoException;
@@ -84,19 +92,19 @@ function installProcessDiagnostics(): void {
   process.stdin.on("close", () => {
     console.error("stdin close");
   });
-  process.stdin.on("error", (error) => {
+  process.stdin.on("error", (error: unknown) => {
     console.error("stdin stream error:", error);
   });
 
   process.stdout.on("error", onStreamError("stdout"));
   process.stderr.on("error", onStreamError("stderr"));
 
-  process.on("uncaughtException", (error) => {
+  process.on("uncaughtException", (error: unknown) => {
     console.error("Uncaught exception in MCP runtime:", error);
     process.exitCode = 1;
   });
 
-  process.on("unhandledRejection", (reason) => {
+  process.on("unhandledRejection", (reason: unknown) => {
     console.error("Unhandled promise rejection in MCP runtime:", reason);
     process.exitCode = 1;
   });
@@ -126,7 +134,8 @@ async function main(): Promise<void> {
   installProcessDiagnostics();
 
   const sources = selectSources(argv);
-  const server = createServer(buildEnv(), { sources });
+  const mode = selectMode(argv);
+  const server = createServer(buildEnv(), { sources, mode });
   const transport = new StdioServerTransport();
 
   process.on("SIGINT", () => {
@@ -139,7 +148,7 @@ async function main(): Promise<void> {
 
   await server.connect(transport);
   console.error(
-    `Polish Academic MCP ${version} running on stdio (${sources.length}/${SOURCES.length} sources)`,
+    `Polish Academic MCP ${version} running on stdio (${sources.length}/${SOURCES.length} sources, mode: ${mode})`,
   );
   if (process.stdin.isTTY) {
     // Started by hand in a terminal: explain instead of silently waiting for JSON-RPC.

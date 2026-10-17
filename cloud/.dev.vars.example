@@ -1,0 +1,27 @@
+# Copy to cloud/.dev.vars for local `wrangler dev` (file is gitignored).
+# Production: set the same names via `npx wrangler secret put <NAME>`.
+
+SESSION_SECRET=replace-with-long-random-string
+ORCID_CLIENT_ID=
+ORCID_CLIENT_SECRET=
+EDENAI_API_KEY=
+EDENAI_MANAGEMENT_KEY=
+ANTHROPIC_API_KEY=
+OPENROUTER_API_KEY=
+CF_AIG_TOKEN=
+AI_GATEWAY_URL=
+CF_API_TOKEN=
+BDL_CLIENT_ID=
+PBN_APP_ID=
+PBN_APP_TOKEN=
+
+# Admin panel (comma-separated). Do not commit real values.
+ADMIN_UIDS=
+ADMIN_EMAILS=
+
+# Optional Cloudflare Analytics account id (not a secret, but keep out of public forks if preferred)
+CF_ACCOUNT_ID=
+
+# Reviewer demo account for directory submissions (private — do not put real password in git)
+REVIEWER_DEMO_EMAIL=reviewer@example.com
+REVIEWER_DEMO_PASSWORD=

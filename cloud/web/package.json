@@ -1,0 +1,41 @@
+{
+  "name": "web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/generate-changelog.mjs && node scripts/generate-mcp-docs.mjs && vite",
+    "prebuild": "node scripts/generate-changelog.mjs && node scripts/generate-mcp-docs.mjs",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "changelog": "node scripts/generate-changelog.mjs",
+    "docs-data": "node scripts/generate-mcp-docs.mjs"
+  },
+  "dependencies": {
+    "@assistant-ui/react": "^0.15.29",
+    "@tailwindcss/vite": "^4.3.3",
+    "@untitledui/icons": "^0.0.23",
+    "clsx": "^2.1.1",
+    "motion": "^14.3.0",
+    "react": "^19.2.8",
+    "react-aria-components": "^1.22.1",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.18.4",
+    "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.3.3",
+    "tailwindcss-animate": "^1.0.7",
+    "tailwindcss-react-aria-components": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "oxlint": "^1.81.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
+  }
+}
