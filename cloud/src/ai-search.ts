@@ -384,6 +384,55 @@ function usageFromText(system: string, messages: ChatMessage[], response: string
   };
 }
 
+type EdenChatJson = {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+      tool_calls?: Array<{ function?: { name?: string; arguments?: string } }>;
+    };
+    delta?: { content?: string | null };
+    finish_reason?: string;
+  }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+  model?: string;
+  cost?: number;
+  edenai_metadata?: Record<string, unknown>;
+};
+
+async function readEdenStream(res: Response, onToken: (text: string) => void): Promise<EdenChatJson> {
+  const out: EdenChatJson = { choices: [{ message: { content: "" } }] };
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+  const handleLine = (line: string) => {
+    if (!line.startsWith("data:")) return;
+    const data = line.slice(5).trim();
+    if (!data || data === "[DONE]") return;
+    const chunk = JSON.parse(data) as EdenChatJson;
+    const delta = chunk.choices?.[0]?.delta?.content;
+    if (typeof delta === "string" && delta) {
+      text += delta;
+      onToken(delta);
+    }
+    if (chunk.choices?.[0]?.finish_reason) out.choices![0].finish_reason = chunk.choices[0].finish_reason;
+    if (chunk.usage) out.usage = chunk.usage;
+    if (chunk.model) out.model = chunk.model;
+    if (typeof chunk.cost === "number") out.cost = chunk.cost;
+  };
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) handleLine(line.trim());
+  }
+  handleLine(buffer.trim());
+  out.choices![0].message!.content = text;
+  return out;
+}
+
 async function callEdenAi(
   env: CloudEnv,
   system: string,
@@ -392,6 +441,7 @@ async function callEdenAi(
   model: string,
   traceId?: string,
   phase?: "plan" | "synthesis" | "probe",
+  onToken?: (text: string) => void,
 ): Promise<LlmResult> {
   const apiKey = env.EDENAI_API_KEY!.trim();
   const base = (env.EDENAI_API_BASE?.trim() || "https://api.edenai.run/v3").replace(/\/$/, "");
@@ -428,6 +478,8 @@ async function callEdenAi(
   if (fallbacks.length > 0) body.fallbacks = fallbacks;
   if (sessionId) body.session_id = sessionId;
   if (anthropicTools.length > 0) body.tools = anthropicTools;
+  const streaming = Boolean(onToken) && anthropicTools.length === 0;
+  if (streaming) body.stream = true;
 
   const bodyJson = JSON.stringify(body);
   const t0 = Date.now();
@@ -466,19 +518,11 @@ async function callEdenAi(
       requestId,
     });
   }
-  const json = (await res.json()) as {
-    choices?: Array<{
-      message?: {
-        content?: string | null;
-        tool_calls?: Array<{ function?: { name?: string; arguments?: string } }>;
-      };
-      finish_reason?: string;
-    }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-    model?: string;
-    cost?: number;
-    edenai_metadata?: Record<string, unknown>;
-  };
+  const isEventStream = (res.headers.get("content-type") || "").includes("text/event-stream");
+  const json: EdenChatJson =
+    streaming && isEventStream && res.body
+      ? await readEdenStream(res, onToken!)
+      : ((await res.json()) as EdenChatJson);
   const msg = json.choices?.[0]?.message;
   const text = typeof msg?.content === "string" ? msg.content : "";
   const toolCalls: LlmToolCall[] = [];
@@ -642,6 +686,7 @@ interface LlmCallContext {
   anonKey?: string | null;
   forceModel?: string | null;
   onProviderError?: (attempt: LlmAttemptRecord) => void;
+  onToken?: (text: string) => void;
 }
 
 async function callLlm(
@@ -675,6 +720,7 @@ async function callLlm(
         model,
         ctx?.traceId,
         ctx?.phase ?? "plan",
+        ctx?.onToken,
       );
       const durationMs = Date.now() - t0;
       attempts.push({
@@ -1838,6 +1884,7 @@ Zasady twarde (anty-halucynacja):
           userId: user?.id ?? null,
           anonKey,
           forceModel: forcedModel,
+          onToken: (text) => send("token", { text }),
           onProviderError: (failedAttempt) => {
             send("thought", {
               phase: "synthesis",

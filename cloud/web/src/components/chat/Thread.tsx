@@ -12,7 +12,7 @@ import {
   ThreadPrimitive,
   useAuiState,
 } from "@assistant-ui/react";
-import { ArrowUp, BookOpen01, Loading02, Trash01, Download01 } from "@untitledui/icons";
+import { ArrowUp, BookOpen01, Loading02, Trash01, Download01, Copy01 } from "@untitledui/icons";
 import { motion } from "motion/react";
 
 const suggestions: Array<{ prompt: string; krakowBrand?: boolean }> = [
@@ -121,6 +121,7 @@ export function Thread() {
     openThread,
     removeThread,
     downloadHistory,
+    copyHistory,
   } = useChatMeta();
 
   const hasMessages = messages.length > 0;
@@ -199,12 +200,12 @@ export function Thread() {
           <button
             type="button"
             disabled={!hasMessages}
-            onClick={() => downloadHistory("md")}
+            onClick={() => void copyHistory()}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border-primary bg-bg-secondary px-3 py-1.5 text-xs font-semibold text-fg-secondary hover:border-brand-300 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-            aria-label="Pobierz historię rozmowy (Markdown)"
+            aria-label="Kopiuj historię rozmowy jako Markdown"
           >
-            <Download01 className="size-3.5" aria-hidden />
-            MD
+            <Copy01 className="size-3.5" aria-hidden />
+            Kopiuj MD
           </button>
           <button
             type="button"

@@ -12,7 +12,7 @@ import {
   type ThreadSummary,
   type TokenUsage,
 } from "@/lib/api";
-import { downloadConversation } from "@/lib/audit-export";
+import { copyConversationMarkdown, downloadConversation } from "@/lib/audit-export";
 import { withFeedbackHint } from "@/lib/feedback";
 import {
   AssistantRuntimeProvider,
@@ -56,7 +56,8 @@ type ChatMeta = {
   startNewThread: () => void;
   openThread: (id: string) => Promise<void>;
   removeThread: (id: string) => Promise<void>;
-  downloadHistory: (format: "json" | "md") => void;
+  downloadHistory: (format: "json") => void;
+  copyHistory: () => Promise<boolean>;
   /** Re-run the user prompt that led to the last (or given) system-error assistant turn. */
   retryFailedPrompt: (assistantMessageId?: string) => Promise<void>;
 };
@@ -85,6 +86,7 @@ const ChatMetaContext = createContext<ChatMeta>({
   openThread: async () => {},
   removeThread: async () => {},
   downloadHistory: () => {},
+  copyHistory: async () => false,
   retryFailedPrompt: async () => {},
 });
 
@@ -207,19 +209,25 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
     [refreshThreadList, startNewThread, threadId],
   );
 
+  const conversationExport = useCallback(() => {
+    const title =
+      messagesRef.current.find((m) => m.role === "user")?.content.slice(0, 80) || "Rozmowa";
+    return {
+      title,
+      threadId,
+      messages: messagesRef.current.map((m) => ({ role: m.role, content: m.content })),
+      audits: conversationAuditRef.current.turns,
+    };
+  }, [threadId]);
+
   const downloadHistory = useCallback(
-    (format: "json" | "md") => {
-      const title =
-        messagesRef.current.find((m) => m.role === "user")?.content.slice(0, 80) || "Rozmowa";
-      downloadConversation({
-        title,
-        threadId,
-        messages: messagesRef.current.map((m) => ({ role: m.role, content: m.content })),
-        audits: conversationAuditRef.current.turns,
-        format,
-      });
-    },
-    [threadId],
+    (format: "json") => downloadConversation({ ...conversationExport(), format }),
+    [conversationExport],
+  );
+
+  const copyHistory = useCallback(
+    () => copyConversationMarkdown(conversationExport()),
+    [conversationExport],
   );
 
   useEffect(() => {
@@ -361,6 +369,14 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
                 ? (auditPayload.llm_calls as LlmCallEvent[])
                 : prev.llmCalls,
             }));
+          }
+          if (ev.event === "token") {
+            answer += ev.data.text;
+            const next = messagesRef.current.map((m) =>
+              m.id === assistantId ? { ...m, content: answer } : m,
+            );
+            setMessages(next);
+            messagesRef.current = next;
           }
           if (ev.event === "answer") {
             answer = ev.data.text || "";
@@ -505,6 +521,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
       openThread,
       removeThread,
       downloadHistory,
+      copyHistory,
       retryFailedPrompt,
     }),
     [
@@ -521,6 +538,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
       openThread,
       removeThread,
       downloadHistory,
+      copyHistory,
       retryFailedPrompt,
     ],
   );

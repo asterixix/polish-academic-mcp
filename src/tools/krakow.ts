@@ -9,6 +9,20 @@ const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
 const TTL = 3600;
 function norm(s: string): string { return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ł/g, "l").replace(/[^a-z0-9]+/g, " ").trim(); }
 function clean(html: string): string { return decodeHtmlEntities(html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim(); }
+// shortcut: max 20 stron x 100 wierszy na tabelę (wywołania sekwencyjne), upgrade: równoległe pobieranie lub filtr OData
+const MAX_PAGES = 20;
+export async function fetchAllRows(url: string, env: Env): Promise<{ rows: unknown[]; complete: boolean }> {
+  const rows: unknown[] = [];
+  let next: string | null = url;
+  for (let page = 0; next && page < MAX_PAGES; page++) {
+    const raw = await cachedFetch(env.CACHE_KV, makeCacheKey("krakow_od_page", { u: next }), next, { headers: { Accept: "application/json" } }, TTL);
+    const j = JSON.parse(raw) as { value?: unknown[]; nextLink?: string };
+    rows.push(...(Array.isArray(j.value) ? j.value : []));
+    const after = j.nextLink ? new URL(j.nextLink).searchParams.get("$after") : null;
+    next = after ? `${url.split("?")[0]}?$after=${encodeURIComponent(after)}` : null;
+  }
+  return { rows, complete: next === null };
+}
 function err(tool: string, e: unknown) { return { content: [{ type: "text" as const, text: `Error calling ${tool}: ${toToolErrorText(e)}` }], isError: true }; }
 function matches(query: string, ...fields: string[]): boolean { const q = norm(query); if (!q) return true; const hay = norm(fields.join(" ")); return q.split(" ").filter(Boolean).every((t) => hay.includes(t)) || hay.includes(q); }
 
@@ -111,11 +125,13 @@ export function registerKrakowOdTools(server: McpServer, env: Env): void {
         let items = KRAKOW_OD_CATALOG.filter((d) => matches(query, d.title, d.category, d.slug) && (!category || norm(d.category) === norm(category)));
         if (liveSlugs.length) { const rank = new Map(liveSlugs.map((s, i) => [s, i])); items = [...items].sort((a, b) => (rank.get(a.slug) ?? 99) - (rank.get(b.slug) ?? 99)); const extra = liveSlugs.filter((s) => !items.some((d) => d.slug === s)).map((s) => ({ slug: s, title: s, category: category ?? "" })); items = [...items, ...extra]; }
         const per = 20; const slice = items.slice((page - 1) * per, page * per);
-        return { content: [{ type: "text", text: JSON.stringify({ query, category: category ?? null, page, total: items.length, count: slice.length, items: slice.map((d) => ({ ...d, id: d.slug, source: "krakow_od", get_record: `krakow_od:${d.slug}`, url: `https://otwartedane.um.krakow.pl/zbiory-danych/${d.slug}` })) }, null, 2) }] };
+        // shortcut: prognozy do 2050 są tylko w krakow_strategia (artykuły z PDF), wskazówka dla zapytań o prognozę, upgrade: przeszukiwać strategię równolegle
+        const strategia_hint = /prognoz|2050|demograf/i.test(query) ? "Prognozy do 2050 roku nie ma w Otwartych Danych. Użyj krakow_strategia_get_article z id 255436 (Kraków) lub 269787 (MOF)." : undefined;
+        return { content: [{ type: "text", text: JSON.stringify({ query, category: category ?? null, page, total: items.length, count: slice.length, strategia_hint, items: slice.map((d) => ({ ...d, id: d.slug, source: "krakow_od", get_record: `krakow_od:${d.slug}`, url: `https://otwartedane.um.krakow.pl/zbiory-danych/${d.slug}` })) }, null, 2) }] };
       } catch (e) { return err("krakow_od_search", e); }
     });
   server.tool("krakow_od_get_dataset",
-    "Pobiera pełną kartę zbioru Otwarte Dane Miasta Krakowa (https://otwartedane.um.krakow.pl/zbiory-danych/{slug}) wraz z metadanymi portalu (kategoria, dostawca danych, częstotliwość aktualizacji, poziom otwartości, daty), wykrytymi tabelami REST API na api.um.krakow.pl (komponenty data-exporter/data-table, format OData JSON {value:[...]}) oraz ich danymi liczbowymi: pole rows zawiera wszystkie wiersze tabeli, gdy jest ich co najwyżej 120 (np. miesięczne liczby bezrobotnych i ofert pracy od 2023 roku, zameldowani na pobyt stały na 31.12.2024), a dla większych tabel próbkę sample_rows; zwraca też adresy dokumentacji Swagger/OpenAPI i linki zewnętrzne (m.in. warstwy ArcGIS Hub ZTP dla Komunikacji Miejskiej KMK). Identyfikator slug zwraca krakow_od_search.",
+    "Pobiera pełną kartę zbioru Otwarte Dane Miasta Krakowa (https://otwartedane.um.krakow.pl/zbiory-danych/{slug}) wraz z metadanymi portalu (kategoria, dostawca danych, częstotliwość aktualizacji, poziom otwartości, daty), wykrytymi tabelami REST API na api.um.krakow.pl (komponenty data-exporter/data-table, format OData JSON {value:[...]}) oraz ich danymi liczbowymi: pole rows zawiera wiersze tabeli ze wszystkich stron API (nextLink/$after, do 20 stron; complete=false gdy limit został osiągnięty); zwraca też adresy dokumentacji Swagger/OpenAPI i linki zewnętrzne (m.in. warstwy ArcGIS Hub ZTP dla Komunikacji Miejskiej KMK). Identyfikator slug zwraca krakow_od_search.",
     { slug: z.string().describe("Identyfikator slug zbioru z wyników krakow_od_search, np. bezrobotni-i-oferty-pracy-w-krakowie-od-2023-roku albo pełny adres URL zbioru"), include_data: z.boolean().default(true).describe("Czy pobrać przykładowe wiersze danych z każdej wykrytej tabeli API (domyślnie tak)") },
     async ({ slug, include_data }) => {
       try {
@@ -131,19 +147,10 @@ export function registerKrakowOdTools(server: McpServer, env: Env): void {
         const seen = new Set<string>();
         for (const c of comps.filter((x) => x.apiUrl && !seen.has(x.apiUrl) && seen.add(x.apiUrl))) {
           const t: Record<string, unknown> = { api_url: c.apiUrl, metadata_url: c.metaUrl ?? null, export_formats: ["JSON", "CSV", "XLSX"] };
-          if (include_data) { try { const raw = await cachedFetch(env.CACHE_KV, makeCacheKey("krakow_od_api_sample", { u: c.apiUrl }), c.apiUrl!, { headers: { Accept: "application/json" } }, TTL); const j = JSON.parse(raw) as { value?: unknown[] }; const rows = Array.isArray(j.value) ? j.value : []; t.total_rows = rows.length; if (rows.length <= 120) { t.rows = rows; } else { t.sample_rows = rows.slice(0, 10); t.rows_note = "Tabela ma ponad 120 wierszy — zwrócono próbkę; pełne dane pobierz krakow_od_fetch_api."; } } catch (e2) { t.data_error = toToolErrorText(e2); } }
+          if (include_data) { try { const { rows, complete } = await fetchAllRows(c.apiUrl!, env); t.total_rows = rows.length; t.complete = complete; t.rows = rows; } catch (e2) { t.data_error = toToolErrorText(e2); } }
           tables.push(t);
         }
-        // Najnowsze roczniki najpierw i globalny budżet wierszy (~45 tys. znaków):
-        // najnowsze tabele w całości, starsze tylko jako próbki, by odpowiedź zmieściła się w kontekście.
         tables.sort((a, b) => (String(b.api_url).match(/(20\d{2})/)?.[1] ?? "").localeCompare(String(a.api_url).match(/(20\d{2})/)?.[1] ?? ""));
-        let rowsBudget = 45000;
-        for (const t of tables) {
-          if (!Array.isArray(t.rows)) continue;
-          const len = JSON.stringify(t.rows).length;
-          if (len > rowsBudget) { t.sample_rows = (t.rows as unknown[]).slice(0, 10); delete t.rows; t.rows_note = "Pominięto pełne wiersze starszej tabeli (budżet kontekstu) — pełne dane pobierz krakow_od_fetch_api."; }
-          else rowsBudget -= len;
-        }
         const swagger = [...new Set(comps.map((c) => c.swaggerUrl).filter(Boolean))];
         const external = [...new Set([...html.matchAll(/href="(https?:\/\/[^"]+)"/g)].map((x) => x[1]).filter((u) => !/otwartedane|fonts\.|api\.um\.krakow\.pl\/api\/am/i.test(u)))].slice(0, 20);
         return { content: [{ type: "text", text: JSON.stringify({ slug: cleanSlug, title, url, description: desc, metadata, tables, swagger_urls: swagger, external_links: external }, null, 2) }] };
@@ -156,10 +163,9 @@ export function registerKrakowOdTools(server: McpServer, env: Env): void {
       try {
         const u = new URL(api_url.trim());
         if (u.hostname !== "api.um.krakow.pl") throw new Error("Dozwolone są wyłącznie adresy API na api.um.krakow.pl");
-        const raw = await cachedFetch(env.CACHE_KV, makeCacheKey("krakow_od_fetch_api", { api_url: u.toString(), limit }), u.toString(), { headers: { Accept: "application/json" } }, TTL);
-        let out: unknown = raw.slice(0, 20000);
-        try { const j = JSON.parse(raw) as { value?: unknown[] }; if (Array.isArray(j.value)) out = { api_url: u.toString(), total_rows: j.value.length, returned_rows: Math.min(limit, j.value.length), rows: j.value.slice(0, limit) }; } catch { /* keep text */ }
-        return { content: [{ type: "text", text: typeof out === "string" ? out : JSON.stringify(out, null, 2) }] };
+        const { rows, complete } = await fetchAllRows(u.toString(), env);
+        const out = { api_url: u.toString(), total_rows: rows.length, complete, returned_rows: Math.min(limit, rows.length), rows: rows.slice(0, limit) };
+        return { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] };
       } catch (e) { return err("krakow_od_fetch_api", e); }
     });
 }

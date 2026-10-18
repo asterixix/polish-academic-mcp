@@ -19,7 +19,7 @@ import {
 } from "./router.js";
 
 /** Fallback when package.json is unavailable (e.g. Cloudflare Workers bundle). */
-export const PACKAGE_VERSION_FALLBACK = "1.3.1";
+export const PACKAGE_VERSION_FALLBACK = "1.3.2";
 
 // Mirror src/index.ts: read the version from package.json so the handshake
 // value cannot drift from the published package. On Workers the filesystem

@@ -6,7 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const targetVersion = "1.3.1";
+const targetVersion = "1.3.2";
 const expectedToolNames = [
   "agad_search",
   "agh_get_item",
@@ -291,7 +291,7 @@ after(async () => {
   await client.close();
 });
 
-test("handshake MCP zgłasza wersję serwera 1.3.0", () => {
+test("handshake MCP zgłasza wersję serwera 1.3.2", () => {
   if (listTimedOut) throw new Error("handshake never completed");
   assert.equal(client.getServerVersion()?.version, targetVersion);
 });

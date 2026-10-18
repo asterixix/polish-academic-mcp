@@ -125,8 +125,17 @@ export function downloadAuditJson(log: AuditLog) {
   );
 }
 
-export function downloadAuditMarkdown(log: AuditLog) {
-  downloadText(`ai-audit-${log.trace_id}.md`, auditToMarkdown(log), "text/markdown;charset=utf-8");
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function copyAuditMarkdown(log: AuditLog) {
+  return copyText(auditToMarkdown(log));
 }
 
 export type ConversationExportMessage = {
@@ -164,19 +173,24 @@ export function conversationToMarkdown(opts: {
   return lines.join("\n");
 }
 
+export function copyConversationMarkdown(opts: {
+  title?: string;
+  threadId?: string | null;
+  messages: ConversationExportMessage[];
+  audits?: AuditLog[];
+}) {
+  return copyText(conversationToMarkdown(opts));
+}
+
 export function downloadConversation(opts: {
   title?: string;
   threadId?: string | null;
   messages: ConversationExportMessage[];
   audits?: AuditLog[];
-  format: "json" | "md";
+  format: "json";
 }) {
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
   const base = `pamcp-rozmowa-${stamp}`;
-  if (opts.format === "md") {
-    downloadText(`${base}.md`, conversationToMarkdown(opts), "text/markdown;charset=utf-8");
-    return;
-  }
   downloadText(
     `${base}.json`,
     JSON.stringify(

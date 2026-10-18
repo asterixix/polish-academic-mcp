@@ -420,6 +420,7 @@ export type SearchEvent =
         token_totals?: TokenUsage;
       };
     }
+  | { event: "token"; data: { text: string } }
   | { event: "error"; data: { message?: string; trace_id?: string } }
   | { event: "done"; data: { ok?: boolean; trace_id?: string; token_totals?: TokenUsage } }
   | { event: "audit_meta"; data: { trace_id: string; schema: string; created_at: string; query: string; authenticated: boolean } }
