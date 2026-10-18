@@ -32,9 +32,14 @@ export function MermaidBlock({ code }: { code: string }) {
 
   if (failed) {
     return (
-      <pre className="my-3 overflow-x-auto rounded-xl border border-border-primary bg-bg-primary p-3 font-mono text-[11px] leading-relaxed text-fg-secondary">
-        <code>{code}</code>
-      </pre>
+      <div className="my-3">
+        <p className="mb-1.5 text-xs font-semibold text-warning-700">
+          Nie udało się wyrenderować diagramu (niepoprawna składnia Mermaid). Poniżej kod źródłowy.
+        </p>
+        <pre className="overflow-x-auto rounded-xl border border-border-primary bg-bg-primary p-3 font-mono text-[11px] leading-relaxed text-fg-secondary">
+          <code>{code}</code>
+        </pre>
+      </div>
     );
   }
   if (!svg) {
