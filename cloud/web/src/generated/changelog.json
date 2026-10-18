@@ -1,24 +1,73 @@
 {
   "schema": "polish_academic_mcp_changelog_v1",
-  "generated_at": "2026-10-17T18:46:10.831Z",
+  "generated_at": "2026-10-18T11:35:39.736Z",
   "repository": "https://github.com/asterixix/polish-academic-mcp",
-  "package_version": "1.3.0",
+  "package_version": "1.3.1",
   "cloud_version": "1.3.0",
   "latest_commit": {
-    "sha": "5d30640",
-    "sha_full": "5d30640405dee698893ab10f6f4587a151091fb3",
-    "date": "2026-09-24T13:16:31Z",
-    "message": "chore(release): v1.2.0",
-    "url": "https://github.com/asterixix/polish-academic-mcp/commit/5d30640405dee698893ab10f6f4587a151091fb3"
+    "sha": "7258877",
+    "sha_full": "7258877582a7c0eb463cee832df9753aa5a4b273",
+    "date": "2026-10-18T11:28:47Z",
+    "message": "fix(cloud): show audit trail collapsed, stop false system errors on valid answers",
+    "url": "https://github.com/asterixix/polish-academic-mcp/commit/7258877582a7c0eb463cee832df9753aa5a4b273"
   },
   "github": {
-    "pushed_at": "2026-09-24T13:41:01Z",
-    "updated_at": "2026-09-24T13:41:05Z",
+    "pushed_at": "2026-10-18T11:28:55Z",
+    "updated_at": "2026-10-18T11:28:59Z",
     "description": "Polskie bazy wiedzy (od naukowych po dane statystyczne, prawne, meteorologiczne, normy oraz kulturowe) w postaci serwera MCP dla narzędzi AI oraz agentów.",
     "default_branch": "main"
   },
   "source": "github_api+local_build",
   "commits": [
+    {
+      "sha": "7258877",
+      "sha_full": "7258877582a7c0eb463cee832df9753aa5a4b273",
+      "date": "2026-10-18T11:28:47Z",
+      "message": "fix(cloud): show audit trail collapsed, stop false system errors on valid answers",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/7258877582a7c0eb463cee832df9753aa5a4b273"
+    },
+    {
+      "sha": "7ebee77",
+      "sha_full": "7ebee77461279b3b6cfd33e32374872765c2211a",
+      "date": "2026-10-18T11:24:28Z",
+      "message": "test: polyfill Web Crypto global for Node 18 in cloud tests",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/7ebee77461279b3b6cfd33e32374872765c2211a"
+    },
+    {
+      "sha": "1ef1ea8",
+      "sha_full": "1ef1ea8bec15197a2b3cccfbc7c8f3cc78ad2f3d",
+      "date": "2026-10-18T11:20:58Z",
+      "message": "fix: live-smoke workflow invalid empty env key",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/1ef1ea8bec15197a2b3cccfbc7c8f3cc78ad2f3d"
+    },
+    {
+      "sha": "dc084d5",
+      "sha_full": "dc084d544412348a408d28b9efa4857476b9ccda",
+      "date": "2026-10-18T11:19:23Z",
+      "message": "feat: document saving, cloud observability; remove jbc_ocr_htr; release 1.3.1",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/dc084d544412348a408d28b9efa4857476b9ccda"
+    },
+    {
+      "sha": "80dced4",
+      "sha_full": "80dced437f1f51b1f73d21ae03a2cb72fc578620",
+      "date": "2026-10-17T18:46:56Z",
+      "message": "chore(release): v1.3.0",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/80dced437f1f51b1f73d21ae03a2cb72fc578620"
+    },
+    {
+      "sha": "2508c87",
+      "sha_full": "2508c872f8d700ae5ea29f190ad0d4c0b1f415db",
+      "date": "2026-10-17T18:36:29Z",
+      "message": "fix(ai-search): fix group routing, query normalization, and fulltext priority for demographic queries",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/2508c872f8d700ae5ea29f190ad0d4c0b1f415db"
+    },
+    {
+      "sha": "b4fd33f",
+      "sha_full": "b4fd33f2d22bf09da010a46131ac3d8f80203807",
+      "date": "2026-10-17T17:34:57Z",
+      "message": "Add Cloudflare cloud platform with safe public-repo defaults.",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/b4fd33f2d22bf09da010a46131ac3d8f80203807"
+    },
     {
       "sha": "5d30640",
       "sha_full": "5d30640405dee698893ab10f6f4587a151091fb3",
@@ -249,55 +298,6 @@
       "date": "2026-03-27T19:24:55Z",
       "message": "feat: enhance request handling and add new endpoints for improved navigation and diagnostics",
       "url": "https://github.com/asterixix/polish-academic-mcp/commit/df758f5938a0a692d32c42acb13cbdf0ea5f209f"
-    },
-    {
-      "sha": "ed32532",
-      "sha_full": "ed325328d0263efa03683d843163965f23c7a510",
-      "date": "2026-03-27T19:05:55Z",
-      "message": "feat: update layout and enhance homepage with documentation links",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/ed325328d0263efa03683d843163965f23c7a510"
-    },
-    {
-      "sha": "94564bd",
-      "sha_full": "94564bddcd702e78cf4aca70a320605512f5eaf6",
-      "date": "2026-03-27T18:48:23Z",
-      "message": "feat: add chat diagnostics and enhance chat UI with configuration details",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/94564bddcd702e78cf4aca70a320605512f5eaf6"
-    },
-    {
-      "sha": "c779df6",
-      "sha_full": "c779df6e11f5279e9ecb2855a7964d170c3c1052",
-      "date": "2026-03-27T18:40:23Z",
-      "message": "feat: enhance chat endpoint with HTML response and configuration updates",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/c779df6e11f5279e9ecb2855a7964d170c3c1052"
-    },
-    {
-      "sha": "e5110a2",
-      "sha_full": "e5110a26c7319ebf6cc964bec36aa7e87094af5b",
-      "date": "2026-03-27T18:34:22Z",
-      "message": "feat: implement CORS support and enhance chat endpoint responses",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/e5110a26c7319ebf6cc964bec36aa7e87094af5b"
-    },
-    {
-      "sha": "68a37b8",
-      "sha_full": "68a37b81e99eaf05432896c19146eb31cd06c198",
-      "date": "2026-03-27T18:23:46Z",
-      "message": "feat: update dependencies and enhance configuration for AI Gateway integration",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/68a37b81e99eaf05432896c19146eb31cd06c198"
-    },
-    {
-      "sha": "6199ead",
-      "sha_full": "6199eadb9d6622895f77bd9385b480a6bcd427c8",
-      "date": "2026-03-27T18:04:41Z",
-      "message": "feat: enhance admin panel styling and improve token management",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/6199eadb9d6622895f77bd9385b480a6bcd427c8"
-    },
-    {
-      "sha": "8cc3332",
-      "sha_full": "8cc333235e2a19ec92300dc32df7460ee88f0db0",
-      "date": "2026-03-27T17:55:44Z",
-      "message": "chore: update wrangler.jsonc to include migration configurations",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/8cc333235e2a19ec92300dc32df7460ee88f0db0"
     }
   ]
 }
