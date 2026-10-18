@@ -30,6 +30,25 @@
     "cpu_ms": 300000,
     "subrequests": 10000
   },
+  // Full observability: invocation logs + persisted logs, traces, real-time Issues.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true
+    },
+    "issues": {
+      "enabled": true
+    }
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -52,7 +71,7 @@
     "MCP_MONTHLY_LIMIT": "100",
     "AI_SEARCH_ANON_WEEKLY_LIMIT": "2",
     "AI_SEARCH_USER_WEEKLY_LIMIT": "5",
-    "AI_MODEL": "anthropic/claude-haiku-5-5",
+    "AI_MODEL": "amazon/anthropic.claude-haiku-5-5@eu",
     "AI_FALLBACK_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
   }
   // Sensitive / environment-specific — set in Cloudflare dashboard or:

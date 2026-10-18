@@ -17,7 +17,7 @@
  */
 
 import { inflateRawSync, inflateSync, unzipSync } from "node:zlib";
-import { ocrScannedPdfOrImageBuffer } from "./ocr-htr.js";
+import { classifyDocument } from "./document-kind.js";
 import {
   decodeHtmlEntities,
   extractCompactHtml,
@@ -58,6 +58,7 @@ export interface ParsedDocument {
   text: string;
   metadata: Record<string, unknown>;
   discoveredFiles: DiscoveredFile[];
+  raw?: Buffer;
 }
 
 // ─── 1. Charset Detection & Buffer Decoding ──────────────────────────────────
@@ -263,25 +264,6 @@ export function extractTextFromPdfBuffer(buf: Buffer): {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-
-  if (combined.length === 0 && buf.length >= 2048 && rawLatin1.includes("%%EOF")) {
-    try {
-      const ocr = ocrScannedPdfOrImageBuffer(buf, {
-        pageStart: 1,
-        pageEnd: 10,
-        includeImages: false,
-      });
-      if (ocr.text.trim().length > 0) {
-        return {
-          text: `[Tekst odczytany automatycznie przez silnik OCR/HTR ze skanu PDF (${ocr.pageCount} stron)]\n\n${ocr.text}`,
-          pageCountEstimate: ocr.pageCount || pageCountEstimate,
-          streamCount: decompressedStreams.length,
-        };
-      }
-    } catch {
-      // Fallback to message below if OCR engine fails
-    }
-  }
 
   return {
     text:
@@ -1066,11 +1048,15 @@ export function parseDocumentBuffer(
   let extractedText = "";
   let discoveredFiles: DiscoveredFile[] = [];
 
-  if (detectedFormat === "pdf") {
+  const kind = classifyDocument(buf, url, contentType);
+  if (kind === "image" || kind === "office" || kind === "epub") {
+    metadata.needsFile = true;
+  } else if (detectedFormat === "pdf") {
     const pdf = extractTextFromPdfBuffer(buf);
     metadata.pageCountEstimate = pdf.pageCountEstimate;
     metadata.streamCount = pdf.streamCount;
     extractedText = pdf.text;
+    if (extractedText.startsWith("[Dokument PDF nie zawiera")) metadata.needsFile = true;
   } else if (detectedFormat === "xlsx") {
     const xlsx = parseXlsxBuffer(buf, {
       grep: options.grep,
@@ -1110,7 +1096,7 @@ export function parseDocumentBuffer(
     metadata.delimiter = parsed.delimiter;
     metadata.columns = parsed.columns;
     extractedText = parsed.text;
-  } else {
+  } else if (!metadata.needsFile) {
     const rawText = decodeBufferWithCharset(buf, contentType);
     discoveredFiles = discoverBitstreamsInText(rawText);
     if (options.format === "raw") {
@@ -1152,5 +1138,6 @@ export function parseDocumentBuffer(
     text: slicedText,
     metadata,
     discoveredFiles,
+    raw: metadata.needsFile ? buf : undefined,
   };
 }

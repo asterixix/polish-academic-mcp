@@ -19,6 +19,7 @@ import {
   rewriteRepositoryContentUrl,
 } from "../src/content-fetcher.js";
 import { extractDeepenCandidates, formatDeepenFooter } from "../src/router.js";
+import { discoverBitstreamsInText } from "../src/content-fetcher.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -173,6 +174,35 @@ test("extractDeepenCandidates wyciąga kandydatów get_record z JSON narzędzi K
   assert.deepEqual(extractDeepenCandidates("krakow_od", "to nie jest JSON"), []);
 });
 
+test("extractDeepenCandidates bierze uuid z wyników ruj_search jako kandydata get_record", () => {
+  const rujJson = JSON.stringify({
+    items: [{ uuid: "c0a587ac-5fe6-4860-871d-5cd448fa29d7", handle: "item/567862", title: "Wprowadzenie" }],
+  });
+  const ruj = extractDeepenCandidates("ruj", rujJson);
+  assert.deepEqual(ruj.map((c) => `${c.source}:${c.id}`), ["ruj:c0a587ac-5fe6-4860-871d-5cd448fa29d7"]);
+
+  const itemJson = JSON.stringify({
+    uuid: "c0a587ac-5fe6-4860-871d-5cd448fa29d7",
+    self: { href: "https://ruj.uj.edu.pl/server/api/core/items/c0a587ac-5fe6-4860-871d-5cd448fa29d7" },
+  });
+  const files = discoverBitstreamsInText(itemJson, "ruj");
+  assert.ok(files.some((f) => f.url === "https://ruj.uj.edu.pl/server/api/core/items/c0a587ac-5fe6-4860-871d-5cd448fa29d7/bundles"));
+});
+
+test("extractDeepenCandidates pomija ID kategorii i instytucji z zagnieżdżonych relacji (dane.gov.pl)", () => {
+  const daneJson = JSON.stringify({
+    data: [
+      {
+        id: 4321,
+        attributes: { title: "Cudzoziemcy", category: { id: 149, title: "Regiony i miasta" }, categories: [{ id: 5 }] },
+        relationships: { institution: { data: { type: "institutions", id: "194" } } },
+      },
+    ],
+  });
+  const dane = extractDeepenCandidates("dane", daneJson);
+  assert.deepEqual(dane.map((c) => `${c.source}:${c.id}`), ["dane:4321"]);
+});
+
 test("content-fetcher.ts wyodrębnia tekst z PDF (FlateDecode + BT/ET), CSV/TSV z grep oraz wykrywa bitstreamy", () => {
   // 1) Synthetic PDF with FlateDecode content stream
   const contentStream = "BT /F1 12 Tf 72 720 Td [(Polska Akademia Nauk) -200 (Raport Badawczy 2026)] TJ ET";
@@ -254,4 +284,10 @@ test("content-fetcher.ts wyodrębnia tekst z PDF (FlateDecode + BT/ET), CSV/TSV 
   });
   assert.equal(doc.detectedFormat, "pdf");
   assert.match(doc.text, /Znaleziono 1 wystąpień wzorca "Akademia"/);
+});
+
+test("parseDocumentBuffer oznacza PDF bez warstwy tekstowej jako needsFile", () => {
+  const doc = parseDocumentBuffer(Buffer.from("%PDF-1.4\n%%EOF"), "https://x.test/a.pdf", "application/pdf");
+  assert.equal(doc.metadata.needsFile, true);
+  assert.ok(doc.raw);
 });

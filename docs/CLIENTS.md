@@ -45,9 +45,9 @@ Jako nazwę serwera stosujemy `polish-academic`. Nie dodawaj serwera dwa razy po
 
 Kreator `setup` wykrywa obie sytuacje i zapisuje właściwy wariant.
 
-**Wybór baz.** Wszystkie 85 narzędzi to ok. 26 tys. tokenów. Przy małych modelach lokalnych i w aplikacjach z limitem narzędzi (Cursor ok. 40, Windsurf 100, VS Code 128 łącznie ze wszystkich serwerów) ustaw `POLISH_ACADEMIC_SOURCES`, np. `nauka` albo `prawo,dane`. Grupy: `nauka`, `dane`, `prawo`, `normy`, `kultura`; pełna lista: `npx -y polish-academic-mcp --list-sources`.
+**Wybór baz.** Wszystkie 125 narzędzi to ok. 38 tys. tokenów. Przy małych modelach lokalnych i w aplikacjach z limitem narzędzi (Cursor ok. 40, Windsurf 100, VS Code 128 łącznie ze wszystkich serwerów) ustaw `POLISH_ACADEMIC_SOURCES`, np. `nauka` albo `prawo,dane`. Grupy: `nauka`, `dane`, `prawo`, `normy`, `kultura`; pełna lista: `npx -y polish-academic-mcp --list-sources`.
 
-**Sekrety PBN.** Trzy narzędzia `pbn_*` wymagają `PBN_APP_ID` i `PBN_APP_TOKEN` w sekcji `env`. Bez nich zwracają instrukcję, a pozostałe 82 narzędzia działają normalnie. Ponowne uruchomienie `setup` zachowuje te zmienne (i inne, które dopiszesz ręcznie).
+**Sekrety PBN.** Trzy narzędzia `pbn_*` wymagają `PBN_APP_ID` i `PBN_APP_TOKEN` w sekcji `env`. Bez nich zwracają instrukcję, a pozostałe 122 narzędzia działają normalnie. Ponowne uruchomienie `setup` zachowuje te zmienne (i inne, które dopiszesz ręcznie).
 
 **Wersja.** Wpis bez numeru wersji (`polish-academic-mcp`) sprawia, że npx przy starcie pobiera nowsze wydania. Aby przypiąć sprawdzoną wersję, użyj `polish-academic-mcp@<wersja>` albo `setup --pin`.
 
@@ -382,7 +382,7 @@ Następnie uruchom OpenClaw ponownie.
 
 **Ręcznie:** zakładka Program (prawy panel) → Install → **Edit mcp.json** (plik `~/.lmstudio/mcp.json`), format `mcpServers` jak w Cursorze.
 
-**Modele lokalne:** wybierz model obsługujący wywołania narzędzi (tool use) i włącz tylko potrzebną grupę baz, np. `"env": {"POLISH_ACADEMIC_SOURCES": "nauka"}`. Wszystkie 85 narzędzi (ok. 26 tys. tokenów) nie zmieści się w oknie kontekstu wielu małych modeli.
+**Modele lokalne:** wybierz model obsługujący wywołania narzędzi (tool use) i włącz tylko potrzebną grupę baz, np. `"env": {"POLISH_ACADEMIC_SOURCES": "nauka"}`. Wszystkie 125 narzędzi (ok. 38 tys. tokenów) nie zmieści się w oknie kontekstu wielu małych modeli.
 
 **Weryfikacja:** w czacie włącz `mcp/polish-academic` na liście integracji i zadaj pytanie testowe. LM Studio pyta o zgodę przed każdym wywołaniem narzędzia.
 

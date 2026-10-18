@@ -9,7 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 const packageLock = JSON.parse(readFileSync(resolve(root, "package-lock.json"), "utf8"));
 const entry = resolve(root, packageJson.bin[packageJson.name]);
-const targetVersion = "1.3.0";
+const targetVersion = "1.3.1";
 
 function runCli(flag: string) {
   const result = spawnSync(process.execPath, [entry, flag], {

@@ -71,7 +71,7 @@ test("nieznane nazwy są zgłaszane, a nie przerywają działania", () => {
   assert.deepEqual(parseSourceSelection("foo").ids, allIds);
 });
 
-test("katalog źródeł pokrywa wszystkie 126 narzędzi, a prefiksy nazw zgadzają się z id", () => {
+test("katalog źródeł pokrywa wszystkie 125 narzędzi, a prefiksy nazw zgadzają się z id", () => {
   assert.equal(new Set(allIds).size, allIds.length, "zdublowane id źródła");
   for (const group of Object.keys(SOURCE_GROUPS)) {
     assert.ok(
@@ -88,7 +88,7 @@ test("katalog źródeł pokrywa wszystkie 126 narzędzi, a prefiksy nazw zgadzaj
       assert.ok(name.startsWith(`${id}_`), `${name} nie ma prefiksu ${id}_`);
     total += tools.length;
   }
-  assert.equal(total, 126);
+  assert.equal(total, 125);
 });
 
 test("--list-sources wypisuje grupy z liczbą narzędzi", () => {
@@ -101,7 +101,7 @@ test("--list-sources wypisuje grupy z liczbą narzędzi", () => {
   assert.equal(result.stderr, "");
   assert.match(result.stdout, /prawo — .*\(11 narzędzi\)/);
   assert.match(result.stdout, /normy — .*\(3 narzędzia\)/);
-  assert.match(result.stdout, /Razem: 126 narzędzi\./);
+  assert.match(result.stdout, /Razem: 125 narzędzi\./);
 });
 
 test("serwer z --sources udostępnia tylko wybrane narzędzia, oznaczone jako tylko do odczytu", async () => {

@@ -66,7 +66,11 @@ function collapseSpaces(s: string): string {
 }
 
 function extractYears(text: string): { years: string[]; cleaned: string } {
-  const years = [...text.matchAll(/\b(19\d{2}|20\d{2})\b/g)].map((m) => m[1]);
+  const currentYear = new Date().getFullYear();
+  // shortcut: lata przyszłe (np. "do 2050") są usuwane z frazy, ale nie stają się filtrem daty; wymaga osobnej obsługi zakresów "do YYYY"
+  const years = [...text.matchAll(/\b(19\d{2}|20\d{2})\b/g)]
+    .map((m) => m[1])
+    .filter((y) => Number(y) <= currentYear);
   const cleaned = text.replace(/\b(19\d{2}|20\d{2})\b/g, " ");
   return { years: [...new Set(years)], cleaned };
 }

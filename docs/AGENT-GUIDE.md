@@ -6,7 +6,7 @@
 
 ## Kontekst
 
-`polish-academic-mcp` to lokalny serwer MCP (stdio, Node.js 18.17+) z **85 narzędziami** do przeszukiwania polskich baz naukowych, publicznych i kulturowych. Dystrybucja wyłącznie przez npm (`npx -y polish-academic-mcp`). Nie wymaga zdalnego HTTP, OAuth ani tuneli. 82 narzędzia działają bez konfiguracji; 3 narzędzia `pbn_*` wymagają `PBN_APP_ID` i `PBN_APP_TOKEN`.
+`polish-academic-mcp` to lokalny serwer MCP (stdio, Node.js 18.17+) z **125 narzędziami** do przeszukiwania polskich baz naukowych, publicznych i kulturowych. Dystrybucja wyłącznie przez npm (`npx -y polish-academic-mcp`). Nie wymaga zdalnego HTTP, OAuth ani tuneli. 122 narzędzia działają bez konfiguracji; 3 narzędzia `pbn_*` wymagają `PBN_APP_ID` i `PBN_APP_TOKEN`.
 
 Pakiet zawiera kreator, który sam edytuje konfigurację aplikacji: scala wpis z istniejącym plikiem, robi kopię zapasową, pomija pliki z komentarzami (JSONC), usuwa zdublowane wpisy tego pakietu oraz dobiera polecenie do systemu (`cmd /c npx` na Windows, pełna ścieżka do `npx` przy nvm/fnm/volta). **Używaj kreatora zamiast ręcznej edycji plików.**
 
@@ -36,7 +36,7 @@ Jeśli Node.js nie ma lub jest starszy, przerwij i poproś użytkownika o instal
 
 ### 3. Ustal zakres baz (opcjonalnie)
 
-Wszystkie 85 narzędzi to ok. 26 tys. tokenów. Zaproponuj ograniczenie, gdy:
+Wszystkie 125 narzędzi to ok. 38 tys. tokenów. Zaproponuj ograniczenie, gdy:
 
 - aplikacja to Cursor (limit ok. 40 narzędzi), Windsurf (100) lub VS Code (128 łącznie ze wszystkimi serwerami),
 - użytkownik korzysta z małego modelu lokalnego (LM Studio, Ollama, Jan).

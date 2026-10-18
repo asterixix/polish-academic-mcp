@@ -553,7 +553,7 @@ test("zgodność z katalogami Claude, ChatGPT i Perplexity: adnotacje narzędzi,
   assert.equal(metaJson.repository_url, "https://github.com/asterixix/polish-academic-mcp");
   assert.ok(metaJson.example_prompts.length >= 4);
   assert.equal(metaJson.annotations_summary.router_tool_count, 3);
-  assert.equal(metaJson.annotations_summary.granular_tool_count, 126);
+  assert.equal(metaJson.annotations_summary.granular_tool_count, 125);
 });
 
 test("UI zawiera strony privacy/terms/connectors i logo w markupie", async () => {
@@ -619,7 +619,8 @@ test("dokumentacja webowa /docs jest generowana z katalogu serwera MCP", async (
 
 test("AI Search orchestrator eksportuje handler i domyślny model Haiku", () => {
   const source = readFileSync(resolve(root, "cloud/src/ai-search.ts"), "utf8");
-  assert.match(source, /anthropic\/claude-haiku-5-5/);
+  assert.match(source, /amazon\/anthropic\.claude-haiku-5-5@eu/);
+  assert.match(source, /databricks\/databricks-claude-haiku-5-5/);
   assert.match(source, /handleAiSearchRoutes/);
   assert.match(source, /AI_SEARCH_ANON|aiSearchLimit/);
   assert.match(source, /callEdenAi|EDENAI_API_KEY|api\.edenai\.run/);
@@ -641,13 +642,12 @@ test("normalizeEdenModel maps dotted Haiku IDs and uses catalog-valid fallbacks"
   const { normalizeEdenModel, EDEN_CATALOG_HAIKU_FALLBACKS } = await import(
     "../cloud/src/ai-search.js"
   );
-  const dotted = normalizeEdenModel("anthropic/claude-haiku-5.5");
-  assert.equal(dotted.model, "anthropic/claude-haiku-5-5");
-  assert.ok(dotted.fallbacks.every((f: string) => (EDEN_CATALOG_HAIKU_FALLBACKS as readonly string[]).includes(f)));
-  assert.ok(!dotted.fallbacks.includes("anthropic/claude-haiku-latest"));
-  assert.ok(!dotted.fallbacks.includes("anthropic/claude-haiku-4-5"));
-  const bare = normalizeEdenModel("claude-haiku-5-5");
-  assert.equal(bare.model, "anthropic/claude-haiku-5-5");
+  const eu = normalizeEdenModel("amazon/anthropic.claude-haiku-5-5@eu");
+  assert.equal(eu.model, "amazon/anthropic.claude-haiku-5-5@eu");
+  assert.deepEqual(eu.fallbacks, ["databricks/databricks-claude-haiku-5-5"]);
+  assert.ok(eu.fallbacks.every((f: string) => (EDEN_CATALOG_HAIKU_FALLBACKS as readonly string[]).includes(f)));
+  const db = normalizeEdenModel("databricks/databricks-claude-haiku-5-5");
+  assert.deepEqual(db.fallbacks, ["amazon/anthropic.claude-haiku-5-5@eu"]);
 });
 
 test("extractRecordTargets parsuje sekcje routera i stopkę REKORDY DO POGŁĘBIENIA (runda 2 get_record)", async () => {

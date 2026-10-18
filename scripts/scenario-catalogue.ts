@@ -542,11 +542,6 @@ export const SCENARIOS: Scenario[] = [
         args: { id: "$element" },
         timeoutMs: 45_000,
       },
-      {
-        tool: "jbc_ocr_htr",
-        args: { id: "$element", page_start: 3, page_end: 3, lang: "pl", include_images: true },
-        timeoutMs: 60_000,
-      },
     ],
   },
   {

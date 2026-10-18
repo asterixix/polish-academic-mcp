@@ -56,6 +56,7 @@ export async function withMcpClient<T>(
   const server = createServer(toCoreEnv(env), {
     ...(sources ? { sources } : {}),
     mode,
+    saveDocuments: false,
   });
   await server.connect(serverTransport);
   const client = new Client({ name: "polish-academic-bridge", version: "1.3.0" });

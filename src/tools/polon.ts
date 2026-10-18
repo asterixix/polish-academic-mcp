@@ -100,9 +100,15 @@ export function registerPolonTools(server: McpServer, env: Env): void {
       "Optional city/voivodeship apply to institutions and branches. Use accurate Polish strings; API matching is server-side.",
     ].join(" "),
     {
+      // shortcut: resource defaults to publications so generic fan-out queries don't fail validation, upgrade: route by query to the matching dataset
       resource: z
         .enum(["institutions", "employees", "projects", "publications", "courses", "branches"])
-        .describe("POL-on dataset to query"),
+        .default("publications")
+        .describe("POL-on dataset to query (domyślnie publications)"),
+      query: z
+        .string()
+        .optional()
+        .describe("Ogólna fraza — dla publikacji użyta jako tytuł (gdy publication_title nie podano)"),
       result_numbers: z
         .number()
         .int()
@@ -173,6 +179,7 @@ export function registerPolonTools(server: McpServer, env: Env): void {
         keywords,
         publication_title,
         course_name,
+        query,
       } = params;
 
       return (async () => {
@@ -190,7 +197,7 @@ export function registerPolonTools(server: McpServer, env: Env): void {
             project_title_en,
             project_number,
             keywords,
-            publication_title,
+            publication_title: publication_title ?? query,
             course_name,
           });
           const cacheKey = makeCacheKey("polon_search", params as Record<string, unknown>);

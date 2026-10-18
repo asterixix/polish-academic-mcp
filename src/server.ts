@@ -19,7 +19,7 @@ import {
 } from "./router.js";
 
 /** Fallback when package.json is unavailable (e.g. Cloudflare Workers bundle). */
-export const PACKAGE_VERSION_FALLBACK = "1.3.0";
+export const PACKAGE_VERSION_FALLBACK = "1.3.1";
 
 // Mirror src/index.ts: read the version from package.json so the handshake
 // value cannot drift from the published package. On Workers the filesystem
@@ -171,6 +171,8 @@ export interface ServerOptions {
   mode?: ServerMode;
   /** Called for every registered underlying source tool; used by `--list-sources` to count tools. */
   onToolRegistered?: (source: SourceId, toolName: string) => void;
+  /** Save unreadable documents (scans, office files) to a local folder; cloud sets false. */
+  saveDocuments?: boolean;
 }
 
 function buildInstructions(ids: readonly SourceId[], mode: ServerMode = "granular"): string {
@@ -390,7 +392,7 @@ export function createServer(env: Env, options: ServerOptions = {}): McpServer {
     }) as McpServer["tool"];
 
     const hasPbnCredentials = Boolean(env.PBN_APP_ID && env.PBN_APP_TOKEN);
-    registerRouterTools(server, capturedTools, enabled, hasPbnCredentials);
+    registerRouterTools(server, capturedTools, enabled, hasPbnCredentials, options.saveDocuments ?? true);
   }
 
   return server;

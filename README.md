@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/polish-academic-mcp)](https://www.npmjs.com/package/polish-academic-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/polish-academic-mcp)](https://www.npmjs.com/package/polish-academic-mcp)
 
-Serwer MCP, dzięki któremu asystent AI (Claude, Copilot, Cursor, Gemini, model lokalny w LM Studio i inne) przeszukuje **polskie bazy naukowe, publiczne i kulturowe**: Bibliotekę Nauki, repozytoria uczelni, GUS, ISAP, orzeczenia sądów, Wolne Lektury, archiwa filmowe i fotograficzne. 126 narzędzi, 55 źródeł, bez kont i kluczy API (poza opcjonalnym PBN).
+Serwer MCP, dzięki któremu asystent AI (Claude, Copilot, Cursor, Gemini, model lokalny w LM Studio i inne) przeszukuje **polskie bazy naukowe, publiczne i kulturowe**: Bibliotekę Nauki, repozytoria uczelni, GUS, ISAP, orzeczenia sądów, Wolne Lektury, archiwa filmowe i fotograficzne. 125 narzędzi, 55 źródeł, bez kont i kluczy API (poza opcjonalnym PBN).
 
 Serwer działa **na Twoim komputerze**: aplikacja AI uruchamia go sama w tle, a serwer łączy się bezpośrednio z bazami, bez pośredniczących usług.
 
@@ -43,11 +43,11 @@ Jeśli masz już Node.js:
 [![Zainstaluj w VS Code](https://img.shields.io/badge/VS_Code-Zainstaluj-0098FF?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=polish-academic&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22polish-academic-mcp%22%5D%7D)
 [![Zainstaluj w VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Zainstaluj-24bfa5?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=polish-academic&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22polish-academic-mcp%22%5D%7D&quality=insiders)
 
-Przyciski dodają wszystkie 126 narzędzi. Cursor pokazuje modelowi najwyżej ok. 40 narzędzi, więc tam lepiej [wybrać jedną lub dwie grupy baz](#wybór-baz).
+Przyciski dodają wszystkie 125 narzędzi. Cursor pokazuje modelowi najwyżej ok. 40 narzędzi, więc tam lepiej [wybrać jedną lub dwie grupy baz](#wybór-baz).
 
 ### Quick start (English)
 
-Install [Node.js LTS](https://nodejs.org), then run `npx -y polish-academic-mcp setup`. The wizard detects your AI apps and adds the server to their MCP config (with a backup). Restart the app. Use `--sources=nauka,prawo` (or the `POLISH_ACADEMIC_SOURCES` env var) to expose only some of the 85 tools, and `npx -y polish-academic-mcp doctor` to diagnose problems.
+Install [Node.js LTS](https://nodejs.org), then run `npx -y polish-academic-mcp setup`. The wizard detects your AI apps and adds the server to their MCP config (with a backup). Restart the app. Use `--sources=nauka,prawo` (or the `POLISH_ACADEMIC_SOURCES` env var) to expose only some of the 125 tools, and `npx -y polish-academic-mcp doctor` to diagnose problems.
 
 ---
 
@@ -100,7 +100,7 @@ Kreator zachowuje inne serwery i ustawienia w plikach (także Twoje zmienne we w
 
 ## Wybór baz
 
-Opisy wszystkich 126 narzędzi zajmują ok. 26 tys. tokenów kontekstu przy każdym zapytaniu. Dla Claude czy GPT to nie problem, ale małe modele lokalne gubią się przy tylu narzędziach, a część aplikacji ma limity (Cursor ok. 40, Windsurf 100, VS Code 128 narzędzi łącznie ze wszystkich serwerów). Włącz tylko to, czego potrzebujesz:
+Opisy wszystkich 125 narzędzi zajmują ok. 38 tys. tokenów kontekstu przy każdym zapytaniu. Dla Claude czy GPT to nie problem, ale małe modele lokalne gubią się przy tylu narzędziach, a część aplikacji ma limity (Cursor ok. 40, Windsurf 100, VS Code 128 narzędzi łącznie ze wszystkich serwerów). Włącz tylko to, czego potrzebujesz:
 
 | Grupa     | Zawartość                                                                                                                                    | Narzędzia |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------- |

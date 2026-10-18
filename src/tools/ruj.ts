@@ -128,6 +128,7 @@ function summarizeItem(raw: string): string {
         uuid: it.uuid as string | undefined,
         handle: h || undefined,
         url: h ? `https://ruj.uj.edu.pl/xmlui/handle/${h}` : undefined,
+        self: { href: it._links?.self?.href ?? (it.uuid ? `${API_BASE}/core/items/${it.uuid}` : undefined) },
         title: dcFirst(m, "dc.title") || undefined,
         titleAlt: dcFirst(m, "dc.title.alternative") || undefined,
         authors: dcAll(m, "dc.contributor.author"),

@@ -79,4 +79,13 @@ describe("normalizeQueryForSource", () => {
     assert.match(query, /kredyt/i);
     assert.equal(filters.judgment_date_from, "2020-01-01");
   });
+
+  it("nie ustawia daty od dla roku przyszłego (prognoza do 2050)", () => {
+    const { filters } = normalizeQueryForSource(
+      "prognoza ludności Kraków 2050",
+      "isap",
+      ["all", "date_from", "page_size"],
+    );
+    assert.equal(filters.date_from, undefined);
+  });
 });

@@ -6,7 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const targetVersion = "1.3.0";
+const targetVersion = "1.3.1";
 const expectedToolNames = [
   "agad_search",
   "agh_get_item",
@@ -65,7 +65,6 @@ const expectedToolNames = [
   "isap_get_act",
   "isap_search_acts",
   "jbc_get_publication",
-  "jbc_ocr_htr",
   "jbc_search",
   "krakow_msip_get_dataset",
   "krakow_msip_list_services",
@@ -297,7 +296,7 @@ test("handshake MCP zgłasza wersję serwera 1.3.0", () => {
   assert.equal(client.getServerVersion()?.version, targetVersion);
 });
 
-test("tools/list zachowuje dokładnie 126 stabilnych identyfikatorów", () => {
+test("tools/list zachowuje dokładnie 125 stabilnych identyfikatorów", () => {
   assert.deepEqual(tools.map(({ name }) => name).sort(), [...expectedToolNames]);
 });
 

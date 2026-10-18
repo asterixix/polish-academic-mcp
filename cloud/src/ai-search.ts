@@ -158,11 +158,11 @@ interface LlmResult {
  * confirmed present in the catalog.
  */
 export const EDEN_CATALOG_HAIKU_FALLBACKS = [
-  "anthropic/claude-haiku-5-5",
-  "vertex/claude-haiku-5-5",
-  "amazon/anthropic.claude-haiku-5-5",
-  "anthropic/claude-sonnet-5-5",
+  "amazon/anthropic.claude-haiku-5-5@eu",
+  "databricks/databricks-claude-haiku-5-5",
 ] as const;
+
+const EU_HAIKU_MODEL = "amazon/anthropic.claude-haiku-5-5@eu";
 
 /**
  * Normalize model ID for Eden AI /v3/chat/completions.
@@ -174,7 +174,7 @@ export function normalizeEdenModel(rawModel: string): {
   model: string;
   fallbacks: string[];
 } {
-  let m = (rawModel || "").trim() || "anthropic/claude-haiku-5-5";
+  let m = (rawModel || "").trim() || EU_HAIKU_MODEL;
   if (!m.includes("/") && !m.startsWith("@")) {
     m = `anthropic/${m}`;
   }
@@ -540,7 +540,7 @@ export async function probeEdenAiChat(env: CloudEnv): Promise<{
   error?: string | null;
 }> {
   const forcedModel = await getAppSetting<string | null>(env, "force_model", null).catch(() => null);
-  const rawModel = (forcedModel && String(forcedModel).trim()) || env.AI_MODEL?.trim() || "anthropic/claude-haiku-5-5";
+  const rawModel = (forcedModel && String(forcedModel).trim()) || env.AI_MODEL?.trim() || EU_HAIKU_MODEL;
   const { model: normalizedModel, fallbacks } = normalizeEdenModel(rawModel);
   if (!env.EDENAI_API_KEY?.trim()) {
     return {
@@ -654,7 +654,7 @@ async function callLlm(
   const model =
     (ctx?.forceModel && ctx.forceModel.trim()) ||
     env.AI_MODEL?.trim() ||
-    "anthropic/claude-haiku-5-5";
+    EU_HAIKU_MODEL;
   const gatewayUrl = env.AI_GATEWAY_URL?.trim();
   const anthropicKey = env.ANTHROPIC_API_KEY?.trim();
   const openrouterKey = env.OPENROUTER_API_KEY?.trim();
@@ -791,7 +791,8 @@ async function callLlm(
     }
   }
 
-  if (gatewayUrl || anthropicKey || openrouterKey) {
+  // shortcut: direct Anthropic/OpenRouter disabled for EU-only residency, Eden is the only LLM route; re-enable only with EU-hosted endpoints
+  if (false && (gatewayUrl || anthropicKey || openrouterKey)) {
     const t0 = Date.now();
     try {
       const res = await callAnthropicCompatible(env, system, messages, tools, {
@@ -812,7 +813,7 @@ async function callLlm(
       return { ...res, attempts };
     } catch (err) {
       const durationMs = Date.now() - t0;
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = String((err as Error | undefined)?.message ?? err);
       const failedAttempt: LlmAttemptRecord = {
         provider: openrouterKey ? "openrouter" : gatewayUrl ? "anthropic_via_ai_gateway" : "anthropic",
         requested_model: model,

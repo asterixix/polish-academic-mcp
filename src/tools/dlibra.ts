@@ -3,8 +3,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Env } from "../types.js";
 import { makeCacheKey } from "../cache.js";
-import { rewriteRepositoryContentUrl } from "../content-fetcher.js";
-import { ocrScannedPdfOrImageBuffer } from "../ocr-htr.js";
 
 const CACHE_TTL = 86_400;
 const BROWSER_UA =
@@ -239,116 +237,6 @@ export function registerJbcTools(server: McpServer, env: Env): void {
     },
   );
 
-  server.tool(
-    "jbc_ocr_htr",
-    [
-      "Odczytuje tekst ze skanów PDF pozbawionych warstwy tekstowej (w tym strumieni JPEG2000 /JPXDecode), starodruków oraz rękopisów z Jagiellońskiej Biblioteki Cyfrowej (JBC UJ) i innych bibliotek cyfrowych za pomocą hybrydowego silnika OCR/HTR.",
-      "Rasteryzuje wybrane strony dokumentu w wysokiej rozdzielczości, wykonuje optyczne rozpoznawanie znaków (OCR) z korekcją historyczną oraz dołącza wyrenderowane obrazy stron (image/png) do odpowiedzi MCP, umożliwiając modelowi językowemu bezpośredni wizyjny odczyt pisma ręcznego (HTR), nut i starodruków.",
-    ].join(" "),
-    {
-      id: z
-        .string()
-        .min(1)
-        .describe(
-          "Identyfikator wydania (elementId) w JBC (np. 629965 dla Trenów Kochanowskiego) lub bezpośredni adres URL do pliku PDF/skanu.",
-        ),
-      page_start: z
-        .number()
-        .int()
-        .min(1)
-        .default(1)
-        .describe("Numer pierwszej strony skanu do odczytania (liczony od 1)."),
-      page_end: z
-        .number()
-        .int()
-        .min(1)
-        .default(5)
-        .describe("Numer ostatniej strony skanu do odczytania (domyślnie 5)."),
-      lang: z
-        .string()
-        .default("pl")
-        .describe("Kod języka dla silnika rozpoznawania pisma (np. pl, de, la, en)."),
-      include_images: z
-        .boolean()
-        .default(true)
-        .describe(
-          "Gdy true, dołącza wyrenderowane obrazy stron (image/png) do odpowiedzi MCP na potrzeby wizyjnego odczytu rękopisów (HTR).",
-        ),
-    },
-    async ({ id, page_start, page_end, lang, include_images }) => {
-      try {
-        const clean = id.trim();
-        const rawUrl =
-          clean.startsWith("http://") || clean.startsWith("https://")
-            ? rewriteRepositoryContentUrl(clean)
-            : `https://jbc.bj.uj.edu.pl/Content/${encodeURIComponent(clean.replace(/\D+/g, "") || clean)}/`;
-
-        const res = await fetch(rawUrl, {
-          headers: {
-            "User-Agent": BROWSER_UA,
-            Accept: "application/pdf,image/*,*/*;q=0.8",
-          },
-          redirect: "follow",
-          signal: AbortSignal.timeout(30_000),
-        });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status} ${res.statusText} podczas pobierania skanu ${rawUrl}`);
-        }
-        const buf = Buffer.from(await res.arrayBuffer());
-        const ocr = ocrScannedPdfOrImageBuffer(buf, {
-          pageStart: page_start,
-          pageEnd: page_end,
-          lang,
-          includeImages: include_images,
-          maxImages: 4,
-        });
-
-        const payload = {
-          id: clean,
-          sourceUrl: res.url || rawUrl,
-          byteLength: buf.length,
-          engine: ocr.engine,
-          language: ocr.language,
-          pageCount: ocr.pageCount,
-          processedPages: ocr.processedPages,
-          fullText: ocr.text,
-          pages: ocr.pages.map((p) => ({
-            page: p.page,
-            width: p.width,
-            height: p.height,
-            text: p.text,
-            lines: p.lines,
-            hasVisionHtrImage: Boolean(p.imageBase64),
-          })),
-        };
-
-        const contentBlocks: Array<
-          | { type: "text"; text: string }
-          | { type: "image"; data: string; mimeType: string }
-        > = [{ type: "text", text: JSON.stringify(payload, null, 2) }];
-
-        if (include_images) {
-          for (const p of ocr.pages) {
-            if (p.imageBase64 && p.imageMimeType) {
-              contentBlocks.push({
-                type: "image",
-                data: p.imageBase64,
-                mimeType: p.imageMimeType,
-              });
-            }
-          }
-        }
-
-        return { content: contentBlocks };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return {
-          content: [{ type: "text", text: `Error calling jbc_ocr_htr: ${msg}` }],
-          isError: true,
-        };
-      }
-    },
-  );
 }
 
 export function registerSbcTools(server: McpServer, env: Env): void {

@@ -488,8 +488,8 @@ export async function handleOAuthRoutes(
           used: number;
         }>();
       const redirectMatch =
-        row.redirect_uri === redirectUri ||
-        isRedirectUriAllowed(redirectUri, [row.redirect_uri]);
+        !!row &&
+        (row.redirect_uri === redirectUri || isRedirectUriAllowed(redirectUri, [row.redirect_uri]));
       if (!row || row.used || row.client_id !== clientId || !redirectMatch) {
         return jsonResponse({ error: "invalid_grant" }, { status: 400 });
       }

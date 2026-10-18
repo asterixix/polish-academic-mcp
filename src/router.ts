@@ -13,7 +13,26 @@ import {
   type DiscoveredFile,
   fetchAndParseUrl,
   grepExtractedText,
+  type ParsedDocument,
 } from "./content-fetcher.js";
+import { saveDocument } from "./document-store.js";
+
+export async function unreadableDocumentNote(
+  parsedDoc: ParsedDocument,
+  saveDocuments: boolean,
+): Promise<string | undefined> {
+  if (!parsedDoc.metadata.needsFile || !parsedDoc.raw) return undefined;
+  if (!saveDocuments) {
+    return `Dokument nie jest czytany przez serwer (brak OCR). Pobierz go i odczytaj lokalnie: ${parsedDoc.url}`;
+  }
+  try {
+    const saved = await saveDocument(parsedDoc.raw, new URL(parsedDoc.url).pathname.split("/").pop() ?? "document");
+    return `Plik zapisany: ${saved.path} (${parsedDoc.contentType || "application/octet-stream"}, ${saved.bytes} B). Odczytaj go lokalnym narzędziem GenAI.`;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return `Nie udało się zapisać dokumentu lokalnie: ${msg}`;
+  }
+}
 
 export type ToolCallContent =
   | {
@@ -302,7 +321,13 @@ function buildSearchArgs(
   if (parsed.success) {
     return parsed.data;
   }
-  return raw;
+  // shortcut: pola z błędem zostają surowe, reszta dostaje domyślne wartości Zod (page, lang); pełna walidacja tylko w handlerze narzędzia
+  const out: Record<string, unknown> = { ...raw };
+  for (const [key, field] of Object.entries(tool.schema)) {
+    const res = (field as z.ZodTypeAny).safeParse(raw[key]);
+    if (res.success) out[key] = res.data;
+  }
+  return out;
 }
 
 function coerceFieldValue(schemaField: z.ZodTypeAny | undefined, val: string): unknown {
@@ -380,6 +405,8 @@ export interface DeepenCandidate {
  * get_record (source + id + etykieta). Działa na nieprzetworzonym tekście,
  * zanim router utnie odpowiedź do budżetu znaków.
  */
+const NON_RECORD_KEYS = new Set(["category", "categories", "institution", "relationships"]);
+
 export function extractDeepenCandidates(sourceId: string, rawText: string, limit = 8): DeepenCandidate[] {
   let parsed: unknown;
   try {
@@ -401,7 +428,7 @@ export function extractDeepenCandidates(sourceId: string, rawText: string, limit
     if (typeof o.get_record === "string" && o.get_record.includes(":")) {
       id = o.get_record.slice(o.get_record.indexOf(":") + 1);
     } else {
-      const rawId = o.id ?? o.slug ?? o.dataset_id ?? o.record_id;
+      const rawId = o.id ?? o.slug ?? o.dataset_id ?? o.record_id ?? (sourceId === "ruj" ? o.uuid : undefined);
       if (typeof rawId === "string" || typeof rawId === "number") id = String(rawId);
     }
     // Identyfikatory UUID nie są kluczami get_record dla MSIP (dataset_id jest liczbą).
@@ -414,7 +441,9 @@ export function extractDeepenCandidates(sourceId: string, rawText: string, limit
         out.push({ source: sourceId, id, ...(typeof label === "string" ? { label: label.slice(0, 120) } : {}) });
       }
     }
-    for (const v of Object.values(o)) {
+    for (const [k, v] of Object.entries(o)) {
+      // shortcut: pomija znane klucze relacji (kategorie, instytucje), żeby nie brać ich ID za rekordy; inne zagnieżdżone obiekty nadal są przeszukiwane, upgrade: mapowanie per-źródło
+      if (NON_RECORD_KEYS.has(k)) continue;
       if (typeof v === "object") walk(v, depth + 1);
     }
   };
@@ -454,6 +483,7 @@ export function registerRouterTools(
   capturedTools: Map<string, CapturedTool>,
   enabledSources: ReadonlySet<SourceId>,
   hasPbnCredentials: boolean,
+  saveDocuments = true,
 ): void {
   const toolsBySource = new Map<SourceId, CapturedTool[]>();
   for (const tool of capturedTools.values()) {
@@ -597,7 +627,7 @@ export function registerRouterTools(
         .string()
         .optional()
         .describe(
-          'Nazwa konkretnej operacji natywnej z katalogu (np. "ludzie_semantic_search", "bdl_get_data_by_variable", "imgw_warnings", "wolnelektury_list_taxonomy", "jbc_ocr_htr").',
+          'Nazwa konkretnej operacji natywnej z katalogu (np. "ludzie_semantic_search", "bdl_get_data_by_variable", "imgw_warnings", "wolnelektury_list_taxonomy").',
         ),
       filters: z
         .record(z.unknown())
@@ -665,7 +695,7 @@ export function registerRouterTools(
           (c): c is { type: "image"; data: string; mimeType: string } => c.type === "image",
         );
         const formatted = formatAndSliceOutput(rawText, {
-          format,
+          format: format === "concise" ? "detailed" : format,
           maxChars: max_chars,
           maxItems: limit_per_source,
         });
@@ -710,7 +740,11 @@ export function registerRouterTools(
       } else {
         // Default fast cross-category core selection if neither category nor sources given
         const coreDefaults: SourceId[] = ["bn", "ruj", "rodbuk", "repod", "dane", "isap", "saos"];
-        targetSourceIds = coreDefaults.filter((id) => enabledSources.has(id));
+        // shortcut: dopina źródła miejskie tylko przy słowie "Kraków" w zapytaniu; upgrade: routing po tematach (BDL, statystyki)
+        const krakowSources: SourceId[] = /krak[oó]w|krakow/i.test(query ?? "")
+          ? ["krakow_od", "krakow_strategia", "krakow_msip"]
+          : [];
+        targetSourceIds = [...coreDefaults, ...krakowSources].filter((id) => enabledSources.has(id));
       }
 
       const targetTools: CapturedTool[] = [];
@@ -839,7 +873,7 @@ export function registerRouterTools(
         .string()
         .optional()
         .describe(
-          'Nazwa konkretnej operacji pobrania rekordu (np. "wolnelektury_get_collection", "nac_get_page", "bdl_get_data_by_unit", "jbc_ocr_htr"). Jeśli pominięta, wybierana jest domyślna operacja szczegółów dla danego źródła.',
+          'Nazwa konkretnej operacji pobrania rekordu (np. "wolnelektury_get_collection", "nac_get_page", "bdl_get_data_by_unit"). Jeśli pominięta, wybierana jest domyślna operacja szczegółów dla danego źródła.',
         ),
       params: z
         .record(z.unknown())
@@ -940,6 +974,8 @@ export function registerRouterTools(
                 .map((f) => `  - [${f.type.toUpperCase()}] ${f.label}: ${f.url}`),
             );
           }
+          const note = await unreadableDocumentNote(parsedDoc, saveDocuments);
+          if (note) headerLines.push(note);
           headerLines.push("---", parsedDoc.text);
           return {
             content: [{ type: "text", text: headerLines.join("\n") }],
@@ -1069,10 +1105,12 @@ export function registerRouterTools(
             maxRows: max_rows,
             format,
           });
+          const note = await unreadableDocumentNote(parsedDoc, saveDocuments);
           sections.push(
             [
               "",
               `=== AUTOMATYCZNIE POBRANY PEŁNY TEKST / DANE: ${preferred.label} (${parsedDoc.detectedFormat.toUpperCase()}, ${parsedDoc.byteLength} B) ===`,
+              ...(note ? [note] : []),
               parsedDoc.text,
             ].join("\n"),
           );

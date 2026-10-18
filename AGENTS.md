@@ -9,7 +9,7 @@
 ## Project overview
 
 **polish-academic-mcp** is a local MCP server (Model Context Protocol) that exposes
-**85 tools** letting any MCP-compatible LLM (Claude, GPT-4, etc.) search Polish
+**125 tools** letting any MCP-compatible LLM (Claude, GPT-4, etc.) search Polish
 academic, public, and cultural databases. It runs as a local Node.js process
 communicating via **stdio**, distributed exclusively through npm as the
 `polish-academic-mcp` package. All databases offer **unauthenticated read access**
@@ -20,7 +20,7 @@ sections that reference Cloudflare Workers, MCPB bundles, or research evaluation
 apparatus are obsolete and have been removed; if you see references to those
 in the wild, treat them as out of date.
 
-For the complete tool catalogue (85 entries with Polish descriptions) see
+For the complete tool catalogue (125 entries with Polish descriptions) see
 `README.md`. For per-client configuration snippets see `docs/CLIENTS.md`.
 For AI agents that need to configure the server themselves see
 `docs/AGENT-GUIDE.md`.
@@ -37,7 +37,7 @@ src/
 ├── index.ts           Stdio entry: --help, --version, --list-sources, setup/uninstall/doctor
 │                      dispatch, --sources / POLISH_ACADEMIC_SOURCES, then the MCP transport
 ├── server.ts          createServer(env, { sources }) — registers the selected sources (default:
-│                      all 85 tools), MCP instructions, readOnlyHint/openWorldHint on every tool
+│                      all 125 tools), MCP instructions, readOnlyHint/openWorldHint on every tool
 ├── sources.ts         catalogue of 33 sources in 5 groups (nauka, dane, prawo, normy, kultura)
 │                      + parseSourceSelection()
 ├── clients.ts         MCP client catalogue for setup: config paths per OS, entry formats,
@@ -88,7 +88,7 @@ src/
 
 tests/
 ├── package-contract.test.ts   version, --help, --version, npm-only, no MCPB / eval / telemetry
-├── mcp-contract.test.ts       85 tool IDs stable, all tool + parameter descriptions in Polish
+├── mcp-contract.test.ts       125 tool IDs stable, all tool + parameter descriptions in Polish
 ├── fetch-policy.test.ts       30s timeout, single retry on transient, no retry on 4xx
 ├── sources.test.ts            source selection, catalogue ↔ tool prefixes, filtered server
 └── setup.test.ts              client config paths per OS, JSON/TOML edits, setup CLI end-to-end
