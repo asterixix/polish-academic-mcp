@@ -200,6 +200,7 @@ export function AppShell() {
               </a>
             </p>
           </div>
+          <div className="flex min-w-0 flex-col gap-4 md:max-w-md">
           <div className="flex flex-wrap gap-4">
             <Link
               to="/changelog"
@@ -240,16 +241,17 @@ export function AppShell() {
               </Link>
             )}
           </div>
-          <div className="max-w-xl rounded-xl border border-amber-300 bg-amber-100 px-4 py-3 text-xs leading-relaxed text-amber-950 md:basis-full">
-            <strong className="font-semibold">Aplikacja jest w fazie rozwojowej.</strong> Dostęp
-            obejmuje bezpłatny przydział zapytań (AI Search: 2 wyszukiwania/tydzień bez konta, 5 po
-            zalogowaniu; konektory MCP: 100 wywołań narzędzi/miesiąc). Wszystkie narzędzia działają w
-            trybie tylko do odczytu (read-only) na publicznych bazach naukowych, prawnych i
-            archiwalnych. Błędy MCP lub limity:{" "}
-            <a href={`mailto:${FEEDBACK_EMAIL}`} className="font-semibold underline">
-              {FEEDBACK_EMAIL}
-            </a>
-            .
+            <div className="rounded-xl border border-amber-300 bg-amber-100 px-4 py-3 text-xs leading-relaxed text-amber-950">
+              <strong className="font-semibold">Aplikacja jest w fazie rozwojowej.</strong> Dostęp
+              obejmuje bezpłatny przydział zapytań (AI Search: 2 wyszukiwania/tydzień bez konta, 5 po
+              zalogowaniu; konektory MCP: 100 wywołań narzędzi/miesiąc). Wszystkie narzędzia działają w
+              trybie tylko do odczytu (read-only) na publicznych bazach naukowych, prawnych i
+              archiwalnych. Błędy MCP lub limity:{" "}
+              <a href={`mailto:${FEEDBACK_EMAIL}`} className="font-semibold underline">
+                {FEEDBACK_EMAIL}
+              </a>
+              .
+            </div>
           </div>
         </div>
       </footer>
