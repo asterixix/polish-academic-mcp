@@ -3,6 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { webcrypto } from "node:crypto";
+
+if (!globalThis.crypto) Object.defineProperty(globalThis, "crypto", { value: webcrypto });
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
