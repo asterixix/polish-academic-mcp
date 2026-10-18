@@ -1,4 +1,3 @@
-import { BetaBanner } from "@/components/layout/BetaBanner";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Button } from "@/components/ui/Button";
 import {
@@ -14,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
+import { Menu, X } from "lucide-react";
 
 const nav = [
   { to: "/", label: "Szukaj", end: true },
@@ -26,6 +26,7 @@ const nav = [
 export function AppShell() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [quota, setQuota] = useState<QuotaResponse | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
 
@@ -42,8 +43,7 @@ export function AppShell() {
       <a href="#main-content" className="skip-link">
         Przejdź do treści
       </a>
-      <BetaBanner />
-      <header className="border-b border-border-primary/80 bg-bg-primary/85 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-border-primary/80 bg-bg-primary/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 md:px-6">
           <Link
             to="/"
@@ -101,12 +101,29 @@ export function AppShell() {
             <ThemeToggle />
             {quota?.ai_search && (
               <span
-                className="hidden rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 sm:inline"
+                className="hidden rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 lg:inline"
                 aria-label={`Wykorzystanie AI: ${quota.ai_search.used} z ${quota.ai_search.limit}`}
               >
                 AI {quota.ai_search.used}/{quota.ai_search.limit}
               </span>
             )}
+            {quota?.mcp && (
+              <span
+                className="hidden rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 lg:inline"
+                aria-label={`Wykorzystanie MCP: ${quota.mcp.used} z ${quota.mcp.limit}`}
+              >
+                MCP {quota.mcp.used}/{quota.mcp.limit}
+              </span>
+            )}
+            <button
+              type="button"
+              className="inline-flex size-10 items-center justify-center rounded-full border border-border-primary bg-bg-secondary text-fg-primary md:hidden"
+              aria-label={menuOpen ? "Zamknij menu" : "Otwórz menu"}
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              {menuOpen ? <X className="size-4" aria-hidden /> : <Menu className="size-4" aria-hidden />}
+            </button>
             {user ? (
               <Button
                 variant="secondary"
@@ -128,39 +145,42 @@ export function AppShell() {
           </div>
         </div>
 
-        <nav
-          className="flex gap-1 overflow-x-auto border-t border-border-primary/60 px-4 py-2 md:hidden"
-          aria-label="Nawigacja mobilna"
-        >
-          {nav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                cn(
-                  "min-h-10 shrink-0 rounded-full px-3 py-2 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
-                  isActive ? "bg-brand-50 text-brand-800" : "text-fg-secondary",
-                )
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-          {user?.is_admin && (
-            <NavLink
-              to="/admin"
-              className={({ isActive }) =>
-                cn(
-                  "min-h-10 shrink-0 rounded-full px-3 py-2 text-sm font-medium",
-                  isActive ? "bg-brand-50 text-brand-800" : "text-fg-secondary",
-                )
-              }
-            >
-              Admin
-            </NavLink>
-          )}
-        </nav>
+        {menuOpen && (
+          <nav
+            className="flex flex-col gap-1 border-t border-border-primary/60 bg-bg-primary px-4 py-3 md:hidden"
+            aria-label="Nawigacja mobilna"
+            onClick={() => setMenuOpen(false)}
+          >
+            {nav.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  cn(
+                    "min-h-11 rounded-xl px-3 py-2.5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
+                    isActive ? "bg-brand-50 text-brand-800" : "text-fg-secondary",
+                  )
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+            {user?.is_admin && (
+              <NavLink
+                to="/admin"
+                className={({ isActive }) =>
+                  cn(
+                    "min-h-11 rounded-xl px-3 py-2.5 text-sm font-medium",
+                    isActive ? "bg-brand-50 text-brand-800" : "text-fg-secondary",
+                  )
+                }
+              >
+                Admin
+              </NavLink>
+            )}
+          </nav>
+        )}
       </header>
 
       <motion.main
