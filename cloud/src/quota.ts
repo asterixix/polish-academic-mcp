@@ -13,20 +13,43 @@ export interface QuotaStatus {
   allowed: boolean;
 }
 
-export function monthPeriodKey(date = new Date()): string {
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
+/** Reset cutoff: 17:00 Europe/Warsaw (AI Search: Sundays; MCP: last day of month). */
+const RESET_HOUR = 17;
+const WARSAW = "Europe/Warsaw";
+const DOW: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+function warsawLocal(date: Date) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: WARSAW,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      hourCycle: "h23",
+      weekday: "short",
+    })
+      .formatToParts(date)
+      .map((x) => [x.type, x.value]),
+  );
+  return { y: Number(p.year), m: Number(p.month), d: Number(p.day), h: Number(p.hour), dow: DOW[p.weekday] };
 }
 
-/** ISO week key: YYYY-Www (UTC). */
-export function isoWeekPeriodKey(date = new Date()): string {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
-  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+const lastDayOf = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+/** Month key YYYY-MM; window M ends last day of M at 17:00 Warsaw. */
+export function monthPeriodKey(date = new Date()): string {
+  const l = warsawLocal(date);
+  const afterCutoff = l.d === lastDayOf(l.y, l.m) && l.h >= RESET_HOUR;
+  const k = afterCutoff ? new Date(Date.UTC(l.y, l.m, 1)) : new Date(Date.UTC(l.y, l.m - 1, 1));
+  return `${k.getUTCFullYear()}-${String(k.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/** AI Search window key: YYYY-MM-DD of the Sunday 17:00 Warsaw that opened the window. */
+export function aiPeriodKey(date = new Date()): string {
+  const l = warsawLocal(date);
+  const back = l.dow === 0 ? (l.h >= RESET_HOUR ? 0 : 7) : l.dow;
+  return new Date(Date.UTC(l.y, l.m - 1, l.d - back)).toISOString().slice(0, 10);
 }
 
 export function mcpLimit(env: CloudEnv): number {
@@ -142,21 +165,17 @@ export function aiSubject(userId: string | null, anonKey: string): string {
   return userId ? `user:${userId}` : `anon:${anonKey}`;
 }
 
+function formatReset(y: number, m: number, d: number): string {
+  return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y} o ${RESET_HOUR}:00 (czas polski)`;
+}
+
 export function nextMonthResetMessage(periodKey: string): string {
   const [y, m] = periodKey.split("-").map(Number);
-  const next = new Date(Date.UTC(y, m, 1));
-  return next.toISOString().slice(0, 10);
+  return formatReset(y, m, lastDayOf(y, m));
 }
 
 export function nextWeekResetMessage(periodKey: string): string {
-  // Approximate: Monday of next ISO week
-  const match = /^(\d{4})-W(\d{2})$/.exec(periodKey);
-  if (!match) return periodKey;
-  const year = Number(match[1]);
-  const week = Number(match[2]);
-  const jan4 = new Date(Date.UTC(year, 0, 4));
-  const day = jan4.getUTCDay() || 7;
-  const monday = new Date(jan4);
-  monday.setUTCDate(jan4.getUTCDate() - day + 1 + (week - 1) * 7 + 7);
-  return monday.toISOString().slice(0, 10);
+  const [y, m, d] = periodKey.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 7));
+  return formatReset(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate());
 }

@@ -70,12 +70,20 @@ test("PBKDF2 hash/verify i HMAC sesji działają w Web Crypto", async () => {
   assert.ok(challenge.length > 20);
 });
 
-test("klucze okresów limitów: miesiąc i tydzień ISO", async () => {
-  const { monthPeriodKey, isoWeekPeriodKey, aiSearchLimit, mcpLimit } = await import(
-    "../cloud/src/quota.js"
-  );
-  assert.match(monthPeriodKey(new Date("2026-10-17T12:00:00Z")), /^2026-10$/);
-  assert.match(isoWeekPeriodKey(new Date("2026-10-17T12:00:00Z")), /^2026-W\d{2}$/);
+test("klucze okresów limitów: reset niedziela 17:00 i koniec miesiąca 17:00 (Warszawa)", async () => {
+  const { monthPeriodKey, aiPeriodKey, aiSearchLimit, mcpLimit, nextWeekResetMessage, nextMonthResetMessage } =
+    await import("../cloud/src/quota.js");
+  // 2026-10-17 (sobota) 12:00 UTC = 14:00 Warszawa -> okno od niedzieli 2026-10-11 17:00
+  assert.equal(aiPeriodKey(new Date("2026-10-17T12:00:00Z")), "2026-10-11");
+  // niedziela 2026-10-18 16:30 Warszawa -> nadal poprzednie okno (2026-10-11)
+  assert.equal(aiPeriodKey(new Date("2026-10-18T14:30:00Z")), "2026-10-11");
+  // niedziela 2026-10-18 17:30 Warszawa -> nowe okno (2026-10-18)
+  assert.equal(aiPeriodKey(new Date("2026-10-18T15:30:00Z")), "2026-10-18");
+  assert.match(nextWeekResetMessage("2026-10-11"), /^18\.10\.2026 o 17:00/);
+  // 2026-10-31 16:59 Warszawa -> nadal październik; 17:00 -> listopad
+  assert.equal(monthPeriodKey(new Date("2026-10-31T15:59:00Z")), "2026-10");
+  assert.equal(monthPeriodKey(new Date("2026-10-31T16:00:00Z")), "2026-11");
+  assert.match(nextMonthResetMessage("2026-10"), /^31\.10\.2026 o 17:00/);
   const env = {
     MCP_MONTHLY_LIMIT: "100",
     AI_SEARCH_ANON_WEEKLY_LIMIT: "2",
@@ -88,7 +96,7 @@ test("klucze okresów limitów: miesiąc i tydzień ISO", async () => {
 
 test("quota D1: blokada po limicie MCP 100 i AI anon 2", async () => {
   const { MemoryD1 } = await import("../cloud/src/db-memory.js");
-  const { consumeQuota, getQuota, mcpSubject, aiSubject, monthPeriodKey, isoWeekPeriodKey } =
+  const { consumeQuota, getQuota, mcpSubject, aiSubject, monthPeriodKey, aiPeriodKey } =
     await import("../cloud/src/quota.js");
 
   const db = new MemoryD1();
@@ -107,7 +115,7 @@ test("quota D1: blokada po limicie MCP 100 i AI anon 2", async () => {
   assert.equal(blocked.allowed, false);
   assert.equal(blocked.used, 100);
 
-  const week = isoWeekPeriodKey();
+  const week = aiPeriodKey();
   const anon = aiSubject(null, "anon-abc");
   assert.equal((await consumeQuota(env, anon, "ai_search_weekly", week, 2)).allowed, true);
   assert.equal((await consumeQuota(env, anon, "ai_search_weekly", week, 2)).used, 2);
