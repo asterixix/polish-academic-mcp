@@ -152,6 +152,17 @@ export function AppShell() {
             <p className="text-xs font-medium uppercase tracking-wide text-fg-secondary">
               Autor aplikacji
             </p>
+            <p className="max-w-xl text-xs leading-relaxed text-fg-secondary">
+              <strong className="font-semibold text-fg-primary">Aplikacja jest w fazie rozwojowej.</strong>{" "}
+              Dostęp obejmuje bezpłatny przydział zapytań (AI Search: 2 wyszukiwania/tydzień bez konta,
+              5 po zalogowaniu; konektory MCP: 100 wywołań narzędzi/miesiąc). Wszystkie narzędzia działają
+              w trybie tylko do odczytu (read-only) na publicznych bazach naukowych, prawnych i
+              archiwalnych. Błędy MCP lub limity:{" "}
+              <a href={`mailto:${FEEDBACK_EMAIL}`} className="font-semibold underline">
+                {FEEDBACK_EMAIL}
+              </a>
+              .
+            </p>
             <p className="font-semibold text-fg-primary">Artur Sendyka</p>
             <p className="flex flex-wrap gap-x-3 gap-y-1">
               <a
