@@ -359,7 +359,7 @@ const AI_SEARCH_CORE_BY_GROUP: Record<SourceGroup, SourceId[]> = {
 /** Max parallel Meta-Router tool calls in round 1 (each may fan out to N sources). */
 const AI_SEARCH_MAX_TOOL_CALLS = 5;
 /** Default deepen get_record cap — leave headroom for the synthesis LLM fetch. */
-const AI_SEARCH_DEFAULT_DEEPEN = 4;
+const AI_SEARCH_DEFAULT_DEEPEN = 10;
 
 function sumUsage(parts: TokenUsage[]): TokenUsage {
   const input = parts.reduce((a, p) => a + p.input_tokens, 0);
@@ -899,8 +899,10 @@ export function extractRecordTargets(
 ): LlmToolCall[] {
   const out: LlmToolCall[] = [];
   const seen = new Set<string>();
+  // shortcut: źródła krakowskie są przed resztą (BDL/dane.gov.pl zapychały limit), upgrade: punktacja trafności zamiast kolejności
+  const KRAKOW_FIRST = /^krakow_/;
+  const pending: Array<{ src: string; rid: string }> = [];
   const push = (source: string, id: string) => {
-    if (out.length >= limit) return;
     const src = source.trim().replace(/_search.*$/, "").replace(/_get.*$/, "");
     const rid = id.trim();
     if (!src || !rid) return;
@@ -908,26 +910,11 @@ export function extractRecordTargets(
     const key = `${src}:${rid}`;
     if (seen.has(key)) return;
     seen.add(key);
-    out.push({
-      name: "get_record",
-      arguments: { source: src, id: rid, include_fulltext: true, max_chars: 80_000 },
-    });
-    // BDL: metadane zmiennej to za mało — pobierz wartości wojewódzkie (unit-level=2).
-    if (src === "bdl" && /^\d+$/.test(rid)) {
-      out.push({
-        name: "search",
-        arguments: {
-          operation: "bdl_get_data_by_variable",
-          filters: { variable_id: Number(rid), unit_level: 2, page_size: 20 },
-          max_chars: 80_000,
-          format: "raw",
-        },
-      });
-    }
+    pending.push({ src, rid });
   };
 
   const walkJson = (node: unknown, fallbackSource: string, depth = 0): void => {
-    if (depth > 6 || node == null || out.length >= limit) return;
+    if (depth > 6 || node == null) return;
     if (Array.isArray(node)) {
       for (const item of node.slice(0, 40)) walkJson(item, fallbackSource, depth + 1);
       return;
@@ -951,7 +938,7 @@ export function extractRecordTargets(
   };
 
   for (const r of toolResults) {
-    if (r.isError || r.name !== "search" || out.length >= limit) continue;
+    if (r.isError || r.name !== "search") continue;
     // 1) Stopka REKORDY DO POGŁĘBIENIA routera: linie "- source:id — etykieta".
     for (const m of r.text.matchAll(/^-\s+([a-z][a-z0-9_]*):(\S+?)(?:\s+—\s+.*)?$/gm)) {
       push(m[1], m[2]);
@@ -978,6 +965,25 @@ export function extractRecordTargets(
       } catch {
         /* ignore non-JSON */
       }
+    }
+  }
+  pending.sort((a, b) => Number(KRAKOW_FIRST.test(b.src)) - Number(KRAKOW_FIRST.test(a.src)));
+  for (const { src, rid } of pending.slice(0, limit)) {
+    out.push({
+      name: "get_record",
+      arguments: { source: src, id: rid, include_fulltext: true, max_chars: 80_000 },
+    });
+    // BDL: metadane zmiennej to za mało — pobierz wartości wojewódzkie (unit-level=2).
+    if (src === "bdl" && /^\d+$/.test(rid)) {
+      out.push({
+        name: "search",
+        arguments: {
+          operation: "bdl_get_data_by_variable",
+          filters: { variable_id: Number(rid), unit_level: 2, page_size: 20 },
+          max_chars: 80_000,
+          format: "raw",
+        },
+      });
     }
   }
   return out;
@@ -1765,7 +1771,7 @@ export async function handleAiSearchRoutes(
         // Cap deepen so synthesis LLM fetch still has subrequest headroom
         const deepenCalls = extractRecordTargets(
           toolResults,
-          Math.min(6, Math.max(1, deepenLimit)),
+          Math.min(10, Math.max(1, deepenLimit)),
         );
         if (deepenCalls.length > 0) {
           send("thought", {

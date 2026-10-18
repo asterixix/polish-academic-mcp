@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Env } from "../types.js";
 import { cachedFetch, makeCacheKey } from "../cache.js";
 import { decodeHtmlEntities, extractCompactHtml } from "../extract.js";
+import { fetchAndParseUrl } from "../content-fetcher.js";
 import { toToolErrorText } from "../tool-error-handling.js";
 
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36", "Accept-Language": "pl-PL,pl;q=0.9" };
@@ -257,8 +258,11 @@ export function registerKrakowStrategiaTools(server: McpServer, env: Env): void 
     });
   server.tool("krakow_strategia_get_article",
     "Pobiera pełną treść artykułu z serwisu Strategia Rozwoju Krakowa / Banku Informacji o Mieście i Metropolii (https://strategia.krakow.pl) wraz z listą wszystkich załączników do pobrania (pliki PDF/XLS/XLSX raportów na plikimpi.krakow.pl/zalacznik/, odnośniki BIP Kraków) oraz adresem wersji PDF artykułu (getPdf). Przyjmuje identyfikator liczbowy artykułu z Banku (np. 253584), ścieżkę artykułu albo pełny adres URL zwrócony przez krakow_strategia_search lub krakow_strategia_list_bank.",
-    { id: z.string().describe("Identyfikator artykułu: liczba z Banku (np. 253584), ścieżka bank-informacji-o-miescie-i-metropolii/253584,artykul,raport-o-stanie-gminy.html albo pełny adres URL strategia.krakow.pl") },
-    async ({ id }) => {
+    {
+      id: z.string().describe("Identyfikator artykułu: liczba z Banku (np. 253584), ścieżka bank-informacji-o-miescie-i-metropolii/253584,artykul,raport-o-stanie-gminy.html albo pełny adres URL strategia.krakow.pl"),
+      read_pdf: z.boolean().default(false).describe("Czy pobrać wersję PDF artykułu (getPdf) i zwrócić jej tekst (pdf_text, pierwsze 20000 znaków). Domyślnie false."),
+    },
+    async ({ id, read_pdf }) => {
       try {
         let url = id.trim();
         const bankHit = KRAKOW_STRATEGIA_BANK.find((a) => String(a.id) === url);
@@ -268,7 +272,10 @@ export function registerKrakowStrategiaTools(server: McpServer, env: Env): void 
         const html = await cachedFetch(env.CACHE_KV, makeCacheKey("krakow_strategia_article", { url }), url, { headers: UA }, TTL);
         const dokId = url.match(/\/(\d+),artykul/)?.[1] ?? url.match(/dok_id=(\d+)/)?.[1] ?? null;
         const attachments = [...new Set([...html.matchAll(/href="([^"]+)"/g)].map((x) => decodeHtmlEntities(x[1])).filter((u) => /plikimpi\.krakow\.pl\/zalacznik|bip\.krakow\.pl/i.test(u)))];
-        return { content: [{ type: "text", text: JSON.stringify({ url, pdf_url: dokId ? `https://strategia.krakow.pl/getPdf/?dok_id=${dokId}` : null, attachments, text: extractCompactHtml(html).slice(0, 12000) }, null, 2) }] };
+        const pdf_url = dokId ? `https://strategia.krakow.pl/getPdf/?dok_id=${dokId}` : null;
+        // shortcut: tekst z warstwy tekstowej PDF (bez OCR), rozstrzelone litery i polskie znaki bywają zniekształcone, upgrade: lepszy parser lub OCR
+        const pdf = read_pdf && pdf_url ? await fetchAndParseUrl(pdf_url) : null;
+        return { content: [{ type: "text", text: JSON.stringify({ url, pdf_url, attachments, text: extractCompactHtml(html).slice(0, 12000), ...(pdf ? { pdf_pages: pdf.metadata.pageCountEstimate, pdf_text: pdf.text.slice(0, 20000) } : {}) }, null, 2) }] };
       } catch (e) { return err("krakow_strategia_get_article", e); }
     });
   server.tool("krakow_strategia_list_bank",

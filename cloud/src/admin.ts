@@ -534,7 +534,7 @@ export async function handleAdminRoutes(
     return jsonResponse({
       settings,
       defaults: {
-        deepen_record_limit: 4,
+        deepen_record_limit: 10,
         synthesis_extra: "",
         router_extra: "",
         maintenance_message: "",

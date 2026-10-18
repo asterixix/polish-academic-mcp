@@ -700,3 +700,17 @@ test("extractRecordTargets parsuje sekcje routera i stopkę REKORDY DO POGŁĘBI
     ),
   );
 });
+
+test("extractRecordTargets stawia źródła krakow_ przed BDL, żeby limit ich nie wypychał", async () => {
+  const { extractRecordTargets } = await import("../cloud/src/ai-search.js");
+  const text = [
+    "=== REKORDY DO POGŁĘBIENIA ===",
+    "- bdl:77557 — aktywność",
+    "- bdl:77473 — aktywność",
+    "- dane:38289 — klub seniora",
+    "- krakow_od:centra-aktywnosci-seniora-w-krakowie — centra",
+  ].join("\n");
+  const calls = extractRecordTargets([{ name: "search", text }], 2);
+  assert.equal(calls[0]?.arguments.source, "krakow_od");
+  assert.equal(calls[0]?.arguments.id, "centra-aktywnosci-seniora-w-krakowie");
+});
