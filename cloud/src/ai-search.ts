@@ -8,7 +8,7 @@ import {
   aiSubject,
   consumeQuota,
   getQuota,
-  isoWeekPeriodKey,
+  aiPeriodKey,
   resolveAiSearchLimit,
   resolveMcpLimit,
   mcpSubject,
@@ -24,6 +24,7 @@ import {
   parallelExtract,
   parallelSearch,
 } from "./parallel.js";
+import { parallelUsageFromToolCalls } from "./costs.js";
 import { getUserPreferences, type UserPreferences } from "./account-api.js";
 import { getAppSetting, logAdminEvent } from "./admin.js";
 import { withDeveloperContact } from "./error-contact.js";
@@ -1226,7 +1227,7 @@ export async function handleAiSearchRoutes(
     const user = await readSessionUser(env, request);
     const { anonKey, setCookie } = await ensureAnonKey(env, request);
     const subject = aiSubject(user?.id ?? null, anonKey);
-    const period = isoWeekPeriodKey();
+    const period = aiPeriodKey();
     const limit = await resolveAiSearchLimit(env, user?.id ?? null, Boolean(user));
     const ai = await getQuota(env, subject, "ai_search_weekly", period, limit);
     let mcp = null;
@@ -1262,7 +1263,7 @@ export async function handleAiSearchRoutes(
   const user = await readSessionUser(env, request);
   const { anonKey, setCookie } = await ensureAnonKey(env, request);
   const subject = aiSubject(user?.id ?? null, anonKey);
-  const period = isoWeekPeriodKey();
+  const period = aiPeriodKey();
   const limit = await resolveAiSearchLimit(env, user?.id ?? null, Boolean(user));
   const before = await getQuota(env, subject, "ai_search_weekly", period, limit);
 
@@ -2060,6 +2061,11 @@ Zasady twarde (anty-halucynacja):
         const edenErrors = allAttempts.filter((a) => a.provider === "edenai" && a.status === "error");
         const fallbackUsed =
           edenConfigured && audit.llm_calls.some((c) => c.provider !== "edenai");
+        const edenCostUsd = audit.llm_calls
+          .flatMap((c) => c.attempts ?? [])
+          .filter((a) => a.provider === "edenai")
+          .reduce((s, a) => s + (a.cost_usd ?? 0), 0);
+        const parallelUsage = parallelUsageFromToolCalls(audit.tool_calls);
 
         await logActivity(env, {
           eventType: "ai_search",
@@ -2077,6 +2083,9 @@ Zasady twarde (anty-halucynacja):
                 : "ok",
           durationMs: Date.parse(audit.completed_at || "") - Date.parse(audit.created_at),
           meta: {
+            eden_cost_usd: edenCostUsd,
+            parallel_search_calls: parallelUsage.search_calls,
+            parallel_extract_urls: parallelUsage.extract_urls,
             groups,
             source_ids: sourceIds.slice(0, 20),
             tool_count: audit.tool_calls.length,

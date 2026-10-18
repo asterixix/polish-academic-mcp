@@ -307,6 +307,41 @@ export async function adminListActivity(params?: {
   }>(`/api/admin/activity${qs ? `?${qs}` : ""}`);
 }
 
+export async function adminCosts(params: { from: string; to: string }) {
+  const sp = new URLSearchParams({ from: params.from, to: params.to });
+  return adminFetch<AdminCostsResponse>(`/api/admin/costs?${sp.toString()}`);
+}
+
+export interface AdminCostsResponse {
+  range: { from: string; to: string; days: number; max_days: number };
+  totals: { ai_searches: number; total_usd_est: number };
+  providers: {
+    eden_ai: {
+      logged_cost_usd: number;
+      management_cost_usd: number | null;
+      management_error: string | null;
+      management_note: string;
+    };
+    parallel: { search_calls: number; extract_urls: number; cost_usd: number };
+    cloudflare: {
+      configured: boolean;
+      requests: number | null;
+      overage_usd_est: number | null;
+      error: string | null;
+      note: string;
+    };
+  };
+  daily: Array<{
+    day: string;
+    ai_searches: number;
+    eden_cost_usd: number;
+    parallel_search_calls: number;
+    parallel_extract_urls: number;
+  }>;
+  notes: string[];
+  checked_at: string;
+}
+
 export async function adminPurgeCache() {
   return adminFetch<{ ok: boolean; message: string }>("/api/admin/cache/purge", {
     method: "POST",

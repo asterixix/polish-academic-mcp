@@ -4,8 +4,10 @@ import {
   adminHealth,
   adminListActivity,
   adminListEvents,
+  adminCosts,
   adminListUsers,
   adminPurgeCache,
+  type AdminCostsResponse,
   adminSaveSettings,
   adminTestEdenAi,
   adminUpdateQuota,
@@ -16,7 +18,11 @@ import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-type Tab = "health" | "users" | "models" | "events" | "activity";
+type Tab = "health" | "costs" | "users" | "models" | "events" | "activity";
+
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const daysAgoIso = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+const fmtUsd = (n: number | null | undefined) => (n == null ? "n/d" : `$${n.toFixed(4)}`);
 
 export function AdminPage() {
   const [user, setUser] = useState<PublicUser | null>(null);
@@ -30,6 +36,8 @@ export function AdminPage() {
     null,
   );
   const [activityQ, setActivityQ] = useState("");
+  const [costRange, setCostRange] = useState({ from: daysAgoIso(29), to: todayIso() });
+  const [costs, setCosts] = useState<AdminCostsResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -56,10 +64,11 @@ export function AdminPage() {
       }
       if (tab === "events") setEvents(await adminListEvents());
       if (tab === "activity") setActivity(await adminListActivity({ q: activityQ || undefined }));
+      if (tab === "costs") setCosts(await adminCosts(costRange));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [tab, activityQ]);
+  }, [tab, activityQ, costRange]);
 
   useEffect(() => {
     void load();
@@ -98,6 +107,7 @@ export function AdminPage() {
 
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "health", label: "Stan systemu" },
+    { id: "costs", label: "Koszty" },
     { id: "users", label: "Użytkownicy" },
     { id: "models", label: "Modele i odpowiedzi" },
     { id: "activity", label: "Aktywność" },
@@ -488,6 +498,157 @@ export function AdminPage() {
             </ul>
           )}
         </section>
+      )}
+
+      {tab === "costs" && (
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft">
+            <h2 className="font-semibold text-fg-primary">Zakres dat</h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {[
+                { label: "Dziś", days: 1 },
+                { label: "7 dni", days: 7 },
+                { label: "30 dni", days: 30 },
+                { label: "90 dni", days: 90 },
+                { label: "180 dni", days: 180 },
+              ].map((p) => (
+                <Button
+                  key={p.days}
+                  size="sm"
+                  variant="secondary"
+                  onPress={() => setCostRange({ from: daysAgoIso(p.days - 1), to: todayIso() })}
+                >
+                  {p.label}
+                </Button>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <label className="text-xs font-medium text-fg-secondary">
+                Od
+                <input
+                  type="date"
+                  className="mt-1 block rounded-lg border border-border-primary px-2 py-1.5 text-sm"
+                  value={costRange.from}
+                  min={daysAgoIso(179)}
+                  max={costRange.to}
+                  onChange={(e) => setCostRange((r) => ({ ...r, from: e.target.value }))}
+                />
+              </label>
+              <label className="text-xs font-medium text-fg-secondary">
+                Do
+                <input
+                  type="date"
+                  className="mt-1 block rounded-lg border border-border-primary px-2 py-1.5 text-sm"
+                  value={costRange.to}
+                  min={costRange.from}
+                  max={todayIso()}
+                  onChange={(e) => setCostRange((r) => ({ ...r, to: e.target.value }))}
+                />
+              </label>
+              <Button size="sm" onPress={() => void load()} disabled={busy}>
+                Pokaż
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-fg-tertiary">Maksymalnie 180 dni wstecz (zgodnie z retencją logów).</p>
+          </section>
+
+          {costs && (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft">
+                  <h3 className="text-sm font-semibold text-fg-primary">Eden AI</h3>
+                  <p className="mt-2 font-mono text-2xl font-semibold text-brand-800">
+                    {fmtUsd(costs.providers.eden_ai.logged_cost_usd)}
+                  </p>
+                  <p className="mt-1 text-xs text-fg-tertiary">
+                    z logów (od wdrożenia kosztów) · Management API (~7 dni):{" "}
+                    {fmtUsd(costs.providers.eden_ai.management_cost_usd)}
+                  </p>
+                </section>
+                <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft">
+                  <h3 className="text-sm font-semibold text-fg-primary">Parallel API</h3>
+                  <p className="mt-2 font-mono text-2xl font-semibold text-brand-800">
+                    {fmtUsd(costs.providers.parallel.cost_usd)}
+                  </p>
+                  <p className="mt-1 text-xs text-fg-tertiary">
+                    search: {costs.providers.parallel.search_calls} · URL-e extract:{" "}
+                    {costs.providers.parallel.extract_urls}
+                  </p>
+                </section>
+                <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft">
+                  <h3 className="text-sm font-semibold text-fg-primary">Cloudflare Workers</h3>
+                  <p className="mt-2 font-mono text-2xl font-semibold text-brand-800">
+                    {fmtUsd(costs.providers.cloudflare.overage_usd_est)}
+                  </p>
+                  <p className="mt-1 text-xs text-fg-tertiary">
+                    szacunek nadwyżki · żądania: {costs.providers.cloudflare.requests ?? "n/d"}
+                  </p>
+                </section>
+                <section className="rounded-2xl border border-brand-300 bg-brand-25 p-5 shadow-soft">
+                  <h3 className="text-sm font-semibold text-fg-primary">Razem (szacunek)</h3>
+                  <p className="mt-2 font-mono text-2xl font-semibold text-brand-800">
+                    {fmtUsd(costs.totals.total_usd_est)}
+                  </p>
+                  <p className="mt-1 text-xs text-fg-tertiary">wyszukiwań AI: {costs.totals.ai_searches}</p>
+                </section>
+              </div>
+
+              {costs.providers.cloudflare.error && (
+                <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">
+                  Cloudflare: {costs.providers.cloudflare.error}
+                </p>
+              )}
+              {costs.providers.eden_ai.management_error && (
+                <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">
+                  Eden AI Management: {costs.providers.eden_ai.management_error}
+                </p>
+              )}
+
+              <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft">
+                <h2 className="font-semibold text-fg-primary">
+                  Szczegóły dzienne ({costs.range.from} – {costs.range.to}, {costs.range.days} dni)
+                </h2>
+                {costs.daily.length === 0 ? (
+                  <p className="mt-3 text-sm text-fg-secondary">Brak wyszukiwań AI w wybranym zakresie.</p>
+                ) : (
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="text-xs text-fg-tertiary">
+                        <tr>
+                          <th className="py-2 pr-3 font-medium">Dzień</th>
+                          <th className="py-2 pr-3 font-medium">Wyszukiwania</th>
+                          <th className="py-2 pr-3 font-medium">Eden AI</th>
+                          <th className="py-2 pr-3 font-medium">Parallel search</th>
+                          <th className="py-2 pr-3 font-medium">Parallel URL-e</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border-primary">
+                        {costs.daily.map((d) => (
+                          <tr key={d.day}>
+                            <td className="py-2 pr-3 font-mono text-xs">{d.day}</td>
+                            <td className="py-2 pr-3">{d.ai_searches}</td>
+                            <td className="py-2 pr-3 font-mono">{fmtUsd(d.eden_cost_usd)}</td>
+                            <td className="py-2 pr-3">{d.parallel_search_calls}</td>
+                            <td className="py-2 pr-3">{d.parallel_extract_urls}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              <section className="rounded-2xl border border-border-primary bg-bg-secondary p-5 shadow-soft">
+                <h2 className="font-semibold text-fg-primary">Uwagi o źródłach danych</h2>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-fg-secondary">
+                  {costs.notes.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
+              </section>
+            </>
+          )}
+        </div>
       )}
 
       {tab === "events" && events && (

@@ -3,13 +3,16 @@ import type { ToolInfo } from "./tool-bridge.js";
 
 export const PARALLEL_MAX_CALLS = 5;
 export const PARALLEL_TOOL_NAMES = ["web_search", "web_fetch"] as const;
+/** Source: https://parallel.ai/pricing (Search $1/1K requests at 10 results; Extract $1/1K results). */
+export const PARALLEL_SEARCH_USD_PER_CALL = 0.001;
+export const PARALLEL_EXTRACT_USD_PER_URL = 0.001;
 
 const API_BASE = "https://api.parallel.ai";
 const SEARCH_TIMEOUT_MS = 20_000;
 const EXTRACT_TIMEOUT_MS = 30_000;
 const MAX_CHARS_TOTAL = 20_000;
 const SEARCH_MAX_RESULTS = 10;
-const EXTRACT_MAX_URLS = 3;
+export const EXTRACT_MAX_URLS = 3;
 
 export interface ParallelResult {
   content: Array<{ type: "text"; text: string }>;

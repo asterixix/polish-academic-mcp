@@ -2,8 +2,15 @@ import type { CloudEnv } from "./env.js";
 import { readSessionUser, type UserRow } from "./auth.js";
 import { jsonResponse } from "./crypto-util.js";
 import {
+  COST_MAX_RANGE_DAYS,
+  addDays,
+  cfRequestOverageUsd,
+  parallelCostUsd,
+  parseCostRange,
+} from "./costs.js";
+import {
   getQuota,
-  isoWeekPeriodKey,
+  aiPeriodKey,
   monthPeriodKey,
   mcpSubject,
   aiSubject,
@@ -271,7 +278,7 @@ async function fetchEdenUsage(env: CloudEnv) {
   }
 }
 
-async function fetchCloudflareWorkersMetrics(env: CloudEnv) {
+async function fetchCloudflareWorkersMetrics(env: CloudEnv, start: Date, end: Date, label: string) {
   const accountId = (env.CF_ACCOUNT_ID ?? "").trim();
   const token = (env.CF_API_TOKEN ?? "").trim();
   if (!accountId || !token) {
@@ -283,8 +290,6 @@ async function fetchCloudflareWorkersMetrics(env: CloudEnv) {
     };
   }
   const scriptName = (env.CF_WORKER_SCRIPT_NAME ?? "polish-academic-mcp").trim();
-  const end = new Date();
-  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
   const query = `query {
     viewer {
       accounts(filter: {accountTag: "${accountId}"}) {
@@ -320,7 +325,7 @@ async function fetchCloudflareWorkersMetrics(env: CloudEnv) {
     if (!res.ok || json.errors) {
       return {
         configured: true,
-        note: "GraphQL analytics (ostatnie 24 h).",
+        note: `GraphQL analytics (${label}).`,
         metrics: null,
         error: JSON.stringify(json.errors ?? { status: res.status }).slice(0, 500),
       };
@@ -334,7 +339,7 @@ async function fetchCloudflareWorkersMetrics(env: CloudEnv) {
     }
     return {
       configured: true,
-      note: `Worker ${scriptName}, ostatnie 24 h.`,
+      note: `Worker ${scriptName}, ${label}.`,
       metrics: { requests, errors, rows: rows.length, sample: rows.slice(0, 5) },
       error: null,
     };
@@ -368,10 +373,11 @@ export async function handleAdminRoutes(
   }
 
   if (path === "/api/admin/health" && request.method === "GET") {
+    const now = new Date();
     const [bindings, eden, cf] = await Promise.all([
       probeBindings(env),
       fetchEdenUsage(env),
-      fetchCloudflareWorkersMetrics(env),
+      fetchCloudflareWorkersMetrics(env, new Date(now.getTime() - 24 * 60 * 60 * 1000), now, "ostatnie 24 h"),
     ]);
     const counts = await env.DB.prepare(
       `SELECT
@@ -400,7 +406,7 @@ export async function handleAdminRoutes(
   }
 
   if (path === "/api/admin/users" && request.method === "GET") {
-    const week = isoWeekPeriodKey();
+    const week = aiPeriodKey();
     const month = monthPeriodKey();
     const users = await env.DB.prepare(
       `SELECT id, email, orcid_id, display_name, created_at FROM users ORDER BY created_at DESC LIMIT 200`,
@@ -504,7 +510,7 @@ export async function handleAdminRoutes(
         `UPDATE usage_quotas SET used_count = 0, updated_at = datetime('now')
          WHERE subject_key = ? AND bucket_type = 'ai_search_weekly' AND period_key = ?`,
       )
-        .bind(aiSubject(userId, ""), isoWeekPeriodKey())
+        .bind(aiSubject(userId, ""), aiPeriodKey())
         .run();
     }
 
@@ -583,6 +589,91 @@ export async function handleAdminRoutes(
       purged,
       note:
         "Logi RODO: anonimowi = subject_hash (SHA-256 skrót), bez IP i e-maila. Retencja: 30 dni (anon) / 180 dni (konto).",
+    });
+  }
+
+  if (path === "/api/admin/costs" && request.method === "GET") {
+    const url = new URL(request.url);
+    const range = parseCostRange(url.searchParams.get("from"), url.searchParams.get("to"));
+    if ("error" in range) return jsonResponse({ error: range.error }, { status: 400 });
+    const { from, to } = range;
+    const days =
+      Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+
+    const daily = await env.DB.prepare(
+      `SELECT substr(created_at, 1, 10) AS day,
+              COUNT(*) AS ai_searches,
+              SUM(COALESCE(json_extract(meta_json, '$.eden_cost_usd'), 0)) AS eden_cost_usd,
+              SUM(COALESCE(json_extract(meta_json, '$.parallel_search_calls'), 0)) AS parallel_search_calls,
+              SUM(COALESCE(json_extract(meta_json, '$.parallel_extract_urls'), 0)) AS parallel_extract_urls
+       FROM activity_logs
+       WHERE event_type = 'ai_search' AND created_at >= ? AND created_at < ?
+       GROUP BY day ORDER BY day`,
+    )
+      .bind(`${from} 00:00:00`, `${addDays(to, 1)} 00:00:00`)
+      .all<{
+        day: string;
+        ai_searches: number;
+        eden_cost_usd: number;
+        parallel_search_calls: number;
+        parallel_extract_urls: number;
+      }>();
+
+    const rows = daily.results ?? [];
+    const sum = (k: "ai_searches" | "eden_cost_usd" | "parallel_search_calls" | "parallel_extract_urls") =>
+      rows.reduce((s, r) => s + Number(r[k] ?? 0), 0);
+    const edenLogged = sum("eden_cost_usd");
+    const parallelSearch = sum("parallel_search_calls");
+    const parallelExtract = sum("parallel_extract_urls");
+    const parallelUsd = parallelCostUsd(parallelSearch, parallelExtract);
+
+    const startDate = new Date(`${from}T00:00:00Z`);
+    const endDate = new Date(`${addDays(to, 1)}T00:00:00Z`);
+    const [eden, cf] = await Promise.all([
+      fetchEdenUsage(env),
+      fetchCloudflareWorkersMetrics(env, startDate, endDate, `${from} – ${to}`),
+    ]);
+    const cfRequests = Number((cf.metrics as { requests?: number } | null)?.requests ?? 0);
+    const cfOverageUsd = cf.metrics ? cfRequestOverageUsd(cfRequests) : null;
+
+    const edenMgmtUsd = (eden.usage as { total_cost_usd?: number } | null)?.total_cost_usd ?? null;
+    const totalUsd = edenLogged + parallelUsd + (cfOverageUsd ?? 0);
+
+    return jsonResponse({
+      range: { from, to, days, max_days: COST_MAX_RANGE_DAYS },
+      totals: {
+        ai_searches: sum("ai_searches"),
+        total_usd_est: totalUsd,
+      },
+      providers: {
+        eden_ai: {
+          logged_cost_usd: edenLogged,
+          management_cost_usd: edenMgmtUsd,
+          management_error: eden.error,
+          management_note: eden.note,
+        },
+        parallel: {
+          search_calls: parallelSearch,
+          extract_urls: parallelExtract,
+          cost_usd: parallelUsd,
+        },
+        cloudflare: {
+          configured: cf.configured,
+          requests: cf.metrics ? cfRequests : null,
+          overage_usd_est: cfOverageUsd,
+          error: cf.error,
+          note: cf.note,
+        },
+      },
+      daily: rows,
+      notes: [
+        "Eden AI (logged): koszt z odpowiedzi LLM zapisany w logach od wdrożenia tej funkcji; starsze wpisy nie mają kosztu.",
+        "Eden AI (management): Management API zwraca zużycie tylko z ostatnich ~7 dni; nie zależy od wybranego zakresu.",
+        "Parallel: dokładnie wg liczby wywołań z logów (cena z cennika $0.001/zapytanie i $0.001/URL); nieudane wywołania pominięte.",
+        "Cloudflare: szacunek nadwyżki ponad 10M żądań/mies. po $0.30/M; bez czasu CPU; to nie jest rachunek.",
+        `Logi aktywności są usuwane po 30 dniach (anon) i 180 dniach (konto), więc zakres ogranicza się do retencji (max ${COST_MAX_RANGE_DAYS} dni).`,
+      ],
+      checked_at: new Date().toISOString(),
     });
   }
 
