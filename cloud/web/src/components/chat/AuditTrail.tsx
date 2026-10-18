@@ -1,15 +1,15 @@
 import { Button } from "@/components/ui/Button";
 import type { AuditLog, AuditStep, LlmCallEvent, TokenUsage } from "@/lib/api";
-import { downloadAuditJson, downloadAuditMarkdown } from "@/lib/audit-export";
+import { copyAuditMarkdown, downloadAuditJson } from "@/lib/audit-export";
 import { cn } from "@/lib/utils";
 import {
   Activity,
   ChevronDown,
   Clock,
   Code01,
+  Copy01,
   Download01,
   Eye,
-  File01,
 } from "@untitledui/icons";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useState, type ReactNode } from "react";
@@ -224,11 +224,11 @@ export function AuditTrail({
                 size="sm"
                 variant="secondary"
                 type="button"
-                onClick={() => downloadAuditMarkdown(live.audit!)}
+                onClick={() => void copyAuditMarkdown(live.audit!)}
                 className="gap-1.5"
               >
-                <File01 className="size-3.5" />
-                MD
+                <Copy01 className="size-3.5" />
+                Kopiuj MD
               </Button>
             </div>
           )}

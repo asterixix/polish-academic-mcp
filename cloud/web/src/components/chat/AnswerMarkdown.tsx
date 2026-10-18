@@ -1,3 +1,4 @@
+import { MermaidBlock } from "@/components/chat/MermaidBlock";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -50,6 +51,9 @@ export function AnswerMarkdown({ text }: { text: string }) {
           code: ({ className, children }) => {
             const lang = /language-(\w+)/.exec(className || "")?.[1];
             const isBlock = Boolean(lang) || String(children).includes("\n");
+            if (lang === "mermaid") {
+              return <MermaidBlock code={String(children).trim()} />;
+            }
             if (!isBlock) {
               return (
                 <code className="rounded bg-brand-25 px-1 py-0.5 font-mono text-[0.85em] text-brand-800">
