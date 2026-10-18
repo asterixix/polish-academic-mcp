@@ -23,6 +23,7 @@ export interface QuotaResponse {
   ai_search: QuotaBucket;
   mcp: QuotaBucket | null;
   authenticated: boolean;
+  resets: { ai_search: string; mcp: string | null };
 }
 
 export async function fetchMe(): Promise<PublicUser | null> {
@@ -66,6 +67,8 @@ export type UserPreferences = {
   research_context: string;
   response_style: "concise" | "detailed" | "academic";
   memory_notes: string;
+  default_groups: string[];
+  default_per_source: number;
   updated_at?: string;
 };
 

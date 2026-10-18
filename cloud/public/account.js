@@ -25,10 +25,12 @@
     <h2>Limit AI Search (tydzień)</h2>
     <div class="meter"><span style="width:${aiPct}%"></span></div>
     <p>${ai.used} / ${ai.limit}</p>
+    ${ai.used >= ai.limit * 0.8 ? `<p role="status">${ai.used >= ai.limit ? "Wykorzystano cały limit" : "Zbliżasz się do limitu"}. Odnowienie: ${quota.resets?.ai_search ?? "—"}.</p>` : ""}
 
     <h2>Limit MCP OAuth (miesiąc)</h2>
     <div class="meter"><span style="width:${mcpPct}%"></span></div>
     <p>${mcp.used} / ${mcp.limit}</p>
+    ${mcp.used >= mcp.limit * 0.8 ? `<p role="status">${mcp.used >= mcp.limit ? "Wykorzystano cały limit" : "Zbliżasz się do limitu"}. Odnowienie: ${quota.resets?.mcp ?? "—"}.</p>` : ""}
 
     <h2>Dodaj konektor</h2>
     <p>URL MCP: <code>${origin}/mcp</code></p>

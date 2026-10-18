@@ -2,10 +2,14 @@ import type { CloudEnv } from "./env.js";
 import { readSessionUser } from "./auth.js";
 import { jsonResponse } from "./crypto-util.js";
 
+export const SEARCH_GROUPS = ["nauka", "dane", "prawo", "normy", "kultura"] as const;
+
 export type UserPreferences = {
   research_context: string;
   response_style: "concise" | "detailed" | "academic";
   memory_notes: string;
+  default_groups: string[];
+  default_per_source: number;
   updated_at?: string;
 };
 
@@ -18,21 +22,41 @@ export type ThreadSummary = {
 };
 
 const STYLE_SET = new Set(["concise", "detailed", "academic"]);
+const GROUP_SET = new Set<string>(SEARCH_GROUPS);
+
+const DEFAULT_PREFS: UserPreferences = {
+  research_context: "",
+  response_style: "detailed",
+  memory_notes: "",
+  default_groups: [],
+  default_per_source: 8,
+};
+
+export function parseDefaultGroups(raw: unknown): string[] {
+  const items = Array.isArray(raw) ? raw : String(raw ?? "").split(",");
+  return [...new Set(items.map((s) => String(s).trim()).filter((s) => GROUP_SET.has(s)))];
+}
+
+export function clampPerSource(raw: unknown): number {
+  const n = Math.trunc(Number(raw));
+  return Number.isFinite(n) ? Math.min(10, Math.max(1, n)) : 8;
+}
 
 export async function getUserPreferences(env: CloudEnv, userId: string): Promise<UserPreferences> {
   const row = await env.DB.prepare(
-    `SELECT research_context, response_style, memory_notes, updated_at FROM user_preferences WHERE user_id = ?`,
+    `SELECT research_context, response_style, memory_notes, default_groups, default_per_source, updated_at
+     FROM user_preferences WHERE user_id = ?`,
   )
     .bind(userId)
     .first<{
       research_context: string;
       response_style: string;
       memory_notes: string;
+      default_groups: string;
+      default_per_source: number;
       updated_at: string;
     }>();
-  if (!row) {
-    return { research_context: "", response_style: "detailed", memory_notes: "" };
-  }
+  if (!row) return { ...DEFAULT_PREFS, default_groups: [] };
   const style = STYLE_SET.has(row.response_style)
     ? (row.response_style as UserPreferences["response_style"])
     : "detailed";
@@ -40,6 +64,8 @@ export async function getUserPreferences(env: CloudEnv, userId: string): Promise
     research_context: row.research_context || "",
     response_style: style,
     memory_notes: row.memory_notes || "",
+    default_groups: parseDefaultGroups(row.default_groups),
+    default_per_source: clampPerSource(row.default_per_source),
     updated_at: row.updated_at,
   };
 }
@@ -68,20 +94,30 @@ export async function handleAccountApiRoutes(
     const response_style = STYLE_SET.has(String(body.response_style))
       ? String(body.response_style)
       : "detailed";
+    const default_groups = parseDefaultGroups(body.default_groups).join(",");
+    const default_per_source = clampPerSource(body.default_per_source);
     await env.DB.prepare(
-      `INSERT INTO user_preferences (user_id, research_context, response_style, memory_notes, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'))
+      `INSERT INTO user_preferences (user_id, research_context, response_style, memory_notes, default_groups, default_per_source, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(user_id) DO UPDATE SET
          research_context = excluded.research_context,
          response_style = excluded.response_style,
          memory_notes = excluded.memory_notes,
+         default_groups = excluded.default_groups,
+         default_per_source = excluded.default_per_source,
          updated_at = datetime('now')`,
     )
-      .bind(user.id, research_context, response_style, memory_notes)
+      .bind(user.id, research_context, response_style, memory_notes, default_groups, default_per_source)
       .run();
     return jsonResponse({
       ok: true,
-      preferences: { research_context, response_style, memory_notes },
+      preferences: {
+        research_context,
+        response_style,
+        memory_notes,
+        default_groups: default_groups ? default_groups.split(",") : [],
+        default_per_source,
+      },
     });
   }
 

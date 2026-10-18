@@ -15,9 +15,10 @@
       const data = await res.json();
       const q = data.ai_search;
       if (q) {
+        const warn = q.used >= q.limit * 0.8 ? ` · odnowienie: ${data.resets?.ai_search ?? ""}` : "";
         quotaPill.textContent = data.authenticated
-          ? `AI: ${q.used}/${q.limit} w tym tygodniu`
-          : `Gość: ${q.used}/${q.limit} w tym tygodniu`;
+          ? `AI: ${q.used}/${q.limit} w tym tygodniu${warn}`
+          : `Gość: ${q.used}/${q.limit} w tym tygodniu${warn}`;
       }
       if (data.authenticated) {
         authLink.textContent = "Wyloguj";

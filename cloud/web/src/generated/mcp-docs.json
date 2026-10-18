@@ -1,5 +1,5 @@
 {
-  "version": "1.3.1",
+  "version": "1.3.3",
   "stats": {
     "sourcesCount": 56,
     "groupsCount": 5,
@@ -3471,7 +3471,7 @@
       "sourceId": "krakow_od",
       "sourceName": "Otwarte Dane Miasta Krakowa",
       "group": "dane",
-      "description": "Pobiera pełną kartę zbioru Otwarte Dane Miasta Krakowa (https://otwartedane.um.krakow.pl/zbiory-danych/{slug}) wraz z metadanymi portalu (kategoria, dostawca danych, częstotliwość aktualizacji, poziom otwartości, daty), wykrytymi tabelami REST API na api.um.krakow.pl (komponenty data-exporter/data-table, format OData JSON {value:[...]}) oraz ich danymi liczbowymi: pole rows zawiera wszystkie wiersze tabeli, gdy jest ich co najwyżej 120 (np. miesięczne liczby bezrobotnych i ofert pracy od 2023 roku, zameldowani na pobyt stały na 31.12.2024), a dla większych tabel próbkę sample_rows; zwraca też adresy dokumentacji Swagger/OpenAPI i linki zewnętrzne (m.in. warstwy ArcGIS Hub ZTP dla Komunikacji Miejskiej KMK). Identyfikator slug zwraca krakow_od_search.",
+      "description": "Pobiera pełną kartę zbioru Otwarte Dane Miasta Krakowa (https://otwartedane.um.krakow.pl/zbiory-danych/{slug}) wraz z metadanymi portalu (kategoria, dostawca danych, częstotliwość aktualizacji, poziom otwartości, daty), wykrytymi tabelami REST API na api.um.krakow.pl (komponenty data-exporter/data-table, format OData JSON {value:[...]}) oraz ich danymi liczbowymi: pole rows zawiera wiersze tabeli ze wszystkich stron API (nextLink/$after, do 20 stron; complete=false gdy limit został osiągnięty); zwraca też adresy dokumentacji Swagger/OpenAPI i linki zewnętrzne (m.in. warstwy ArcGIS Hub ZTP dla Komunikacji Miejskiej KMK). Identyfikator slug zwraca krakow_od_search.",
       "annotations": {
         "title": "Otwarte Dane Miasta Krakowa: Pobranie zbioru danych",
         "readOnlyHint": true,
@@ -3713,6 +3713,13 @@
           "type": "string",
           "required": true,
           "description": "Identyfikator artykułu: liczba z Banku (np. 253584), ścieżka bank-informacji-o-miescie-i-metropolii/253584,artykul,raport-o-stanie-gminy.html albo pełny adres URL strategia.krakow.pl"
+        },
+        {
+          "name": "read_pdf",
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "description": "Czy pobrać wersję PDF artykułu (getPdf) i zwrócić jej tekst (pdf_text, pierwsze 20000 znaków). Domyślnie false."
         }
       ]
     },

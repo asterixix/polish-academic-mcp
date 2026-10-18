@@ -1242,7 +1242,11 @@ export async function handleAiSearchRoutes(
     }
     const headers = new Headers({ "content-type": "application/json" });
     if (setCookie) headers.append("set-cookie", setCookie);
-    return new Response(JSON.stringify({ ai_search: ai, mcp, authenticated: Boolean(user) }), {
+    const resets = {
+      ai_search: nextWeekResetMessage(period),
+      mcp: user ? nextMonthResetMessage(monthPeriodKey()) : null,
+    };
+    return new Response(JSON.stringify({ ai_search: ai, mcp, authenticated: Boolean(user), resets }), {
       headers,
     });
   }
@@ -1304,7 +1308,12 @@ export async function handleAiSearchRoutes(
   await consumeQuota(env, subject, "ai_search_weekly", period, limit);
   const quota = await getQuota(env, subject, "ai_search_weekly", period, limit);
 
-  const groups = pickGroups(query);
+  const savedPrefs = user ? await getUserPreferences(env, user.id).catch(() => null) : null;
+  const perSource = savedPrefs?.default_per_source ?? 8;
+  const detected = pickGroups(query);
+  const groups = body.sources
+    ? detected
+    : ([...new Set([...detected, ...(savedPrefs?.default_groups ?? [])])].slice(0, 3) as SourceGroup[]);
   const explicitSources = body.sources
     ? sourcesForGroups(
         body.sources
@@ -1561,7 +1570,7 @@ export async function handleAiSearchRoutes(
         const buildFanout = (): LlmToolCall[] => {
           const extra: LlmToolCall[] = [];
           const cats = groups.length ? groups : (["nauka"] as SourceGroup[]);
-          const fullBudget = { limit_per_source: 8, max_chars: 100_000, format: "detailed" as const };
+          const fullBudget = { limit_per_source: perSource, max_chars: 100_000, format: "detailed" as const };
           for (const cat of cats.slice(0, 2)) {
             extra.push({
               name: "search",
@@ -1615,7 +1624,7 @@ export async function handleAiSearchRoutes(
               arguments: {
                 query: coreQ,
                 sources: ["bn", "ruj", "rodbuk"],
-                limit_per_source: 8,
+                limit_per_source: perSource,
               },
             });
           }
@@ -1625,7 +1634,7 @@ export async function handleAiSearchRoutes(
               arguments: {
                 query: coreQ,
                 sources: [...AI_SEARCH_CORE_BY_GROUP.kultura],
-                limit_per_source: 8,
+                limit_per_source: perSource,
               },
             });
           }
@@ -1635,7 +1644,7 @@ export async function handleAiSearchRoutes(
               arguments: {
                 query: coreQ,
                 sources: [...AI_SEARCH_CORE_BY_GROUP.normy],
-                limit_per_source: 8,
+                limit_per_source: perSource,
               },
             });
           }
@@ -1792,7 +1801,7 @@ export async function handleAiSearchRoutes(
               arguments: {
                 query: v,
                 sources: AI_SEARCH_CORE_BY_GROUP[cat].slice(0, 3),
-                limit_per_source: 8,
+                limit_per_source: perSource,
               },
             })),
           );
@@ -1802,7 +1811,7 @@ export async function handleAiSearchRoutes(
               arguments: {
                 query: normQ.variants[0] || coreQ,
                 sources: ["saos"],
-                limit_per_source: 8,
+                limit_per_source: perSource,
                 ...(normQ.yearFrom
                   ? { filters: { judgment_date_from: normQ.yearFrom } }
                   : {}),

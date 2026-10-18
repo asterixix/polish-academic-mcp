@@ -94,6 +94,15 @@ test("klucze okresów limitów: reset niedziela 17:00 i koniec miesiąca 17:00 (
   assert.equal(aiSearchLimit(env, true), 5);
 });
 
+test("preferencje wyszukiwania: kategorie tylko z listy, limit 1-10", async () => {
+  const { parseDefaultGroups, clampPerSource } = await import("../cloud/src/account-api.js");
+  assert.deepEqual(parseDefaultGroups("nauka, dane,nauka,xyz,"), ["nauka", "dane"]);
+  assert.deepEqual(parseDefaultGroups(["prawo", "bzdura"]), ["prawo"]);
+  assert.equal(clampPerSource(0), 1);
+  assert.equal(clampPerSource(99), 10);
+  assert.equal(clampPerSource("abc"), 8);
+});
+
 test("quota D1: blokada po limicie MCP 100 i AI anon 2", async () => {
   const { MemoryD1 } = await import("../cloud/src/db-memory.js");
   const { consumeQuota, getQuota, mcpSubject, aiSubject, monthPeriodKey, aiPeriodKey } =

@@ -39,6 +39,26 @@ const STYLE_OPTIONS: Array<{ id: UserPreferences["response_style"]; label: strin
   { id: "academic", label: "Akademicki", help: "Precyzyjna terminologia i ostrożne wnioski." },
 ];
 
+const GROUP_OPTIONS: Array<{ id: string; label: string }> = [
+  { id: "nauka", label: "Nauka" },
+  { id: "dane", label: "Dane" },
+  { id: "prawo", label: "Prawo" },
+  { id: "normy", label: "Normy" },
+  { id: "kultura", label: "Kultura" },
+];
+
+function QuotaWarning({ used, limit, reset }: { used: number; limit: number; reset: string }) {
+  if (used < limit * 0.8) return null;
+  const full = used >= limit;
+  return (
+    <p role="status" className={`mt-2 text-sm ${full ? "text-red-800" : "text-brand-800"}`}>
+      {full
+        ? `Wykorzystano cały limit (${limit}). Odnowienie: ${reset}.`
+        : `Wykorzystano ${used} z ${limit}. Odnowienie: ${reset}.`}
+    </p>
+  );
+}
+
 export function AccountPage() {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [quota, setQuota] = useState<QuotaResponse | null>(null);
@@ -46,6 +66,8 @@ export function AccountPage() {
     research_context: "",
     response_style: "detailed",
     memory_notes: "",
+    default_groups: [],
+    default_per_source: 8,
   });
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [saving, setSaving] = useState(false);
@@ -120,14 +142,30 @@ export function AccountPage() {
 
         <div className="mt-6 space-y-5">
           {quota?.ai_search && (
-            <Meter
-              used={quota.ai_search.used}
-              limit={quota.ai_search.limit}
-              label="AI Search (ten tydzień)"
-            />
+            <div>
+              <Meter
+                used={quota.ai_search.used}
+                limit={quota.ai_search.limit}
+                label="AI Search (ten tydzień)"
+              />
+              <QuotaWarning
+                used={quota.ai_search.used}
+                limit={quota.ai_search.limit}
+                reset={quota.resets.ai_search}
+              />
+            </div>
           )}
           {quota?.mcp && (
-            <Meter used={quota.mcp.used} limit={quota.mcp.limit} label="MCP OAuth (ten miesiąc)" />
+            <div>
+              <Meter used={quota.mcp.used} limit={quota.mcp.limit} label="MCP OAuth (ten miesiąc)" />
+              {quota.resets.mcp && (
+                <QuotaWarning
+                  used={quota.mcp.used}
+                  limit={quota.mcp.limit}
+                  reset={quota.resets.mcp}
+                />
+              )}
+            </div>
           )}
         </div>
 
@@ -171,6 +209,51 @@ export function AccountPage() {
             </button>
           ))}
         </div>
+
+        <h3 className="mt-6 text-sm font-semibold text-fg-primary">Domyślne kategorie źródeł</h3>
+        <p className="mt-1 text-xs text-fg-tertiary">
+          Dodawane do wyszukiwań AI Search (maks. 3 kategorie łącznie z tymi wykrytymi w pytaniu).
+          Zaznaczenie żadnej = automatyczny dobór.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {GROUP_OPTIONS.map((g) => {
+            const on = prefs.default_groups.includes(g.id);
+            return (
+              <button
+                key={g.id}
+                type="button"
+                aria-pressed={on}
+                onClick={() =>
+                  setPrefs((p) => ({
+                    ...p,
+                    default_groups: on
+                      ? p.default_groups.filter((x) => x !== g.id)
+                      : [...p.default_groups, g.id],
+                  }))
+                }
+                className={`rounded-full border px-3 py-1 text-sm transition ${
+                  on
+                    ? "border-brand-700 bg-brand-50 text-brand-800"
+                    : "border-border-primary text-fg-secondary hover:border-brand-200"
+                }`}
+              >
+                {g.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <label className="mt-6 block text-sm font-medium text-fg-secondary">
+          Wyników na źródło: {prefs.default_per_source}
+          <input
+            type="range"
+            min={1}
+            max={10}
+            value={prefs.default_per_source}
+            onChange={(e) => setPrefs((p) => ({ ...p, default_per_source: Number(e.target.value) }))}
+            className="mt-2 block w-full"
+          />
+        </label>
 
         <label className="mt-6 block text-sm font-medium text-fg-secondary">
           Memory (notatki trwałe)

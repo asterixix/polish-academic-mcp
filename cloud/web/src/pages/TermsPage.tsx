@@ -46,8 +46,8 @@ export function TermsPage() {
 
         <h2 className="text-lg font-semibold text-fg-primary">3. Przydziały zasobów (uprawnienia konta)</h2>
         <ul className="list-disc space-y-1 pl-5">
-          <li>AI Search bez logowania: do 2 wyszukiwań na tydzień (reset w poniedziałek UTC),</li>
-          <li>AI Search po zalogowaniu: do 5 wyszukiwań na tydzień (reset w poniedziałek UTC),</li>
+          <li>AI Search bez logowania: do 2 wyszukiwań na tydzień (reset w niedzielę o 17:00, czas polski),</li>
+          <li>AI Search po zalogowaniu: do 5 wyszukiwań na tydzień (reset w niedzielę o 17:00, czas polski),</li>
           <li>Konektor MCP przez OAuth 2.1: do 100 wywołań narzędzi na miesiąc kalendarzowy UTC.</li>
         </ul>
         <p>

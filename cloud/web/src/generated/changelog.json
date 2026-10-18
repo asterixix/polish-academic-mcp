@@ -1,24 +1,136 @@
 {
   "schema": "polish_academic_mcp_changelog_v1",
-  "generated_at": "2026-10-18T11:35:39.736Z",
+  "generated_at": "2026-10-18T13:33:13.088Z",
   "repository": "https://github.com/asterixix/polish-academic-mcp",
-  "package_version": "1.3.1",
-  "cloud_version": "1.3.0",
+  "package_version": "1.3.3",
+  "cloud_version": "1.3.3",
   "latest_commit": {
-    "sha": "7258877",
-    "sha_full": "7258877582a7c0eb463cee832df9753aa5a4b273",
-    "date": "2026-10-18T11:28:47Z",
-    "message": "fix(cloud): show audit trail collapsed, stop false system errors on valid answers",
-    "url": "https://github.com/asterixix/polish-academic-mcp/commit/7258877582a7c0eb463cee832df9753aa5a4b273"
+    "sha": "8c3cc70",
+    "sha_full": "8c3cc707e4630a41c59809ad1599229e71bc5bc7",
+    "date": "2026-10-18T13:28:59Z",
+    "message": "fix(cloud): eksport aiPeriodKey i okna resetu limitów (niedziela 17:00 / koniec miesiąca)",
+    "url": "https://github.com/asterixix/polish-academic-mcp/commit/8c3cc707e4630a41c59809ad1599229e71bc5bc7"
   },
   "github": {
-    "pushed_at": "2026-10-18T11:28:55Z",
-    "updated_at": "2026-10-18T11:28:59Z",
+    "pushed_at": "2026-10-18T13:29:04Z",
+    "updated_at": "2026-10-18T13:29:07Z",
     "description": "Polskie bazy wiedzy (od naukowych po dane statystyczne, prawne, meteorologiczne, normy oraz kulturowe) w postaci serwera MCP dla narzędzi AI oraz agentów.",
     "default_branch": "main"
   },
   "source": "github_api+local_build",
   "commits": [
+    {
+      "sha": "8c3cc70",
+      "sha_full": "8c3cc707e4630a41c59809ad1599229e71bc5bc7",
+      "date": "2026-10-18T13:28:59Z",
+      "message": "fix(cloud): eksport aiPeriodKey i okna resetu limitów (niedziela 17:00 / koniec miesiąca)",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/8c3cc707e4630a41c59809ad1599229e71bc5bc7"
+    },
+    {
+      "sha": "680e417",
+      "sha_full": "680e417f447a1041344b3f22dcf6b9a4d9de59bb",
+      "date": "2026-10-18T13:26:59Z",
+      "message": "feat(cloud): panel Koszty w adminie (Eden AI, Parallel, Cloudflare) z zakresem dat",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/680e417f447a1041344b3f22dcf6b9a4d9de59bb"
+    },
+    {
+      "sha": "7775b19",
+      "sha_full": "7775b19c3bcaf226cf38879ada48d1624034de6e",
+      "date": "2026-10-18T13:09:49Z",
+      "message": "Mapa: geokodowanie przez Worker (User-Agent, cache KV), bez stałego miasta; MapBlock na czystym Leaflet; prompt: pełne adresy i składnia Mermaid",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/7775b19c3bcaf226cf38879ada48d1624034de6e"
+    },
+    {
+      "sha": "5445861",
+      "sha_full": "5445861cf5eefbd0d4f3f9bc37a18ff81003f1c7",
+      "date": "2026-10-18T12:53:29Z",
+      "message": "AI Search: narzędzia web_search/web_fetch przez Parallel API, mapa i geokodowanie w odpowiedziach",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/5445861cf5eefbd0d4f3f9bc37a18ff81003f1c7"
+    },
+    {
+      "sha": "2c6b231",
+      "sha_full": "2c6b2312f635cb4e71ef534ee756878bd3d06ec4",
+      "date": "2026-10-18T12:37:31Z",
+      "message": "Footer: stack limits notice under links in one column",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/2c6b2312f635cb4e71ef534ee756878bd3d06ec4"
+    },
+    {
+      "sha": "767ee7d",
+      "sha_full": "767ee7d77cce07d13a5d98b5c7ec7d5bf182257a",
+      "date": "2026-10-18T12:21:40Z",
+      "message": "Footer: move limits notice under links in yellow highlight box",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/767ee7d77cce07d13a5d98b5c7ec7d5bf182257a"
+    },
+    {
+      "sha": "1e84fd0",
+      "sha_full": "1e84fd06d6f3a50edc63d8036de041cf45e559c7",
+      "date": "2026-10-18T12:19:25Z",
+      "message": "Release 1.3.3: krakow_od pagination, strategia PDF reader, deepen priority and limit 10",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/1e84fd06d6f3a50edc63d8036de041cf45e559c7"
+    },
+    {
+      "sha": "0428306",
+      "sha_full": "0428306afc3d5985623a6baffc6206689f879b39",
+      "date": "2026-10-18T12:17:30Z",
+      "message": "Footer: move limits notice and development-phase note from header",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/0428306afc3d5985623a6baffc6206689f879b39"
+    },
+    {
+      "sha": "c147acf",
+      "sha_full": "c147acfe4c75333fe0f46b94eee9e90ca6f4aa92",
+      "date": "2026-10-18T12:15:42Z",
+      "message": "Header: single quota badge, nav/theme/auth moved into hamburger menu",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/c147acfe4c75333fe0f46b94eee9e90ca6f4aa92"
+    },
+    {
+      "sha": "8d91215",
+      "sha_full": "8d912158c4e6607d68fc65628a63d335c3c69fb2",
+      "date": "2026-10-18T12:12:43Z",
+      "message": "Header: lucide theme icon, MCP quota badge, mobile menu, sticky header without beta banner",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/8d912158c4e6607d68fc65628a63d335c3c69fb2"
+    },
+    {
+      "sha": "6eb6b07",
+      "sha_full": "6eb6b0721c0a51d77397b9620a1d77765e9a1d98",
+      "date": "2026-10-18T12:09:50Z",
+      "message": "Validate mermaid syntax before render and clean up error bombs",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/6eb6b0721c0a51d77397b9620a1d77765e9a1d98"
+    },
+    {
+      "sha": "663c20f",
+      "sha_full": "663c20f7feb87f04875943a10658d28f23e1a554",
+      "date": "2026-10-18T11:56:29Z",
+      "message": "Release 1.3.2: cloud chat streaming, markdown copy, mermaid diagrams, krakow pagination",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/663c20f7feb87f04875943a10658d28f23e1a554"
+    },
+    {
+      "sha": "cc0f26f",
+      "sha_full": "cc0f26feb1ce9fe25873e24c1c394acb5de1a476",
+      "date": "2026-10-18T11:53:45Z",
+      "message": "Show notice when mermaid diagram fails to render",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/cc0f26feb1ce9fe25873e24c1c394acb5de1a476"
+    },
+    {
+      "sha": "c2eeab2",
+      "sha_full": "c2eeab23fe6b36bb3479ca62dfce5c2a7d5fddc5",
+      "date": "2026-10-18T11:52:44Z",
+      "message": "Render mermaid diagrams in cloud answers",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/c2eeab23fe6b36bb3479ca62dfce5c2a7d5fddc5"
+    },
+    {
+      "sha": "f70ae16",
+      "sha_full": "f70ae169d94e83cd412ab9ce87f31641af21f541",
+      "date": "2026-10-18T11:38:06Z",
+      "message": "fix(cloud): install root dependencies in build:web so src/tools resolves zod",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/f70ae169d94e83cd412ab9ce87f31641af21f541"
+    },
+    {
+      "sha": "bf07573",
+      "sha_full": "bf07573d4b06899686eb616804128b4cf5f27012",
+      "date": "2026-10-18T11:36:04Z",
+      "message": "fix(cloud): install web dependencies in build:web before tsc",
+      "url": "https://github.com/asterixix/polish-academic-mcp/commit/bf07573d4b06899686eb616804128b4cf5f27012"
+    },
     {
       "sha": "7258877",
       "sha_full": "7258877582a7c0eb463cee832df9753aa5a4b273",
@@ -186,118 +298,6 @@
       "date": "2026-04-11T11:02:41Z",
       "message": "Delete release directory",
       "url": "https://github.com/asterixix/polish-academic-mcp/commit/aa00bccb7dc9f4bc7ce6a5490f4979910b326431"
-    },
-    {
-      "sha": "171203f",
-      "sha_full": "171203f4a6fb9ec3438613c005cccd9d889ee036",
-      "date": "2026-04-11T10:54:36Z",
-      "message": "chore(release): v1.0.1",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/171203f4a6fb9ec3438613c005cccd9d889ee036"
-    },
-    {
-      "sha": "91e9fa4",
-      "sha_full": "91e9fa4ba52a1f672daff36c1946790f8a17b587",
-      "date": "2026-04-10T06:30:14Z",
-      "message": "Merge branch 'main' of https://github.com/asterixix/polish-academic-mcp",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/91e9fa4ba52a1f672daff36c1946790f8a17b587"
-    },
-    {
-      "sha": "3c99d1f",
-      "sha_full": "3c99d1ffc60cc33e2cb09aab7e5c066f3fc15ef8",
-      "date": "2026-04-10T06:30:11Z",
-      "message": "feat: add centralized error handling and structured reporting for tools",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/3c99d1ffc60cc33e2cb09aab7e5c066f3fc15ef8"
-    },
-    {
-      "sha": "f36cb39",
-      "sha_full": "f36cb3910eaf9a5adcbb36158ae9203a6d9f2664",
-      "date": "2026-04-10T06:29:25Z",
-      "message": "Merge pull request #5 from OyaAIProd/safeskill-scan-1774780405859",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/f36cb3910eaf9a5adcbb36158ae9203a6d9f2664"
-    },
-    {
-      "sha": "92bf854",
-      "sha_full": "92bf854974f0bbb75594f19da5e2a3c4a4ab2e5d",
-      "date": "2026-03-29T10:33:26Z",
-      "message": "Add SafeSkill security badge (82/100)",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/92bf854974f0bbb75594f19da5e2a3c4a4ab2e5d"
-    },
-    {
-      "sha": "4a02a92",
-      "sha_full": "4a02a9215580d5cda28cc057dcd2ca058ef3dcbf",
-      "date": "2026-03-29T10:18:25Z",
-      "message": "Add BDL_CLIENT_ID variable to wrangler configuration",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/4a02a9215580d5cda28cc057dcd2ca058ef3dcbf"
-    },
-    {
-      "sha": "ead6533",
-      "sha_full": "ead65332b45d58b43725b528ef6e436f3b4e8d34",
-      "date": "2026-03-27T23:38:58Z",
-      "message": "feat: enhance evaluation framework with new database migrations and replay functionality",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/ead65332b45d58b43725b528ef6e436f3b4e8d34"
-    },
-    {
-      "sha": "2ba9547",
-      "sha_full": "2ba95479a5d1751e2975ae59693f784534b9bf30",
-      "date": "2026-03-27T23:02:00Z",
-      "message": "feat: enhance connect page and OAuth registration process with improved instructions and rate limiting",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/2ba95479a5d1751e2975ae59693f784534b9bf30"
-    },
-    {
-      "sha": "04b0dfb",
-      "sha_full": "04b0dfb5815a748271075f8d134f4d9e6392c975",
-      "date": "2026-03-27T22:45:28Z",
-      "message": "feat: enhance OAuth functionality and improve admin panel with new token management features",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/04b0dfb5815a748271075f8d134f4d9e6392c975"
-    },
-    {
-      "sha": "47125d0",
-      "sha_full": "47125d0b3f25ffd925022e8fde30a488645e5bf1",
-      "date": "2026-03-27T22:01:03Z",
-      "message": "feat: integrate site branding and enhance HTML generation across pages",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/47125d0b3f25ffd925022e8fde30a488645e5bf1"
-    },
-    {
-      "sha": "7174a93",
-      "sha_full": "7174a93f212177e31449a3acfcd114a1cb13d59c",
-      "date": "2026-03-27T21:55:50Z",
-      "message": "feat: add Web3Forms integration and enhance connect page with research request functionality",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/7174a93f212177e31449a3acfcd114a1cb13d59c"
-    },
-    {
-      "sha": "ea929cb",
-      "sha_full": "ea929cbc46016cab6406fe0fd1c34adf092d2e40",
-      "date": "2026-03-27T21:48:56Z",
-      "message": "feat: enhance evaluation runner and admin panel with Polish localization and JWT support",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/ea929cbc46016cab6406fe0fd1c34adf092d2e40"
-    },
-    {
-      "sha": "d0a21a0",
-      "sha_full": "d0a21a04a918a1648a89c238b95852359f1cb526",
-      "date": "2026-03-27T21:24:57Z",
-      "message": "feat: expand toolset and improve documentation in README",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/d0a21a04a918a1648a89c238b95852359f1cb526"
-    },
-    {
-      "sha": "1be83c6",
-      "sha_full": "1be83c616a9e817e74b609ea4fc73d6be9681ad3",
-      "date": "2026-03-27T20:11:13Z",
-      "message": "feat: enhance connect page with provider details and verification flow",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/1be83c616a9e817e74b609ea4fc73d6be9681ad3"
-    },
-    {
-      "sha": "e121486",
-      "sha_full": "e1214861baf44a71b444f12f8e1959c6be71a568",
-      "date": "2026-03-27T20:02:31Z",
-      "message": "refactor: remove unused AI SDK dependencies and enhance admin panel functionality",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/e1214861baf44a71b444f12f8e1959c6be71a568"
-    },
-    {
-      "sha": "df758f5",
-      "sha_full": "df758f5938a0a692d32c42acb13cbdf0ea5f209f",
-      "date": "2026-03-27T19:24:55Z",
-      "message": "feat: enhance request handling and add new endpoints for improved navigation and diagnostics",
-      "url": "https://github.com/asterixix/polish-academic-mcp/commit/df758f5938a0a692d32c42acb13cbdf0ea5f209f"
     }
   ]
 }
