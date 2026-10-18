@@ -641,6 +641,36 @@ test("AI Search orchestrator eksportuje handler i domyślny model Haiku", () => 
   assert.match(wrangler, /"subrequests":\s*10000/);
 });
 
+test("parallel: brak klucza nie włącza narzędzi, błąd HTTP zwraca isError bez wyjątku, limit 5 wywołań", async () => {
+  const { parallelEnabled, parallelSearch, PARALLEL_TOOL_INFOS, PARALLEL_MAX_CALLS } = await import(
+    "../cloud/src/parallel.js"
+  );
+  assert.equal(PARALLEL_MAX_CALLS, 5);
+  assert.deepEqual(PARALLEL_TOOL_INFOS.map((t) => t.name), ["web_search", "web_fetch"]);
+  assert.equal(parallelEnabled({ PARALLEL_API_KEY: "" } as never), false);
+  assert.equal(parallelEnabled({ PARALLEL_API_KEY: "k" } as never), true);
+
+  const realFetch = globalThis.fetch;
+  let seenBody: Record<string, unknown> | undefined;
+  let seenKey: string | null = null;
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+    seenBody = JSON.parse(String(init?.body));
+    seenKey = new Headers(init?.headers).get("x-api-key");
+    return new Response("upstream down", { status: 500 });
+  }) as typeof fetch;
+  try {
+    const res = await parallelSearch({ PARALLEL_API_KEY: "secret" } as never, "obj", ["a b c"]);
+    assert.equal(res.isError, true);
+    assert.match(res.content[0].text, /HTTP 500/);
+    assert.equal(seenKey, "secret");
+    assert.equal(seenBody?.mode, "fast");
+    assert.deepEqual(seenBody?.advanced_settings, { max_results: 10 });
+    assert.equal("full_content" in (seenBody ?? {}), false);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test("normalizeEdenModel maps dotted Haiku IDs and uses catalog-valid fallbacks", async () => {
   const { normalizeEdenModel, EDEN_CATALOG_HAIKU_FALLBACKS } = await import(
     "../cloud/src/ai-search.js"

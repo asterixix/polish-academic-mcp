@@ -1,6 +1,23 @@
+import { MapBlock } from "@/components/chat/MapBlock";
 import { MermaidBlock } from "@/components/chat/MermaidBlock";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+type MdNode = { type: string; value?: string; children?: MdNode[] };
+
+function nodeText(node: MdNode): string {
+  return node.value ?? (node.children ?? []).map(nodeText).join("");
+}
+
+// Addresses from the first column whose header mentions "adres" or "ulica".
+function addressesFromTable(table: MdNode): string[] {
+  const [header, ...rows] = table.children ?? [];
+  const col = (header?.children ?? []).findIndex((c) => /adres|ulica/i.test(nodeText(c)));
+  if (col < 0) return [];
+  return rows
+    .map((r) => nodeText(r.children?.[col] ?? { type: "text" }).trim())
+    .filter(Boolean);
+}
 
 export function AnswerMarkdown({ text }: { text: string }) {
   if (!text.trim()) return null;
@@ -34,11 +51,17 @@ export function AnswerMarkdown({ text }: { text: string }) {
               {children}
             </a>
           ),
-          table: ({ children }) => (
-            <div className="my-3 overflow-x-auto rounded-xl border border-border-primary">
-              <table className="min-w-full border-collapse text-left text-xs">{children}</table>
-            </div>
-          ),
+          table: ({ children, node }) => {
+            const addresses = addressesFromTable(node as unknown as MdNode);
+            return (
+              <>
+                <div className="my-3 overflow-x-auto rounded-xl border border-border-primary">
+                  <table className="min-w-full border-collapse text-left text-xs">{children}</table>
+                </div>
+                {addresses.length > 0 && <MapBlock addresses={addresses} />}
+              </>
+            );
+          },
           thead: ({ children }) => <thead className="bg-brand-25 text-brand-800">{children}</thead>,
           th: ({ children }) => (
             <th className="border-b border-border-primary px-3 py-2 font-semibold">{children}</th>

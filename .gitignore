@@ -49,4 +49,5 @@ cloud/public/assets/
 
 # Coverage / test artifacts
 coverage/
+.playwright-mcp/
 .nyc_output/

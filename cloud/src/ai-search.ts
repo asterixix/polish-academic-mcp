@@ -16,6 +16,14 @@ import {
   nextWeekResetMessage,
 } from "./quota.js";
 import { callMcpTool, listMcpTools, type ToolInfo } from "./tool-bridge.js";
+import {
+  PARALLEL_MAX_CALLS,
+  PARALLEL_TOOL_INFOS,
+  PARALLEL_TOOL_NAMES,
+  parallelEnabled,
+  parallelExtract,
+  parallelSearch,
+} from "./parallel.js";
 import { getUserPreferences, type UserPreferences } from "./account-api.js";
 import { getAppSetting, logAdminEvent } from "./admin.js";
 import { withDeveloperContact } from "./error-contact.js";
@@ -1365,7 +1373,8 @@ export async function handleAiSearchRoutes(
         endStep(routeStep);
 
         const discStep = pushStep("tool_discovery", "Ładuję narzędzia Meta-Router (list_sources, search, get_record)");
-        const tools = await listMcpTools(env, explicitSources, "router");
+        const mcpTools = await listMcpTools(env, explicitSources, "router");
+        const tools = parallelEnabled(env) ? [...mcpTools, ...PARALLEL_TOOL_INFOS] : mcpTools;
         endStep(discStep, {
           tool_count: tools.length,
           tool_names: tools.map((t) => t.name),
@@ -1388,6 +1397,9 @@ export async function handleAiSearchRoutes(
           '4) przykłady dobre: "kredyt frankowy", "energia odnawialna", "bezrobocie małopolska"; złe: "SAOS orzeczenia kredyty frankowe 2020". ' +
           "KRYTYCZNE: NIE pisz odpowiedzi użytkownikowi. NIE zmyślaj publikacji, orzeczeń, DOI, sygnatur, liczb ani streszczeń. " +
           "Wyłącznie tool_use / function calls." +
+          (parallelEnabled(env)
+            ? " Narzędzia web_search i web_fetch szukają w internecie poza polskimi bazami; użyj ich, gdy baz brakuje lub pytanie dotyczy bieżących wydarzeń. Maksymalnie 5 wywołań web_search/web_fetch."
+            : "") +
           (routerExtraEarly ? ` ${routerExtraEarly.slice(0, 2000)}` : "");
 
         const forcedModelRaw = await getAppSetting<string | null>(env, "force_model", null).catch(() => null);
@@ -1513,11 +1525,16 @@ export async function handleAiSearchRoutes(
           return next;
         };
 
-        let toolCalls: LlmToolCall[] = plan.toolCalls.slice(0, AI_SEARCH_MAX_TOOL_CALLS).map((tc) =>
-          tc.name === "search"
-            ? { ...tc, arguments: rewriteSearchArgs(tc.arguments as Record<string, unknown>) }
-            : tc,
-        );
+        const isParallelCall = (tc: LlmToolCall) => (PARALLEL_TOOL_NAMES as readonly string[]).includes(tc.name);
+        const parallelPlanned = plan.toolCalls.filter(isParallelCall).slice(0, PARALLEL_MAX_CALLS);
+        let toolCalls: LlmToolCall[] = plan.toolCalls
+          .filter((tc) => !isParallelCall(tc))
+          .slice(0, AI_SEARCH_MAX_TOOL_CALLS)
+          .map((tc) =>
+            tc.name === "search"
+              ? { ...tc, arguments: rewriteSearchArgs(tc.arguments as Record<string, unknown>) }
+              : tc,
+          );
         let heuristicFallback = false;
 
         const pushUnique = (list: LlmToolCall[], item: LlmToolCall) => {
@@ -1633,12 +1650,15 @@ export async function handleAiSearchRoutes(
           });
         }
 
+        toolCalls = [...toolCalls, ...parallelPlanned];
+
         send("tools", {
           calls: toolCalls.map((t) => ({ name: t.name, arguments: t.arguments })),
           heuristic_fallback: heuristicFallback,
         });
 
         const toolResults: Array<{ name: string; text: string; isError?: boolean }> = [];
+        let parallelCalls = 0;
 
         const runToolBatch = async (batch: LlmToolCall[], label: string) => {
           send("thought", {
@@ -1655,7 +1675,31 @@ export async function handleAiSearchRoutes(
               );
               const started = new Date().toISOString();
               try {
-                const result = await callMcpTool(env, tc.name, tc.arguments, explicitSources, "router");
+                const isParallel = (PARALLEL_TOOL_NAMES as readonly string[]).includes(tc.name);
+                let result: { content: Array<{ type: string; text?: string }>; isError?: boolean };
+                if (isParallel && parallelCalls >= PARALLEL_MAX_CALLS) {
+                  result = {
+                    content: [{ type: "text", text: "Limit wywołań Parallel na to pytanie wyczerpany. Odpowiedz na podstawie dotychczasowych wyników." }],
+                    isError: true,
+                  };
+                } else if (isParallel) {
+                  parallelCalls++;
+                  const args = tc.arguments as Record<string, unknown>;
+                  result =
+                    tc.name === "web_search"
+                      ? await parallelSearch(
+                          env,
+                          String(args.objective ?? ""),
+                          Array.isArray(args.search_queries) ? args.search_queries.map(String) : [],
+                        )
+                      : await parallelExtract(
+                          env,
+                          Array.isArray(args.urls) ? args.urls.map(String) : [],
+                          typeof args.objective === "string" ? args.objective : undefined,
+                        );
+                } else {
+                  result = await callMcpTool(env, tc.name, tc.arguments, explicitSources, "router");
+                }
                 const text = result.content
                   .map((c) => (typeof c.text === "string" ? c.text : JSON.stringify(c)))
                   .join("\n")
@@ -1837,6 +1881,7 @@ ${prefsBlock ? `${prefsBlock}\n\n` : ""}${synthesisExtra ? `Dodatkowe wytyczne a
 3. **Źródła i linki do pobrania** - lista z pełnymi URL, DOI, ID rekordów; zaznacz format (PDF, CSV, XML, HTML, API).
 4. **Dane tabelaryczne** - gdy są szeregi liczbowe, porównania lub listy publikacji, oddaj jako tabelę Markdown (czytelne kolumny: tytuł, rok, baza, DOI/URL).
 5. **Wizualizacja** - gdy dane na to pozwalają, dodaj diagram Mermaid (\`\`\`mermaid): timeline kariery/publikacji, flowchart procesu, pie/bar przez flowchart z podziałem kategorii. Nie wymyślaj liczb. Gdy brak danych liczbowych, narysuj timeline lub mapę relacji ze źródłami zamiast pisać "brak wizualizacji".
+   Składnia Mermaid: opisy krawędzi w flowchart pisz jako \`A -.->|"tekst"| B\` (nie \`A -. "tekst" .-> B\`). Wykres słupkowy: \`xychart-beta\` z \`x-axis [...]\`, \`y-axis "etykieta" min --> max\`, \`bar [liczby]\`. Etykiety z polskimi znakami w cudzysłowie.
 6. **Analiza / wnioski** - synteza cross-source, luki, ograniczenia danych, rozbieżności między bazami.
 7. **Wytyczne dalszej pracy** - konkretne kolejne kroki (zapytania, bazy, rekordy do weryfikacji).
 8. **Pytania dopytujące** - 2-3 naturalne pytania na końcu.

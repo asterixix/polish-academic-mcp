@@ -29,6 +29,8 @@ export interface CloudEnv {
   EDENAI_API_BASE?: string;
   /** Eden AI Management API key (mgmt-eden-…) for usage monitoring */
   EDENAI_MANAGEMENT_KEY?: string;
+  /** Parallel Search/Extract API key (AI Search web tools); optional */
+  PARALLEL_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
   CF_AIG_TOKEN?: string;
