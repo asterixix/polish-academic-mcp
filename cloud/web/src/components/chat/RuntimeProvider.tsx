@@ -449,12 +449,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   const retryFailedPrompt = useCallback(
     async (assistantMessageId?: string) => {
       if (isRunning) return;
-      const looksFailed = (m: ChatMessage) =>
-        m.role === "assistant" &&
-        (m.status === "error" ||
-          /wykorzystano limit|błąd|error|nie udało|wyczerpany|niedostępna|subrequest/i.test(
-            m.content,
-          ));
+      const looksFailed = (m: ChatMessage) => m.role === "assistant" && m.status === "error";
 
       const msgs = messagesRef.current;
       let assistantIdx = -1;

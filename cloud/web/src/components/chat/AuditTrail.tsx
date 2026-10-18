@@ -182,7 +182,7 @@ export function AuditTrail({
   running: boolean;
 }) {
   const reduce = useReducedMotion();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const hasContent =
     Boolean(status) ||
     sources.length > 0 ||
@@ -202,7 +202,7 @@ export function AuditTrail({
         <div className="flex flex-wrap items-center gap-2 border-b border-border-primary px-3 py-3 sm:px-4">
           <Activity className="size-4 shrink-0 text-brand-600" />
           <div className="min-w-0 flex-1 basis-[min(100%,12rem)]">
-            <p className="text-sm font-semibold text-fg-primary">Ślad audytu (100% transparentność)</p>
+            <p className="text-sm font-semibold text-fg-primary">Ślad audytu</p>
             <p className="text-xs text-fg-tertiary">
               Kroki, myśli, prompty, odpowiedzi LLM i tokeny. Do pobrania na analizy naukowe.
             </p>

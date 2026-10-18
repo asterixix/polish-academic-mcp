@@ -36,18 +36,6 @@ const groups = [
   { id: "kultura", label: "Kultura" },
 ];
 
-function looksLikeError(text: string): boolean {
-  const t = text.toLowerCase();
-  return (
-    t.includes("wykorzystano limit") ||
-    t.includes("błąd") ||
-    t.includes("error") ||
-    t.includes("nie udało") ||
-    t.includes("wyczerpany") ||
-    t.includes("niedostępna")
-  );
-}
-
 function AssistantBubble() {
   const messageId = useAuiState((s) => s.message.id);
   const { messages, isRunning, live, retryFailedPrompt } = useChatMeta();
@@ -78,8 +66,7 @@ function AssistantBubble() {
               </span>
             ),
             Text: ({ text }) => {
-              const showAsError = isSystemError || looksLikeError(text);
-              if (!showAsError) return <AnswerMarkdown text={text} />;
+              if (!isSystemError) return <AnswerMarkdown text={text} />;
               const canRetry = Boolean(isLastAssistant && !isRunning);
               return (
                 <ErrorReport
