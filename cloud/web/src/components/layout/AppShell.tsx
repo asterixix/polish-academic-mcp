@@ -47,7 +47,7 @@ export function AppShell() {
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 md:px-6">
           <Link
             to="/"
-            className="flex min-w-0 flex-1 items-center gap-3 no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 rounded-lg"
+            className="flex min-w-0 items-center gap-3 no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 rounded-lg"
           >
             <img
               src="/logo.jpg"
@@ -56,130 +56,82 @@ export function AppShell() {
               width={40}
               height={40}
             />
-            <div className="min-w-0 leading-tight">
-              <div className="truncate font-display text-sm font-semibold text-brand-700 md:text-base">
-                Polish Academic MCP
-              </div>
-              <div className="hidden text-xs text-fg-secondary sm:block">
-                Polskie bazy w jednym oknie rozmowy
-              </div>
+            <div className="truncate font-display text-sm font-semibold text-brand-700 md:text-base">
+              Polish Academic MCP
             </div>
           </Link>
 
-          <nav className="hidden items-center gap-1 md:flex" aria-label="Główna nawigacja">
-            {nav.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  cn(
-                    "min-h-10 rounded-full px-3.5 py-2 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
-                    isActive ? "bg-brand-50 text-brand-800" : "text-fg-secondary hover:bg-brand-50/70",
-                  )
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-            {user?.is_admin && (
-              <NavLink
-                to="/admin"
-                className={({ isActive }) =>
-                  cn(
-                    "min-h-10 rounded-full px-3.5 py-2 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
-                    isActive ? "bg-brand-50 text-brand-800" : "text-fg-secondary hover:bg-brand-50/70",
-                  )
-                }
-              >
-                Admin
-              </NavLink>
-            )}
-          </nav>
-
           <div className="flex shrink-0 items-center gap-2">
-            <ThemeToggle />
             {quota?.ai_search && (
               <span
-                className="hidden rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 lg:inline"
-                aria-label={`Wykorzystanie AI: ${quota.ai_search.used} z ${quota.ai_search.limit}`}
+                className="rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800"
+                aria-label={`Wykorzystanie AI: ${quota.ai_search.used} z ${quota.ai_search.limit}${quota.mcp ? `, MCP: ${quota.mcp.used} z ${quota.mcp.limit}` : ""}`}
               >
                 AI {quota.ai_search.used}/{quota.ai_search.limit}
-              </span>
-            )}
-            {quota?.mcp && (
-              <span
-                className="hidden rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 lg:inline"
-                aria-label={`Wykorzystanie MCP: ${quota.mcp.used} z ${quota.mcp.limit}`}
-              >
-                MCP {quota.mcp.used}/{quota.mcp.limit}
+                {quota.mcp && ` · MCP ${quota.mcp.used}/${quota.mcp.limit}`}
               </span>
             )}
             <button
               type="button"
-              className="inline-flex size-10 items-center justify-center rounded-full border border-border-primary bg-bg-secondary text-fg-primary md:hidden"
+              className="inline-flex size-10 items-center justify-center rounded-full border border-border-primary bg-bg-secondary text-fg-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
               aria-label={menuOpen ? "Zamknij menu" : "Otwórz menu"}
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((v) => !v)}
             >
               {menuOpen ? <X className="size-4" aria-hidden /> : <Menu className="size-4" aria-hidden />}
             </button>
-            {user ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onPress={async () => {
-                  await logout();
-                  setUser(null);
-                  navigate("/");
-                  location.reload();
-                }}
-              >
-                Wyloguj
-              </Button>
-            ) : (
-              <Button size="sm" onPress={() => navigate("/login")}>
-                Zaloguj
-              </Button>
-            )}
           </div>
         </div>
 
         {menuOpen && (
-          <nav
-            className="flex flex-col gap-1 border-t border-border-primary/60 bg-bg-primary px-4 py-3 md:hidden"
-            aria-label="Nawigacja mobilna"
+          <div
+            className="absolute right-4 top-full z-50 mt-2 w-60 rounded-2xl border border-border-primary bg-bg-secondary p-2 shadow-soft md:right-6"
             onClick={() => setMenuOpen(false)}
           >
-            {nav.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  cn(
-                    "min-h-11 rounded-xl px-3 py-2.5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
-                    isActive ? "bg-brand-50 text-brand-800" : "text-fg-secondary",
-                  )
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-            {user?.is_admin && (
-              <NavLink
-                to="/admin"
-                className={({ isActive }) =>
-                  cn(
-                    "min-h-11 rounded-xl px-3 py-2.5 text-sm font-medium",
-                    isActive ? "bg-brand-50 text-brand-800" : "text-fg-secondary",
-                  )
-                }
-              >
-                Admin
-              </NavLink>
-            )}
-          </nav>
+            <nav aria-label="Główna nawigacja" className="flex flex-col gap-1">
+              {[...nav, ...(user?.is_admin ? [{ to: "/admin", label: "Admin" }] : [])].map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={"end" in item ? item.end : undefined}
+                  className={({ isActive }) =>
+                    cn(
+                      "min-h-11 rounded-xl px-3 py-2.5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
+                      isActive ? "bg-brand-50 text-brand-800" : "text-fg-secondary hover:bg-brand-50/70",
+                    )
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+            <div className="my-2 border-t border-border-primary" />
+            <div className="flex items-center justify-between gap-2 px-3 py-1.5">
+              <span className="text-sm text-fg-secondary">Motyw</span>
+              <ThemeToggle />
+            </div>
+            <div className="px-2 pt-1 pb-1">
+              {user ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  onPress={async () => {
+                    await logout();
+                    setUser(null);
+                    navigate("/");
+                    location.reload();
+                  }}
+                >
+                  Wyloguj
+                </Button>
+              ) : (
+                <Button size="sm" className="w-full" onPress={() => navigate("/login")}>
+                  Zaloguj
+                </Button>
+              )}
+            </div>
+          </div>
         )}
       </header>
 
