@@ -1,6 +1,8 @@
 import { useEffect, useId, useState } from "react";
 
-let mermaidPromise: Promise<typeof import("mermaid").default> | null = null;
+type Mermaid = typeof import("mermaid").default;
+
+let mermaidPromise: Promise<Mermaid> | null = null;
 
 function loadMermaid() {
   mermaidPromise ??= import("mermaid").then((m) => {
@@ -17,16 +19,29 @@ export function MermaidBlock({ code }: { code: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    loadMermaid()
-      .then((mermaid) => mermaid.render(`mmd${id}`, code))
-      .then(({ svg }) => {
-        if (!cancelled) setSvg(svg);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
+    const timer = window.setTimeout(async () => {
+      const elementId = `mmd${id}`;
+      try {
+        const mermaid = await loadMermaid();
+        const valid = await mermaid.parse(code, { suppressErrors: true });
+        if (!valid) throw new Error("invalid mermaid syntax");
+        const result = await mermaid.render(elementId, code);
+        if (!cancelled) {
+          setSvg(result.svg);
+          setFailed(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setSvg(null);
+          setFailed(true);
+        }
+      } finally {
+        document.getElementById(`d${elementId}`)?.remove();
+      }
+    }, 400);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [code, id]);
 
