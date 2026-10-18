@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "dev:web": "npm run dev --prefix web",
-    "build:web": "npm clean-install --prefix web --progress=false && npm run build --prefix web",
+    "build:web": "npm clean-install --prefix .. --progress=false && npm clean-install --prefix web --progress=false && npm run build --prefix web",
     "deploy": "npm run build:web && wrangler deploy",
     "types": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply polish-academic-mcp --local",
