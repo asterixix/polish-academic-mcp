@@ -6,6 +6,7 @@ import { handleOAuthRoutes } from "./oauth.js";
 import { handleMcpRoutes } from "./mcp-transport.js";
 import { handleAiSearchRoutes } from "./ai-search.js";
 import { handleAccountApiRoutes } from "./account-api.js";
+import { handleGeocodeRoutes } from "./geocode.js";
 import { handleAdminRoutes, logAdminEvent } from "./admin.js";
 import { jsonResponse } from "./crypto-util.js";
 import { withDeveloperContact } from "./error-contact.js";
@@ -61,6 +62,9 @@ export default {
 
       const accountRes = await handleAccountApiRoutes(request, env, path);
       if (accountRes) return withSecurityHeaders(accountRes);
+
+      const geoRes = await handleGeocodeRoutes(request, env, path);
+      if (geoRes) return withSecurityHeaders(geoRes);
 
       const adminRes = await handleAdminRoutes(request, env, path);
       if (adminRes) return withSecurityHeaders(adminRes);

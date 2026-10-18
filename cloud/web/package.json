@@ -24,7 +24,6 @@
     "react": "^19.2.8",
     "react-aria-components": "^1.22.1",
     "react-dom": "^19.2.8",
-    "react-leaflet": "^5.0.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.4",
     "remark-gfm": "^4.0.1",
@@ -34,6 +33,7 @@
     "tailwindcss-react-aria-components": "^2.2.0"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",

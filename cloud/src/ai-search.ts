@@ -1,6 +1,6 @@
 import { SOURCE_GROUPS, SOURCES, type SourceGroup, type SourceId } from "../../src/sources.js";
 import { normalizeQueryForSource, normalizeResearchQuery } from "../../src/query-normalize.js";
-import type { CloudEnv } from "./env.js";
+import { publicOrigin, type CloudEnv } from "./env.js";
 import { ensureAnonKey, readSessionUser } from "./auth.js";
 import { jsonResponse } from "./crypto-util.js";
 import {
@@ -1248,6 +1248,17 @@ export async function handleAiSearchRoutes(
 
   if (path !== "/api/ai-search" || request.method !== "POST") return null;
 
+  // shortcut: Origin/Sec-Fetch-Site są nagłówkami klienta i da się je podrobić curlem, upgrade: Turnstile lub podpisany token sesji
+  const fromSite =
+    request.headers.get("sec-fetch-site") === "same-origin" ||
+    request.headers.get("origin") === publicOrigin(request, env);
+  if (!fromSite) {
+    return jsonResponse(
+      { error: "forbidden", message: "AI Search jest dostępne wyłącznie w interfejsie pamcp.pl." },
+      { status: 403 },
+    );
+  }
+
   const user = await readSessionUser(env, request);
   const { anonKey, setCookie } = await ensureAnonKey(env, request);
   const subject = aiSubject(user?.id ?? null, anonKey);
@@ -1882,6 +1893,7 @@ ${prefsBlock ? `${prefsBlock}\n\n` : ""}${synthesisExtra ? `Dodatkowe wytyczne a
 4. **Dane tabelaryczne** - gdy są szeregi liczbowe, porównania lub listy publikacji, oddaj jako tabelę Markdown (czytelne kolumny: tytuł, rok, baza, DOI/URL).
 5. **Wizualizacja** - gdy dane na to pozwalają, dodaj diagram Mermaid (\`\`\`mermaid): timeline kariery/publikacji, flowchart procesu, pie/bar przez flowchart z podziałem kategorii. Nie wymyślaj liczb. Gdy brak danych liczbowych, narysuj timeline lub mapę relacji ze źródłami zamiast pisać "brak wizualizacji".
    Składnia Mermaid: opisy krawędzi w flowchart pisz jako \`A -.->|"tekst"| B\` (nie \`A -. "tekst" .-> B\`). Wykres słupkowy: \`xychart-beta\` z \`x-axis [...]\`, \`y-axis "etykieta" min --> max\`, \`bar [liczby]\`. Etykiety z polskimi znakami w cudzysłowie.
+   Adresy: gdy zestawiasz miejsca w tabeli z kolumną "Adres" lub "Ulica", wpisz pełny adres w formacie "ulica numer, miejscowość, Polska" (lub kraj, jeśli nie Polska), np. "ul. Floriańska 12, Kraków, Polska". Nie skracaj do samej ulicy, bo mapa nie znajdzie miejsca.
 6. **Analiza / wnioski** - synteza cross-source, luki, ograniczenia danych, rozbieżności między bazami.
 7. **Wytyczne dalszej pracy** - konkretne kolejne kroki (zapytania, bazy, rekordy do weryfikacji).
 8. **Pytania dopytujące** - 2-3 naturalne pytania na końcu.
